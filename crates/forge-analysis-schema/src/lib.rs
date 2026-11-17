@@ -307,6 +307,8 @@ pub enum UnresolvedReason {
     AmbiguousBinding,
     UnknownReceiver,
     UncatalogedMember,
+    UncoveredModule,
+    IndirectUse,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
