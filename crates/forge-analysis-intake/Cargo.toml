@@ -1,0 +1,10 @@
+[package]
+name = "forge-analysis-intake"
+edition.workspace = true
+version.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+forge-analysis-schema.workspace = true
