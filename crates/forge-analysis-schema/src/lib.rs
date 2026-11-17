@@ -304,6 +304,8 @@ pub enum UnresolvedReason {
     ParseFailed,
     UnsupportedSyntax,
     AmbiguousBinding,
+    UnknownReceiver,
+    UncatalogedMember,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]

@@ -158,6 +158,29 @@ impl Catalog {
     pub fn version_hash(&self) -> &Hash {
         &self.version
     }
+
+    /// The function entry for `module.export`, if the catalog has one.
+    pub fn find_function(&self, module: &str, export: &str) -> Option<&Entry> {
+        self.entries.iter().find(|e| {
+            matches!(&e.target, Target::Function { module: m, exports }
+                if m == module && exports.iter().any(|x| x == export))
+        })
+    }
+
+    /// True if any function entry belongs to this module.
+    pub fn knows_module(&self, module: &str) -> bool {
+        self.entries
+            .iter()
+            .any(|e| matches!(&e.target, Target::Function { module: m, .. } if m == module))
+    }
+
+    /// True if some function entry exports this name, in any module.
+    pub fn exports_name(&self, export: &str) -> bool {
+        self.entries.iter().any(|e| {
+            matches!(&e.target, Target::Function { exports, .. }
+                if exports.iter().any(|x| x == export))
+        })
+    }
 }
 
 // ---- validation helpers ----

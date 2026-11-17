@@ -13,6 +13,7 @@ use oxc_ast::ast::{
 };
 use oxc_parser::Parser;
 use oxc_span::{SourceType, Span as OxcSpan};
+use oxc_semantic::Scoping;
 use std::collections::BTreeSet;
 mod visitor;
 pub use visitor::analyze_file;
@@ -33,6 +34,8 @@ pub struct Binding {
     /// Module name without a `node:` prefix.
     pub module: String,
     pub kind: BindingKind,
+    /// Byte offset of the declaring identifier; lets Oxc's scope analysis point back to us.
+    pub decl_start: u32,
 }
 
 #[derive(Debug, Clone, Default)]
@@ -52,6 +55,16 @@ impl ImportTable {
             return None;
         }
         self.bindings.iter().find(|b| b.local == local)
+    }
+
+    /// The binding declared at this byte offset, unless its name is ambiguous.
+    pub fn lookup_by_decl(&self, decl_start: u32) -> Option<&Binding> {
+        let b = self.bindings.iter().find(|b| b.decl_start == decl_start)?;
+        if self.ambiguous.contains(&b.local) {
+            None
+        } else {
+            Some(b)
+        }
     }
 
     fn add(&mut self, b: Binding) -> bool {
@@ -147,6 +160,7 @@ struct Ctx<'s> {
     facts: Vec<StaticFact>,
     /// Start offsets of require calls the top-level pass already reported.
     handled: BTreeSet<u32>,
+    scoping: Option<&'s Scoping>
 }
 
 impl<'s> Ctx<'s> {
@@ -158,7 +172,15 @@ impl<'s> Ctx<'s> {
             table: ImportTable::default(),
             facts: Vec::new(),
             handled: BTreeSet::new(),
+            scoping: None,
         }
+
+
+    }
+
+    fn with_scoping(mut self, scoping: &'s Scoping) -> Self {
+        self.scoping = Some(scoping);
+        self
     }
 
     fn parse_failed(&mut self) {
@@ -222,11 +244,12 @@ impl<'s> Ctx<'s> {
         Some(inner.to_string())
     }
 
-    fn bind(&mut self, sp: OxcSpan, local: String, module: &str, kind: BindingKind) {
+    fn bind(&mut self, sp: OxcSpan, decl: OxcSpan, local: String, module: &str, kind: BindingKind) {
         let b = Binding {
             local: local.clone(),
             module: module.to_string(),
             kind,
+            decl_start: decl.start,
         };
         if !self.table.add(b) {
             self.unresolved(sp, UnresolvedReason::AmbiguousBinding, &local);
@@ -246,6 +269,11 @@ impl<'s> Ctx<'s> {
         };
         if self.text(callee.span) != "require" {
             return None;
+        }
+        if let (Some(scoping), Some(rid)) = (self.scoping, callee.reference_id.get()) {
+            if scoping.get_reference(rid).symbol_id().is_some() {
+                return None; // a local named `require`, not Node's
+            }
         }
         let outcome = match (call.arguments.len(), call.arguments.first()) {
             (1, Some(Argument::StringLiteral(lit))) => match self.literal(lit) {
@@ -302,7 +330,7 @@ impl<'s> Ctx<'s> {
                     let local = self.text(s.local.span).to_string();
                     match imported {
                         Some(imported) => {
-                            self.bind(s.span, local, &module, BindingKind::Named { imported })
+                            self.bind(s.span, s.local.span, local, &module, BindingKind::Named { imported })
                         }
                         None => {
                             let t = self.text(s.span);
@@ -312,11 +340,11 @@ impl<'s> Ctx<'s> {
                 }
                 ImportDeclarationSpecifier::ImportDefaultSpecifier(s) => {
                     let local = self.text(s.local.span).to_string();
-                    self.bind(s.span, local, &module, BindingKind::Default);
+                    self.bind(s.span, s.local.span, local, &module, BindingKind::Default);
                 }
                 ImportDeclarationSpecifier::ImportNamespaceSpecifier(s) => {
                     let local = self.text(s.local.span).to_string();
-                    self.bind(s.span, local, &module, BindingKind::Namespace);
+                    self.bind(s.span, s.local.span, local, &module, BindingKind::Namespace);
                 }
             }
         }
@@ -333,7 +361,7 @@ impl<'s> Ctx<'s> {
             match &d.id {
                 BindingPattern::BindingIdentifier(id) => {
                     let local = self.text(id.span).to_string();
-                    self.bind(id.span, local, &module, BindingKind::Namespace);
+                    self.bind(id.span, id.span, local, &module, BindingKind::Namespace);
                 }
                 BindingPattern::ObjectPattern(p) => self.object_pattern(p, &module),
                 _ => {
@@ -352,7 +380,7 @@ impl<'s> Ctx<'s> {
                     (Some(module), BindingPattern::BindingIdentifier(id)) => {
                         let imported = self.text(m.property.span).to_string();
                         let local = self.text(id.span).to_string();
-                        self.bind(id.span, local, &module, BindingKind::Named { imported });
+                        self.bind(id.span, id.span, local, &module, BindingKind::Named { imported });
                     }
                     (Some(_), _) => {
                         let t = self.text(d.span);
@@ -383,7 +411,7 @@ impl<'s> Ctx<'s> {
             match (imported, target) {
                 (Some(imported), BindingPattern::BindingIdentifier(id)) => {
                     let local = self.text(id.span).to_string();
-                    self.bind(id.span, local, module, BindingKind::Named { imported });
+                    self.bind(id.span, id.span, local, module, BindingKind::Named { imported });
                 }
                 _ => {
                     let t = self.text(prop.span);
