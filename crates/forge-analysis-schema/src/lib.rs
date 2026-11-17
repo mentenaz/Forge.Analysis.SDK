@@ -302,6 +302,8 @@ pub enum UnresolvedReason {
     RuntimeDelay,
     EventHandler,
     ParseFailed,
+    UnsupportedSyntax,
+    AmbiguousBinding,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]

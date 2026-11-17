@@ -17,6 +17,7 @@ forge-analysis-catalog = { path = "crates/forge-analysis-catalog" }
 oxc_allocator   = "0.159.0"
 oxc_parser    = "0.159.0"
 oxc_span      = "0.159.0"
+oxc_ast = "=0.159.0"
 
 
 [workspace.lints.rust]
