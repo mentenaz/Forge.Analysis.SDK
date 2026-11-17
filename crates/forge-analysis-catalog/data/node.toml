@@ -170,3 +170,30 @@ kind = "global"
 global = "XMLHttpRequest"
 category = "net_out"
 role = "source"
+
+[[effect]]
+id = "node.timers.module.interval"
+kind = "function"
+module = "timers"
+exports = ["setInterval"]
+category = "timer"
+callback_arg = 0
+delay_arg = 1
+repeats = true
+
+[[effect]]
+id = "node.timers.module.timeout"
+kind = "function"
+module = "timers"
+exports = ["setTimeout"]
+category = "timer"
+callback_arg = 0
+delay_arg = 1
+
+[[effect]]
+id = "node.timers.module.immediate"
+kind = "function"
+module = "timers"
+exports = ["setImmediate"]
+category = "timer"
+callback_arg = 0

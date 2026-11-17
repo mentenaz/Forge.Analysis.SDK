@@ -37,6 +37,9 @@ pub struct Site {
     pub source: bool,
     /// Its arguments are executed as code or as a command.
     pub sink: bool,
+    /// When set, only this argument is the executed one (`setTimeout`'s callback); the
+    /// other arguments (the delay) are not.
+    pub arg: Option<u8>,
 }
 
 /// Network data may reach `sink`; `origin` is where the data entered.
@@ -362,10 +365,11 @@ struct SinkFinder<'s> {
 
 impl SinkFinder<'_> {
     fn check(&mut self, at: Span, args: &[Argument<'_>]) {
-        if !self.sites.get(&key(at)).is_some_and(|s| s.sink) {
-            return;
-        }
-        for a in args {
+        let Some(site) = self.sites.get(&key(at)).filter(|s| s.sink) else { return };
+        for (i, a) in args.iter().enumerate() {
+            if site.arg.is_some_and(|only| usize::from(only) != i) {
+                continue;
+            }
             if let Some(origin) = origin_of_arg(self.scoping, self.sites, self.tainted, a) {
                 self.hits.push(FlowHit { sink: at, origin });
                 return;
@@ -411,7 +415,7 @@ mod tests {
                 .contains(&callee);
             let sink = ["eval", "Function", "vm.runInThisContext", "exec", "spawn"]
                 .contains(&callee);
-            Site { source, sink }
+            Site { source, sink, arg: None }
         }
     }
 
@@ -591,5 +595,33 @@ mod tests {
             "function f() { eval(b); } let b; let a; function g() { b = a; } function h() { a = fetch(u); }",
         );
         assert_eq!(sink, "eval(b)");
+    }
+
+    #[test]
+    fn a_site_with_one_executed_argument_ignores_the_others() {
+        // setTimeout-style: argument 0 is executed, argument 1 (the delay) is not.
+        let src = "const t = await fetch(u); T(f, t); T(t, 1);";
+        let alloc = Allocator::default();
+        let ret = Parser::new(&alloc, src, SourceType::mjs()).parse();
+        let sem = SemanticBuilder::new().build(&ret.program);
+        let mut stub = Stub { src, sites: Sites::new() };
+        stub.visit_program(&ret.program);
+        // Mark every T(...) call as a sink on argument 0 only.
+        struct Mark<'s>(&'s str, Sites);
+        impl<'a> Visit<'a> for Mark<'_> {
+            fn visit_call_expression(&mut self, it: &CallExpression<'a>) {
+                let sp = it.callee.span();
+                if &self.0[sp.start as usize..sp.end as usize] == "T" {
+                    self.1.insert(key(it.span), Site { source: false, sink: true, arg: Some(0) });
+                }
+                walk::walk_call_expression(self, it);
+            }
+        }
+        let mut mark = Mark(src, stub.sites.clone());
+        mark.visit_program(&ret.program);
+        let hits = find_flows(&ret.program, sem.semantic.scoping(), &mark.1);
+        let sinks: Vec<_> =
+            hits.iter().map(|h| &src[h.sink.start as usize..h.sink.end as usize]).collect();
+        assert_eq!(sinks, vec!["T(t, 1)"]);
     }
 }

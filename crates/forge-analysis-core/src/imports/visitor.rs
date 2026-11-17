@@ -8,8 +8,11 @@
 
 use super::{normalize_module, Binding, BindingKind, Ctx, FileImports, Require};
 use super::flow::{self, FlowHit, Site};
+use super::handles::{self, Handles};
 use forge_analysis_catalog::{Catalog, Entry, Role};
-use forge_analysis_schema::{Effect, FactKind, Quoted, RelPath, StaticFact, UnresolvedReason};
+use forge_analysis_schema::{
+    Delay, Effect, FactKind, Lane, Quoted, RelPath, StaticFact, Timing, UnresolvedReason,
+};
 use oxc_allocator::Allocator;
 use oxc_ast::ast::{
     Argument, BindingPattern, CallExpression, ComputedMemberExpression, Expression,
@@ -29,12 +32,20 @@ fn key(sp: OxcSpan) -> (u32, u32) {
     (sp.start, sp.end)
 }
 
-/// The catalog entry for a global we match today: code loaders (`eval`, `Function`) and
-/// network globals (`fetch`, `WebSocket`, `XMLHttpRequest`). Other globals (timers) wait for
-/// the timing step.
+/// The catalog entry for a global we match: code loaders (`eval`, `Function`), network
+/// globals (`fetch`, `WebSocket`, `XMLHttpRequest`) and timers (`setTimeout`, ...).
 fn tracked<'c>(cat: &'c Catalog, name: &str) -> Option<&'c Entry> {
     cat.find_global(name)
-        .filter(|e| matches!(e.category, Effect::CodeLoad | Effect::NetOut))
+        .filter(|e| matches!(e.category, Effect::CodeLoad | Effect::NetOut | Effect::Timer))
+}
+
+/// What Node does with a timer delay: anything outside 1..=2^31-1 (including NaN) becomes 1.
+fn node_delay(v: f64) -> u64 {
+    if (1.0..=2_147_483_647.0).contains(&v) {
+        v.floor() as u64
+    } else {
+        1
+    }
 }
 
 /// Everything the analysis of one file produces.
@@ -68,7 +79,8 @@ pub fn analyze_file_full(file: &RelPath, source: &str, catalog: &Catalog) -> Opt
     let mut collector = Collector { ctx, catalog };
     collector.visit_program(&ret.program);
 
-    let mut matcher = Matcher { ctx: collector.ctx, catalog, sites: BTreeMap::new() };
+    let handles = handles::analyze_handles(&ret.program, sem.semantic.scoping());
+    let mut matcher = Matcher { ctx: collector.ctx, catalog, sites: BTreeMap::new(), handles };
     matcher.visit_program(&ret.program);
 
     let flows = flow::find_flows(&ret.program, sem.semantic.scoping(), &matcher.sites);
@@ -289,6 +301,8 @@ struct Matcher<'s> {
     catalog: &'s Catalog,
     /// Every matched call or `new`, by span: is it a network source, a code/command sink?
     sites: BTreeMap<(u32, u32), Site>,
+    /// Which timer handles are cleared, thrown away, or escape.
+    handles: Handles,
 }
 
 impl<'s> Matcher<'s> {
@@ -371,9 +385,15 @@ impl<'s> Matcher<'s> {
         );
         self.ctx.facts.push(call_fact);
 
+        if entry.category == Effect::Timer {
+            self.emit_timer(at, callee, args, entry);
+            return;
+        }
+
         let site = Site {
             source: entry.category == Effect::NetOut && entry.role == Some(Role::Source),
             sink: matches!(entry.category, Effect::CodeLoad | Effect::ProcessSpawn),
+            arg: None,
         };
         if site.source || site.sink {
             self.sites.insert(key(at), site);
@@ -416,6 +436,93 @@ impl<'s> Matcher<'s> {
         self.ctx.facts.push(effect);
 
         if let Some((sp, reason)) = problem {
+            self.flag_at(sp, reason);
+        }
+    }
+
+    /// A timer call: a Timer fact (lane, delay, cleared). A callback that is text is code
+    /// being loaded, so it is also a code-load effect and a flow sink.
+    fn emit_timer(
+        &mut self,
+        at: OxcSpan,
+        callee: &Expression<'_>,
+        args: &[Argument<'_>],
+        entry: &Entry,
+    ) {
+        let mut problems: Vec<(OxcSpan, UnresolvedReason)> = Vec::new();
+
+        let lane = if entry.repeats {
+            Lane::Recurring
+        } else if entry.args.delay.is_none() {
+            Lane::Immediate
+        } else {
+            Lane::Deferred
+        };
+        let delay_ms = match entry.args.delay {
+            None => Delay::Known(0),
+            Some(i) => match args.get(usize::from(i)) {
+                None => Delay::Known(1),
+                Some(Argument::NumericLiteral(n)) => Delay::Known(node_delay(n.value)),
+                Some(other) => {
+                    problems.push((other.span(), UnresolvedReason::RuntimeDelay));
+                    Delay::Unresolved
+                }
+            },
+        };
+
+        // `Some(detail)`: the callback is text that will be run as code.
+        let mut code: Option<Option<String>> = None;
+        let mut sink = false;
+        let callback = entry.args.callback;
+        if let Some(arg) = callback.and_then(|i| args.get(usize::from(i))) {
+            match arg {
+                Argument::ArrowFunctionExpression(_) | Argument::FunctionExpression(_) => {}
+                // a function we can name, or a value we cannot tell apart from one; if it is
+                // network data the flow check reports it
+                Argument::Identifier(_) => sink = true,
+                Argument::StringLiteral(lit) => {
+                    sink = true;
+                    match self.ctx.literal(lit) {
+                        Some(v) => code = Some(Some(v)),
+                        None => {
+                            code = Some(None);
+                            problems.push((lit.span, UnresolvedReason::UnsupportedSyntax));
+                        }
+                    }
+                }
+                Argument::TemplateLiteral(_) | Argument::BinaryExpression(_) => {
+                    sink = true;
+                    code = Some(None);
+                    problems.push((arg.span(), UnresolvedReason::Eval));
+                }
+                other => {
+                    sink = true;
+                    problems.push((other.span(), UnresolvedReason::EventHandler));
+                }
+            }
+        }
+        self.sites.insert(key(at), Site { source: false, sink, arg: callback });
+
+        let callee_text = self.ctx.text(callee.span());
+        let mut timer = StaticFact::new(
+            FactKind::Timer,
+            self.ctx.span(at),
+            Some(Quoted::new(callee_text)),
+        );
+        timer.timing = Some(Timing { lane, delay_ms, cleared: self.handles.cleared(at) });
+        self.ctx.facts.push(timer);
+
+        if let Some(detail) = code {
+            let mut effect = StaticFact::new(
+                FactKind::Effect,
+                self.ctx.span(at),
+                detail.as_deref().map(Quoted::new),
+            );
+            effect.effect = Some(Effect::CodeLoad);
+            self.ctx.facts.push(effect);
+        }
+
+        for (sp, reason) in problems {
             self.flag_at(sp, reason);
         }
     }
@@ -1057,11 +1164,6 @@ mod tests {
         assert!(reasons(&f).is_empty());
     }
 
-    #[test]
-    fn timers_are_not_matched_yet() {
-        let f = run("a.js", "setTimeout(f, 10);");
-        assert!(effect(&f).is_none());
-    }
 
     // ---- silences closed ----
 
@@ -1375,5 +1477,128 @@ mod tests {
     fn no_flow_means_no_flow_facts() {
         let f = run("a.js", "const c = 'x'; eval(c); fetch('https://example.com');");
         assert_eq!(count(&f, FactKind::Flow), 0);
+    }
+
+    // ---- timers ----
+
+    fn timer(f: &FileImports) -> Option<Timing> {
+        f.facts.iter().find(|x| x.kind() == FactKind::Timer).and_then(|x| x.timing)
+    }
+
+    fn timing(lane: Lane, delay_ms: Delay, cleared: Option<bool>) -> Option<Timing> {
+        Some(Timing { lane, delay_ms, cleared })
+    }
+
+    #[test]
+    fn set_timeout_is_a_deferred_timer_with_a_known_delay() {
+        let f = run("a.js", "setTimeout(() => {}, 1000);");
+        assert_eq!(timer(&f), timing(Lane::Deferred, Delay::Known(1000), Some(false)));
+        assert_eq!(count(&f, FactKind::Call), 1);
+        assert!(effect(&f).is_none());
+        assert!(reasons(&f).is_empty());
+        assert!(f.facts.iter().all(|x| x.validate().is_empty()));
+    }
+
+    #[test]
+    fn set_interval_is_recurring_and_a_cleared_handle_is_noted() {
+        let f = run("a.js", "const h = setInterval(f, 5000); clearInterval(h);");
+        assert_eq!(timer(&f), timing(Lane::Recurring, Delay::Known(5000), Some(true)));
+    }
+
+    #[test]
+    fn set_immediate_is_the_immediate_lane() {
+        let f = run("a.js", "setImmediate(f);");
+        assert_eq!(timer(&f), timing(Lane::Immediate, Delay::Known(0), Some(false)));
+    }
+
+    #[test]
+    fn delays_follow_what_node_does() {
+        assert_eq!(timer(&run("a.js", "setTimeout(f);")).unwrap().delay_ms, Delay::Known(1));
+        assert_eq!(timer(&run("a.js", "setTimeout(f, 0);")).unwrap().delay_ms, Delay::Known(1));
+        assert_eq!(timer(&run("a.js", "setTimeout(f, 5.7);")).unwrap().delay_ms, Delay::Known(5));
+        assert_eq!(
+            timer(&run("a.js", "setTimeout(f, 3000000000);")).unwrap().delay_ms,
+            Delay::Known(1)
+        );
+    }
+
+    #[test]
+    fn a_computed_delay_is_unresolved_and_reported() {
+        let f = run("a.js", "setTimeout(f, n);");
+        assert_eq!(timer(&f).unwrap().delay_ms, Delay::Unresolved);
+        assert_eq!(reasons(&f), vec![UnresolvedReason::RuntimeDelay]);
+    }
+
+    #[test]
+    fn an_escaping_handle_is_unknown_and_an_unused_one_is_not_cleared() {
+        let f = run("a.js", "const h = setTimeout(f, 1); register(h);");
+        assert_eq!(timer(&f).unwrap().cleared, None);
+        let f = run("a.js", "const h = setTimeout(f, 1);");
+        assert_eq!(timer(&f).unwrap().cleared, Some(false));
+        let f = run("a.js", "function g() { return setInterval(f, 1); }");
+        assert_eq!(timer(&f).unwrap().cleared, None);
+    }
+
+    #[test]
+    fn a_string_callback_is_a_code_load() {
+        let f = run("a.js", r#"setTimeout("go()", 10);"#);
+        assert_eq!(effect(&f), Some((Effect::CodeLoad, Some("go()".into()))));
+        assert_eq!(timer(&f).unwrap().lane, Lane::Deferred);
+        assert!(reasons(&f).is_empty());
+    }
+
+    #[test]
+    fn a_built_string_callback_is_a_code_load_reported_as_computed() {
+        let f = run("a.js", "setTimeout(`go(${x})`, 10);");
+        assert_eq!(effect(&f), Some((Effect::CodeLoad, None)));
+        assert_eq!(reasons(&f), vec![UnresolvedReason::Eval]);
+        let f = run("a.js", r#"setTimeout("a" + b, 10);"#);
+        assert_eq!(effect(&f), Some((Effect::CodeLoad, None)));
+    }
+
+    #[test]
+    fn a_callback_we_cannot_see_is_reported() {
+        let f = run("a.js", "setTimeout(getCb(), 10);");
+        assert_eq!(reasons(&f), vec![UnresolvedReason::EventHandler]);
+        assert!(effect(&f).is_none());
+    }
+
+    #[test]
+    fn timers_are_found_through_every_route() {
+        assert!(timer(&run("a.js", "globalThis.setTimeout(f, 5);")).is_some());
+        assert!(timer(&run("a.js", "const t = setTimeout; t(f, 5);")).is_some());
+        assert!(timer(&run("a.js", r#"require("timers").setTimeout(f, 5);"#)).is_some());
+        assert!(timer(&run("a.js", r#"import { setInterval as si } from "timers"; si(f, 5);"#))
+            .is_some());
+        assert!(timer(&run("a.js", r#"const { setImmediate: si } = require("timers"); si(f);"#))
+            .is_some());
+    }
+
+    #[test]
+    fn a_local_set_timeout_is_not_trusted() {
+        let f = run("a.js", "function g(setTimeout) { setTimeout(f, 1); }");
+        assert!(timer(&f).is_none());
+        assert_eq!(reasons(&f), vec![UnresolvedReason::AmbiguousBinding]);
+    }
+
+    #[test]
+    fn a_timer_used_as_a_value_is_reported() {
+        let f = run("a.js", "run(setTimeout);");
+        assert_eq!(reasons(&f), vec![UnresolvedReason::IndirectUse]);
+    }
+
+    #[test]
+    fn network_text_run_by_a_timer_is_a_flow() {
+        let f = flows("a.js", "fetch(u).then(t => setTimeout(t, 0));");
+        assert_eq!(f.len(), 1, "{f:?}");
+        assert!(f[0].0.starts_with("setTimeout(t"));
+    }
+
+    #[test]
+    fn a_function_callback_or_a_tainted_delay_is_not_a_flow() {
+        let f = flows("a.js", "fetch(u).then(t => setTimeout(() => go(), t));");
+        assert!(f.is_empty(), "{f:?}");
+        let f = flows("a.js", "fetch(u); setTimeout(go, 10);");
+        assert!(f.is_empty(), "{f:?}");
     }
 }

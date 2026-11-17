@@ -16,6 +16,7 @@ use oxc_span::{SourceType, Span as OxcSpan};
 use oxc_semantic::Scoping;
 use std::collections::BTreeSet;
 mod flow;
+mod handles;
 mod visitor;
 pub use flow::FlowHit;
 pub use visitor::{analyze_file, analyze_file_full, Analysis};
