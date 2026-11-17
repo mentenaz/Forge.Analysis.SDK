@@ -28,7 +28,7 @@ pub enum Severity {
     Info,
     Low,
     Medium,
-    High
+    High,
 }
 
 /// What an API call does, as a closed set. A catalog entry with any other
@@ -67,13 +67,26 @@ impl Quoted {
         let truncated = cleaned.chars().count() > QUOTED_MAX_CHARS;
         let text: String = cleaned.chars().take(QUOTED_MAX_CHARS).collect();
         let sha256 = hex(&Sha256::digest(raw.as_bytes()));
-        Self { text, truncated, original_len, sha256 }
+        Self {
+            text,
+            truncated,
+            original_len,
+            sha256,
+        }
     }
 
-    pub fn text(&self) -> &str { &self.text }
-    pub fn truncated(&self) -> bool { self.truncated }
-    pub fn original_len(&self) -> u32 { self.original_len }
-    pub fn sha256(&self) -> &str { &self.sha256 }
+    pub fn text(&self) -> &str {
+        &self.text
+    }
+    pub fn truncated(&self) -> bool {
+        self.truncated
+    }
+    pub fn original_len(&self) -> u32 {
+        self.original_len
+    }
+    pub fn sha256(&self) -> &str {
+        &self.sha256
+    }
 }
 
 /// Control characters and bidi overrides (which can make text display
@@ -101,18 +114,40 @@ impl RelPath {
             || raw.contains(':')
             || raw.chars().any(|c| c.is_control())
             || raw.split(['/', '\\']).any(|part| part == "..");
-        if bad { None } else { Some(RelPath(Quoted::new(raw))) }
+        if bad {
+            None
+        } else {
+            Some(RelPath(Quoted::new(raw)))
+        }
     }
 
-    pub fn as_quoted(&self) -> &Quoted { &self.0 }
+    pub fn as_quoted(&self) -> &Quoted {
+        &self.0
+    }
 }
 
 /// Location in the analysed code. The file path is target-derived, so Quoted.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+
 pub struct Span {
     pub file: RelPath,
     pub start_line: u32,
     pub end_line: u32,
+    pub start_byte: u32,
+    pub end_byte: u32,
+}
+
+impl Span {
+    pub fn validate(&self) -> Vec<ValidationError> {
+        let mut errors = Vec::new();
+        if self.end_line < self.start_line {
+            errors.push(ValidationError::SpanLinesBackwards);
+        }
+        if self.end_byte < self.start_byte {
+            errors.push(ValidationError::SpanBytesBackwards);
+        }
+        errors
+    }
 }
 
 /// A SHA-256 digest as lowercase hex (64 chars).
@@ -123,7 +158,9 @@ impl Hash {
     pub fn of(bytes: &[u8]) -> Self {
         Hash(hex(&Sha256::digest(bytes)))
     }
-    pub fn as_str(&self) -> &str { &self.0 }
+    pub fn as_str(&self) -> &str {
+        &self.0
+    }
 }
 
 pub const URL_HOST_MAX_CHARS: u32 = 253; // DNS limit
@@ -155,6 +192,11 @@ pub enum ValidationError {
     QueryKeyTooLong { index: usize, len: u32 },
     FullTooLarge { size: u32 },
     FullHashMismatch,
+    SpanLinesBackwards,
+    SpanBytesBackwards,
+    UnresolvedMismatch,
+    EffectMissing,
+    TimerMissingTiming,
 }
 
 impl UrlValue {
@@ -165,15 +207,22 @@ impl UrlValue {
             errors.push(ValidationError::EmptyHost);
         }
         if self.host.original_len() > URL_HOST_MAX_CHARS {
-            errors.push(ValidationError::HostTooLong { len: self.host.original_len() });
+            errors.push(ValidationError::HostTooLong {
+                len: self.host.original_len(),
+            });
         }
         for (index, key) in self.query_keys.iter().enumerate() {
             if key.original_len() > URL_QUERY_KEY_MAX_CHARS {
-                errors.push(ValidationError::QueryKeyTooLong { index, len: key.original_len() });
+                errors.push(ValidationError::QueryKeyTooLong {
+                    index,
+                    len: key.original_len(),
+                });
             }
         }
         if self.full.size > URL_FULL_MAX_BYTES {
-            errors.push(ValidationError::FullTooLarge { size: self.full.size });
+            errors.push(ValidationError::FullTooLarge {
+                size: self.full.size,
+            });
         }
         if self.full.sha256 != self.sha256 {
             errors.push(ValidationError::FullHashMismatch);
@@ -204,16 +253,164 @@ pub enum Scheme {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct UrlValue {
     pub scheme: Scheme,
-    pub host: Quoted,            // never truncated (DNS max 253); punycode if non-ASCII
+    pub host: Quoted, // never truncated (DNS max 253); punycode if non-ASCII
     pub port: Option<u16>,
     pub path: Quoted,            // display copy, capped
     pub query_keys: Vec<Quoted>, // parameter NAMES only
     pub query_len: u32,
-    pub has_userinfo: bool,      // user:pass@host is a red flag
-    pub sha256: Hash,            // of the full original
-    pub full: BlobRef,           // whole string by hash, hard max 8 KB
+    pub has_userinfo: bool, // user:pass@host is a red flag
+    pub sha256: Hash,       // of the full original
+    pub full: BlobRef,      // whole string by hash, hard max 8 KB
+}
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum FactKind {
+    Entry,
+    Import,
+    Call,
+    Effect,
+    Timer,
+    LifecycleScript,
+    Dependency,
+    Unresolved,
 }
 
+impl FactKind {
+    fn tag(self) -> &'static str {
+        match self {
+            FactKind::Entry => "entry",
+            FactKind::Import => "import",
+            FactKind::Call => "call",
+            FactKind::Effect => "effect",
+            FactKind::Timer => "timer",
+            FactKind::LifecycleScript => "lifecycle_script",
+            FactKind::Dependency => "dependency",
+            FactKind::Unresolved => "unresolved",
+        }
+    }
+}
+
+/// Why something could not be resolved from the code. Each one is a stated
+/// limit of static analysis, never a guess.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum UnresolvedReason {
+    DynamicRequire,
+    Eval,
+    Reflection,
+    ComputedAccess,
+    RuntimeDelay,
+    EventHandler,
+    ParseFailed,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum Lane {
+    Immediate,
+    Deferred,
+    Recurring,
+    EventDriven,
+    Exit,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum Delay {
+    Known(u64),
+    Unresolved,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+pub struct Timing {
+    pub lane: Lane,
+    pub delay_ms: Delay,
+    pub cleared: Option<bool>,
+}
+
+/// Identity of a fact: a hash of (kind, file, byte range, detail). Two facts on the
+/// same line get different IDs because their byte ranges differ.
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Serialize)]
+pub struct FactId(String);
+
+impl FactId {
+    pub fn new(kind: FactKind, at: &Span, detail: Option<&Quoted>) -> Self {
+        let input = format!(
+            "{}\0{}\0{}\0{}\0{}",
+            kind.tag(),
+            at.file.as_quoted().sha256(),
+            at.start_byte,
+            at.end_byte,
+            detail.map(|d| d.sha256()).unwrap_or(""),
+        );
+        let h = Hash::of(input.as_bytes());
+        FactId(format!("fact:{}", &h.as_str()[..16]))
+    }
+
+    pub fn as_str(&self) -> &str {
+        &self.0
+    }
+}
+
+/// One thing the parser found. The fields that make up the ID are private, so an ID
+/// can't go stale if someone changes the kind or location afterwards.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct StaticFact {
+    id: FactId,
+    kind: FactKind,
+    at: Span,
+    detail: Option<Quoted>,
+    pub effect: Option<Effect>,
+    pub url: Option<UrlValue>,
+    pub timing: Option<Timing>,
+    pub unresolved: Option<UnresolvedReason>,
+}
+
+impl StaticFact {
+    pub fn new(kind: FactKind, at: Span, detail: Option<Quoted>) -> Self {
+        let id = FactId::new(kind, &at, detail.as_ref());
+        Self {
+            id,
+            kind,
+            at,
+            detail,
+            effect: None,
+            url: None,
+            timing: None,
+            unresolved: None,
+        }
+    }
+
+    pub fn id(&self) -> &FactId {
+        &self.id
+    }
+    pub fn kind(&self) -> FactKind {
+        self.kind
+    }
+    pub fn at(&self) -> &Span {
+        &self.at
+    }
+    pub fn detail(&self) -> Option<&Quoted> {
+        self.detail.as_ref()
+    }
+
+    pub fn validate(&self) -> Vec<ValidationError> {
+        let mut errors = self.at.validate();
+        if (self.kind == FactKind::Unresolved) != self.unresolved.is_some() {
+            errors.push(ValidationError::UnresolvedMismatch);
+        }
+        if self.kind == FactKind::Effect && self.effect.is_none() {
+            errors.push(ValidationError::EffectMissing);
+        }
+        if self.kind == FactKind::Timer && self.timing.is_none() {
+            errors.push(ValidationError::TimerMissingTiming);
+        }
+        if let Some(url) = &self.url {
+            errors.extend(url.validate());
+        }
+        errors
+    }
+}
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -302,7 +499,16 @@ mod tests {
 
     #[test]
     fn relpath_rejects_escapes_and_absolute_paths() {
-        for bad in ["", "/etc/passwd", "\\\\server\\share", "C:\\x", "../x", "a/../b", "a\\..\\b", "a\nb"] {
+        for bad in [
+            "",
+            "/etc/passwd",
+            "\\\\server\\share",
+            "C:\\x",
+            "../x",
+            "a/../b",
+            "a\\..\\b",
+            "a\nb",
+        ] {
             assert!(RelPath::new(bad).is_none(), "should reject {bad:?}");
         }
     }
@@ -321,8 +527,14 @@ mod tests {
     #[test]
     fn enums_serialize_as_snake_case() {
         assert_eq!(serde_json::to_string(&Severity::High).unwrap(), "\"high\"");
-        assert_eq!(serde_json::to_string(&Trust::GuestReported).unwrap(), "\"guest_reported\"");
-        assert_eq!(serde_json::to_string(&Confidence::NeedsResearch).unwrap(), "\"needs_research\"");
+        assert_eq!(
+            serde_json::to_string(&Trust::GuestReported).unwrap(),
+            "\"guest_reported\""
+        );
+        assert_eq!(
+            serde_json::to_string(&Confidence::NeedsResearch).unwrap(),
+            "\"needs_research\""
+        );
     }
 
     #[test]
@@ -352,7 +564,10 @@ mod tests {
             query_len: 11,
             has_userinfo: true,
             sha256: Hash::of(b"full url"),
-            full: BlobRef { sha256: Hash::of(b"full url"), size: 8 },
+            full: BlobRef {
+                sha256: Hash::of(b"full url"),
+                size: 8,
+            },
         };
         assert!(!u.host.truncated());
         let v = serde_json::to_value(&u).unwrap();
@@ -372,7 +587,10 @@ mod tests {
             query_len: 11,
             has_userinfo: false,
             sha256: Hash::of(b"u"),
-            full: BlobRef { sha256: Hash::of(b"u"), size: 1 },
+            full: BlobRef {
+                sha256: Hash::of(b"u"),
+                size: 1,
+            },
         }
     }
 
@@ -387,7 +605,10 @@ mod tests {
         u.host = Quoted::new(&"a".repeat(253));
         assert!(u.validate().is_empty());
         u.host = Quoted::new(&"a".repeat(254));
-        assert_eq!(u.validate(), vec![ValidationError::HostTooLong { len: 254 }]);
+        assert_eq!(
+            u.validate(),
+            vec![ValidationError::HostTooLong { len: 254 }]
+        );
     }
 
     #[test]
@@ -401,14 +622,22 @@ mod tests {
     fn overlong_query_key_is_reported_with_its_position() {
         let mut u = good_url();
         u.query_keys = vec![Quoted::new("ok"), Quoted::new(&"k".repeat(65))];
-        assert_eq!(u.validate(), vec![ValidationError::QueryKeyTooLong { index: 1, len: 65 }]);
+        assert_eq!(
+            u.validate(),
+            vec![ValidationError::QueryKeyTooLong { index: 1, len: 65 }]
+        );
     }
 
     #[test]
     fn oversized_blob_fails() {
         let mut u = good_url();
         u.full.size = URL_FULL_MAX_BYTES + 1;
-        assert_eq!(u.validate(), vec![ValidationError::FullTooLarge { size: URL_FULL_MAX_BYTES + 1 }]);
+        assert_eq!(
+            u.validate(),
+            vec![ValidationError::FullTooLarge {
+                size: URL_FULL_MAX_BYTES + 1
+            }]
+        );
     }
 
     #[test]
@@ -441,7 +670,108 @@ mod tests {
 
     #[test]
     fn effect_serializes_as_snake_case() {
-        assert_eq!(serde_json::to_string(&Effect::FsDelete).unwrap(), "\"fs_delete\"");
-        assert_eq!(serde_json::to_string(&Effect::ProcessSpawn).unwrap(), "\"process_spawn\"");
+        assert_eq!(
+            serde_json::to_string(&Effect::FsDelete).unwrap(),
+            "\"fs_delete\""
+        );
+        assert_eq!(
+            serde_json::to_string(&Effect::ProcessSpawn).unwrap(),
+            "\"process_spawn\""
+        );
+    }
+
+    // ---- Span, FactId, StaticFact ----
+
+    fn span(start: u32, end: u32) -> Span {
+        Span {
+            file: RelPath::new("src/a.ts").unwrap(),
+            start_line: 1,
+            end_line: 1,
+            start_byte: start,
+            end_byte: end,
+        }
+    }
+
+    #[test]
+    fn same_line_different_offsets_get_different_ids() {
+        let a = FactId::new(FactKind::Call, &span(0, 17), Some(&Quoted::new("a")));
+        let b = FactId::new(FactKind::Call, &span(18, 35), Some(&Quoted::new("a")));
+        assert_ne!(a, b);
+    }
+
+    #[test]
+    fn identical_inputs_give_the_same_id_in_the_expected_shape() {
+        let a = FactId::new(FactKind::Call, &span(0, 17), None);
+        let b = FactId::new(FactKind::Call, &span(0, 17), None);
+        assert_eq!(a, b);
+        assert!(a.as_str().starts_with("fact:"));
+        assert_eq!(a.as_str().len(), 5 + 16);
+    }
+
+    #[test]
+    fn kind_and_detail_change_the_id() {
+        let base = FactId::new(FactKind::Call, &span(0, 5), Some(&Quoted::new("x")));
+        assert_ne!(
+            base,
+            FactId::new(FactKind::Import, &span(0, 5), Some(&Quoted::new("x")))
+        );
+        assert_ne!(
+            base,
+            FactId::new(FactKind::Call, &span(0, 5), Some(&Quoted::new("y")))
+        );
+    }
+
+    #[test]
+    fn backwards_spans_are_reported() {
+        let mut s = span(10, 5);
+        s.start_line = 5;
+        s.end_line = 4;
+        assert_eq!(
+            s.validate(),
+            vec![
+                ValidationError::SpanLinesBackwards,
+                ValidationError::SpanBytesBackwards
+            ]
+        );
+    }
+
+    #[test]
+    fn fact_kind_rules_are_enforced() {
+        let mut f = StaticFact::new(FactKind::Unresolved, span(0, 1), None);
+        assert_eq!(f.validate(), vec![ValidationError::UnresolvedMismatch]);
+        f.unresolved = Some(UnresolvedReason::DynamicRequire);
+        assert!(f.validate().is_empty());
+
+        let mut c = StaticFact::new(FactKind::Call, span(0, 1), None);
+        c.unresolved = Some(UnresolvedReason::Eval);
+        assert_eq!(c.validate(), vec![ValidationError::UnresolvedMismatch]);
+
+        let mut e = StaticFact::new(FactKind::Effect, span(0, 1), None);
+        assert_eq!(e.validate(), vec![ValidationError::EffectMissing]);
+        e.effect = Some(Effect::FsRead);
+        assert!(e.validate().is_empty());
+
+        let mut t = StaticFact::new(FactKind::Timer, span(0, 1), None);
+        assert_eq!(t.validate(), vec![ValidationError::TimerMissingTiming]);
+        t.timing = Some(Timing {
+            lane: Lane::Recurring,
+            delay_ms: Delay::Known(5000),
+            cleared: Some(false),
+        });
+        assert!(t.validate().is_empty());
+    }
+
+    #[test]
+    fn static_fact_serializes_in_snake_case() {
+        let mut f = StaticFact::new(
+            FactKind::Unresolved,
+            span(0, 1),
+            Some(Quoted::new("fs[name]")),
+        );
+        f.unresolved = Some(UnresolvedReason::ComputedAccess);
+        let v = serde_json::to_value(&f).unwrap();
+        assert_eq!(v["kind"], "unresolved");
+        assert_eq!(v["unresolved"], "computed_access");
+        assert!(v["id"].as_str().unwrap().starts_with("fact:"));
     }
 }

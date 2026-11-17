@@ -96,11 +96,21 @@ pub struct Snapshot {
 }
 
 impl Snapshot {
-    pub fn files(&self) -> &[SnapshotFile] { &self.files }
-    pub fn skipped(&self) -> &[Skipped] { &self.skipped }
-    pub fn skipped_dropped(&self) -> u64 { self.skipped_dropped }
-    pub fn total_bytes(&self) -> u64 { self.total_bytes }
-    pub fn sha256(&self) -> &Hash { &self.sha256 }
+    pub fn files(&self) -> &[SnapshotFile] {
+        &self.files
+    }
+    pub fn skipped(&self) -> &[Skipped] {
+        &self.skipped
+    }
+    pub fn skipped_dropped(&self) -> u64 {
+        self.skipped_dropped
+    }
+    pub fn total_bytes(&self) -> u64 {
+        self.total_bytes
+    }
+    pub fn sha256(&self) -> &Hash {
+        &self.sha256
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -149,7 +159,11 @@ pub fn snapshot(root: &Path, opts: &Options) -> Result<Snapshot, IntakeError> {
 
         for entry in entries {
             let name = entry.file_name().to_string_lossy().into_owned();
-            let rel = if rel_dir.is_empty() { name.clone() } else { format!("{rel_dir}/{name}") };
+            let rel = if rel_dir.is_empty() {
+                name.clone()
+            } else {
+                format!("{rel_dir}/{name}")
+            };
             let path = entry.path();
 
             let ft = match entry.file_type() {
@@ -165,7 +179,9 @@ pub fn snapshot(root: &Path, opts: &Options) -> Result<Snapshot, IntakeError> {
                 let target = fs::read_link(&path)
                     .map(|t| t.to_string_lossy().into_owned())
                     .unwrap_or_default();
-                let reason = SkipReason::Symlink { target: Quoted::new(&target) };
+                let reason = SkipReason::Symlink {
+                    target: Quoted::new(&target),
+                };
                 record(&mut skipped, &mut dropped, &rel, reason);
                 continue;
             }
@@ -218,11 +234,21 @@ pub fn snapshot(root: &Path, opts: &Options) -> Result<Snapshot, IntakeError> {
                 }
             };
             if size > opts.max_file_bytes {
-                record(&mut skipped, &mut dropped, &rel, SkipReason::TooLarge { size });
+                record(
+                    &mut skipped,
+                    &mut dropped,
+                    &rel,
+                    SkipReason::TooLarge { size },
+                );
                 continue;
             }
             if total.saturating_add(size) > opts.max_total_bytes {
-                record(&mut skipped, &mut dropped, &rel, SkipReason::TotalCapReached);
+                record(
+                    &mut skipped,
+                    &mut dropped,
+                    &rel,
+                    SkipReason::TotalCapReached,
+                );
                 continue;
             }
 
@@ -231,7 +257,14 @@ pub fn snapshot(root: &Path, opts: &Options) -> Result<Snapshot, IntakeError> {
                 Ok(Some(b)) => b,
                 Ok(None) => {
                     // grew past the cap between the size check and the read
-                    record(&mut skipped, &mut dropped, &rel, SkipReason::TooLarge { size: size.max(opts.max_file_bytes + 1) });
+                    record(
+                        &mut skipped,
+                        &mut dropped,
+                        &rel,
+                        SkipReason::TooLarge {
+                            size: size.max(opts.max_file_bytes + 1),
+                        },
+                    );
                     continue;
                 }
                 Err(_) => {
@@ -246,13 +279,25 @@ pub fn snapshot(root: &Path, opts: &Options) -> Result<Snapshot, IntakeError> {
             let (text, invalid_utf8) = if is_source(&name, &opts.source_extensions) {
                 match String::from_utf8(bytes) {
                     Ok(s) => (Some(s), false),
-                    Err(e) => (Some(String::from_utf8_lossy(e.as_bytes()).into_owned()), true),
+                    Err(e) => (
+                        Some(String::from_utf8_lossy(e.as_bytes()).into_owned()),
+                        true,
+                    ),
                 }
             } else {
                 (None, false)
             };
 
-            files.push((rel, SnapshotFile { path: rel_path, sha256, size: read_len, text, invalid_utf8 }));
+            files.push((
+                rel,
+                SnapshotFile {
+                    path: rel_path,
+                    sha256,
+                    size: read_len,
+                    text,
+                    invalid_utf8,
+                },
+            ));
         }
     }
 
@@ -288,12 +333,20 @@ fn record(skipped: &mut Vec<(String, Skipped)>, dropped: &mut u64, rel: &str, re
         return;
     }
     let shown = if rel.is_empty() { "." } else { rel };
-    skipped.push((shown.to_string(), Skipped { path: Quoted::new(shown), reason }));
+    skipped.push((
+        shown.to_string(),
+        Skipped {
+            path: Quoted::new(shown),
+            reason,
+        },
+    ));
 }
 
 /// The jail check: the resolved location must be inside the canonical root.
 fn inside(root_canon: &Path, p: &Path) -> bool {
-    fs::canonicalize(p).map(|c| c.starts_with(root_canon)).unwrap_or(false)
+    fs::canonicalize(p)
+        .map(|c| c.starts_with(root_canon))
+        .unwrap_or(false)
 }
 
 /// Reads at most `max` bytes. Returns None if the file holds more than that.
@@ -301,7 +354,11 @@ fn read_capped(path: &Path, max: u64) -> std::io::Result<Option<Vec<u8>>> {
     let f = fs::File::open(path)?;
     let mut buf = Vec::new();
     f.take(max + 1).read_to_end(&mut buf)?;
-    if buf.len() as u64 > max { Ok(None) } else { Ok(Some(buf)) }
+    if buf.len() as u64 > max {
+        Ok(None)
+    } else {
+        Ok(Some(buf))
+    }
 }
 
 fn is_source(name: &str, exts: &[String]) -> bool {
@@ -315,7 +372,12 @@ fn is_source(name: &str, exts: &[String]) -> bool {
 
 /// Windows device names (CON, NUL, COM1 ...) can hang or misbehave when opened.
 fn is_reserved_name(name: &str) -> bool {
-    let stem = name.split('.').next().unwrap_or("").trim_end().to_ascii_uppercase();
+    let stem = name
+        .split('.')
+        .next()
+        .unwrap_or("")
+        .trim_end()
+        .to_ascii_uppercase();
     if matches!(stem.as_str(), "CON" | "PRN" | "AUX" | "NUL") {
         return true;
     }

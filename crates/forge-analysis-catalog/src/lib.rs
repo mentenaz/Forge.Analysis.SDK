@@ -58,10 +58,21 @@ struct RawEntry {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum Target {
-    Function { module: String, exports: Vec<String> },
-    Global { name: String },
-    Property { object: String, property: String },
-    Constructor { module: String, exports: Vec<String> },
+    Function {
+        module: String,
+        exports: Vec<String>,
+    },
+    Global {
+        name: String,
+    },
+    Property {
+        object: String,
+        property: String,
+    },
+    Constructor {
+        module: String,
+        exports: Vec<String>,
+    },
 }
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize)]
@@ -128,14 +139,16 @@ impl Catalog {
 
         // Hash of the canonical form (sorted, validated), not of the raw file text:
         // comments, whitespace and entry order don't change it, real content does.
-        let canonical = serde_json::to_vec(&entries).map_err(|e| CatalogError::Parse(e.to_string()))?;
+        let canonical =
+            serde_json::to_vec(&entries).map_err(|e| CatalogError::Parse(e.to_string()))?;
         let version = Hash::of(&canonical);
         Ok(Self { entries, version })
     }
 
     /// The Node core catalog compiled into the binary.
     pub fn node_defaults() -> Self {
-        Self::from_toml(NODE_DEFAULTS).expect("embedded node catalog must be valid; checked by tests")
+        Self::from_toml(NODE_DEFAULTS)
+            .expect("embedded node catalog must be valid; checked by tests")
     }
 
     pub fn entries(&self) -> &[Entry] {
@@ -158,19 +171,28 @@ fn valid_id(id: &str) -> bool {
 
 fn forbid<T>(id: &str, v: &Option<T>, field: &'static str) -> Result<(), CatalogError> {
     if v.is_some() {
-        Err(CatalogError::ForbiddenField { id: id.to_string(), field })
+        Err(CatalogError::ForbiddenField {
+            id: id.to_string(),
+            field,
+        })
     } else {
         Ok(())
     }
 }
 
 fn require<T>(id: &str, v: Option<T>, field: &'static str) -> Result<T, CatalogError> {
-    v.ok_or(CatalogError::MissingField { id: id.to_string(), field })
+    v.ok_or(CatalogError::MissingField {
+        id: id.to_string(),
+        field,
+    })
 }
 
 fn non_empty(id: &str, v: String, field: &'static str) -> Result<String, CatalogError> {
     if v.is_empty() {
-        Err(CatalogError::EmptyName { id: id.to_string(), field })
+        Err(CatalogError::EmptyName {
+            id: id.to_string(),
+            field,
+        })
     } else {
         Ok(v)
     }
@@ -181,12 +203,18 @@ fn exports_list(id: &str, mut list: Vec<String>) -> Result<Vec<String>, CatalogE
         return Err(CatalogError::EmptyExports { id: id.to_string() });
     }
     if list.iter().any(|s| s.is_empty()) {
-        return Err(CatalogError::EmptyName { id: id.to_string(), field: "exports" });
+        return Err(CatalogError::EmptyName {
+            id: id.to_string(),
+            field: "exports",
+        });
     }
     list.sort();
     for w in list.windows(2) {
         if w[0] == w[1] {
-            return Err(CatalogError::DuplicateExport { id: id.to_string(), name: w[0].clone() });
+            return Err(CatalogError::DuplicateExport {
+                id: id.to_string(),
+                name: w[0].clone(),
+            });
         }
     }
     Ok(list)
@@ -216,7 +244,9 @@ fn build(raw: RawEntry) -> Result<Entry, CatalogError> {
             forbid(&id, &raw.exports, "exports")?;
             forbid(&id, &raw.object, "object")?;
             forbid(&id, &raw.property, "property")?;
-            Target::Global { name: non_empty(&id, require(&id, raw.global, "global")?, "global")? }
+            Target::Global {
+                name: non_empty(&id, require(&id, raw.global, "global")?, "global")?,
+            }
         }
         Kind::Property => {
             forbid(&id, &raw.module, "module")?;
@@ -251,13 +281,23 @@ fn build(raw: RawEntry) -> Result<Entry, CatalogError> {
         }
     }
     if args.delay.is_some() && raw.category != Effect::Timer {
-        return Err(CatalogError::ArgRoleNotAllowed { id, field: "delay_arg" });
+        return Err(CatalogError::ArgRoleNotAllowed {
+            id,
+            field: "delay_arg",
+        });
     }
     if raw.repeats && raw.category != Effect::Timer {
         return Err(CatalogError::RepeatsWithoutTimer { id });
     }
 
-    Ok(Entry { id, category: raw.category, target, args, role: raw.role, repeats: raw.repeats })
+    Ok(Entry {
+        id,
+        category: raw.category,
+        target,
+        args,
+        role: raw.role,
+        repeats: raw.repeats,
+    })
 }
 
 #[cfg(test)]
@@ -322,7 +362,8 @@ category = "timer"
 
     #[test]
     fn hash_changes_when_content_changes() {
-        let a = one("kind = \"function\"\nmodule = \"fs\"\nexports = [\"a\"]\ncategory = \"fs_read\"");
+        let a =
+            one("kind = \"function\"\nmodule = \"fs\"\nexports = [\"a\"]\ncategory = \"fs_read\"");
         let b = one("kind = \"function\"\nmodule = \"fs\"\nexports = [\"a\", \"b\"]\ncategory = \"fs_read\"");
         assert_ne!(
             Catalog::from_toml(&a).unwrap().version_hash(),
@@ -333,26 +374,41 @@ category = "timer"
     #[test]
     fn unknown_field_is_refused() {
         let s = one("kind = \"global\"\nglobal = \"x\"\ncategory = \"timer\"\npath_agr = 0");
-        assert!(matches!(Catalog::from_toml(&s), Err(CatalogError::Parse(_))));
+        assert!(matches!(
+            Catalog::from_toml(&s),
+            Err(CatalogError::Parse(_))
+        ));
     }
 
     #[test]
     fn unknown_category_is_refused() {
         let s = one("kind = \"global\"\nglobal = \"x\"\ncategory = \"fs_reed\"");
-        assert!(matches!(Catalog::from_toml(&s), Err(CatalogError::Parse(_))));
+        assert!(matches!(
+            Catalog::from_toml(&s),
+            Err(CatalogError::Parse(_))
+        ));
     }
 
     #[test]
     fn duplicate_id_is_refused() {
-        let e = "[[effect]]\nid = \"t.x\"\nkind = \"global\"\nglobal = \"x\"\ncategory = \"timer\"\n";
+        let e =
+            "[[effect]]\nid = \"t.x\"\nkind = \"global\"\nglobal = \"x\"\ncategory = \"timer\"\n";
         let s = format!("{e}\n{e}");
-        assert_eq!(Catalog::from_toml(&s), Err(CatalogError::DuplicateId { id: "t.x".into() }));
+        assert_eq!(
+            Catalog::from_toml(&s),
+            Err(CatalogError::DuplicateId { id: "t.x".into() })
+        );
     }
 
     #[test]
     fn bad_id_is_refused() {
         let s = "[[effect]]\nid = \"Bad Id\"\nkind = \"global\"\nglobal = \"x\"\ncategory = \"timer\"\n";
-        assert_eq!(Catalog::from_toml(s), Err(CatalogError::BadId { id: "Bad Id".into() }));
+        assert_eq!(
+            Catalog::from_toml(s),
+            Err(CatalogError::BadId {
+                id: "Bad Id".into()
+            })
+        );
     }
 
     #[test]
@@ -360,7 +416,10 @@ category = "timer"
         let s = one("kind = \"function\"\nexports = [\"a\"]\ncategory = \"fs_read\"");
         assert_eq!(
             Catalog::from_toml(&s),
-            Err(CatalogError::MissingField { id: "t.x".into(), field: "module" })
+            Err(CatalogError::MissingField {
+                id: "t.x".into(),
+                field: "module"
+            })
         );
     }
 
@@ -369,7 +428,10 @@ category = "timer"
         let s = one("kind = \"global\"\nglobal = \"x\"\nmodule = \"fs\"\ncategory = \"timer\"");
         assert_eq!(
             Catalog::from_toml(&s),
-            Err(CatalogError::ForbiddenField { id: "t.x".into(), field: "module" })
+            Err(CatalogError::ForbiddenField {
+                id: "t.x".into(),
+                field: "module"
+            })
         );
     }
 
@@ -378,14 +440,20 @@ category = "timer"
         let s = one("kind = \"property\"\nobject = \"process\"\nproperty = \"env\"\ncategory = \"env_read\"\npath_arg = 0");
         assert_eq!(
             Catalog::from_toml(&s),
-            Err(CatalogError::ArgRoleNotAllowed { id: "t.x".into(), field: "path_arg" })
+            Err(CatalogError::ArgRoleNotAllowed {
+                id: "t.x".into(),
+                field: "path_arg"
+            })
         );
     }
 
     #[test]
     fn empty_exports_are_refused() {
         let s = one("kind = \"function\"\nmodule = \"fs\"\nexports = []\ncategory = \"fs_read\"");
-        assert_eq!(Catalog::from_toml(&s), Err(CatalogError::EmptyExports { id: "t.x".into() }));
+        assert_eq!(
+            Catalog::from_toml(&s),
+            Err(CatalogError::EmptyExports { id: "t.x".into() })
+        );
     }
 
     #[test]
@@ -393,14 +461,20 @@ category = "timer"
         let s = one("kind = \"function\"\nmodule = \"fs\"\nexports = [\"a\", \"a\"]\ncategory = \"fs_read\"");
         assert_eq!(
             Catalog::from_toml(&s),
-            Err(CatalogError::DuplicateExport { id: "t.x".into(), name: "a".into() })
+            Err(CatalogError::DuplicateExport {
+                id: "t.x".into(),
+                name: "a".into()
+            })
         );
     }
 
     #[test]
     fn repeats_needs_a_timer() {
         let s = one("kind = \"global\"\nglobal = \"x\"\ncategory = \"fs_read\"\nrepeats = true");
-        assert_eq!(Catalog::from_toml(&s), Err(CatalogError::RepeatsWithoutTimer { id: "t.x".into() }));
+        assert_eq!(
+            Catalog::from_toml(&s),
+            Err(CatalogError::RepeatsWithoutTimer { id: "t.x".into() })
+        );
     }
 
     #[test]
@@ -408,14 +482,21 @@ category = "timer"
         let s = one("kind = \"global\"\nglobal = \"x\"\ncategory = \"fs_read\"\ndelay_arg = 1");
         assert_eq!(
             Catalog::from_toml(&s),
-            Err(CatalogError::ArgRoleNotAllowed { id: "t.x".into(), field: "delay_arg" })
+            Err(CatalogError::ArgRoleNotAllowed {
+                id: "t.x".into(),
+                field: "delay_arg"
+            })
         );
     }
 
     #[test]
     fn interval_entry_is_recurring_with_its_roles() {
         let c = Catalog::node_defaults();
-        let e = c.entries().iter().find(|e| e.id == "node.timers.interval").unwrap();
+        let e = c
+            .entries()
+            .iter()
+            .find(|e| e.id == "node.timers.interval")
+            .unwrap();
         assert!(e.repeats);
         assert_eq!(e.args.delay, Some(1));
         assert_eq!(e.args.callback, Some(0));

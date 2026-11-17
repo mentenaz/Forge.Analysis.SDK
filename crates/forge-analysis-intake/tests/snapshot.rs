@@ -15,7 +15,9 @@ impl Tmp {
         fs::create_dir_all(&p).unwrap();
         Tmp(p)
     }
-    fn path(&self) -> &Path { &self.0 }
+    fn path(&self) -> &Path {
+        &self.0
+    }
     fn write(&self, rel: &str, bytes: &[u8]) {
         let p = self.0.join(rel);
         fs::create_dir_all(p.parent().unwrap()).unwrap();
@@ -78,9 +80,15 @@ fn same_content_gives_the_same_hash_in_any_folder() {
 fn changing_a_file_changes_the_hash() {
     let t = Tmp::new("change");
     t.write("a.js", b"1");
-    let h1 = snapshot(t.path(), &Options::default()).unwrap().sha256().clone();
+    let h1 = snapshot(t.path(), &Options::default())
+        .unwrap()
+        .sha256()
+        .clone();
     t.write("a.js", b"2");
-    let h2 = snapshot(t.path(), &Options::default()).unwrap().sha256().clone();
+    let h2 = snapshot(t.path(), &Options::default())
+        .unwrap()
+        .sha256()
+        .clone();
     assert_ne!(h1, h2);
 }
 
@@ -101,7 +109,10 @@ fn file_count_cap_skips_and_records_the_rest() {
     for n in ["a.js", "b.js", "c.js"] {
         t.write(n, b"1");
     }
-    let opts = Options { max_files: 1, ..Options::default() };
+    let opts = Options {
+        max_files: 1,
+        ..Options::default()
+    };
     let snap = snapshot(t.path(), &opts).unwrap();
     assert_eq!(snap.files().len(), 1);
     assert_eq!(count(&snap, |r| matches!(r, SkipReason::FileCapReached)), 2);
@@ -111,10 +122,16 @@ fn file_count_cap_skips_and_records_the_rest() {
 fn oversized_file_is_skipped_with_its_size() {
     let t = Tmp::new("big");
     t.write("big.js", b"0123456789");
-    let opts = Options { max_file_bytes: 4, ..Options::default() };
+    let opts = Options {
+        max_file_bytes: 4,
+        ..Options::default()
+    };
     let snap = snapshot(t.path(), &opts).unwrap();
     assert!(snap.files().is_empty());
-    assert!(snap.skipped().iter().any(|s| s.reason == SkipReason::TooLarge { size: 10 }));
+    assert!(snap
+        .skipped()
+        .iter()
+        .any(|s| s.reason == SkipReason::TooLarge { size: 10 }));
 }
 
 #[test]
@@ -122,10 +139,16 @@ fn total_size_cap_stops_further_files() {
     let t = Tmp::new("total");
     t.write("a.js", b"123456");
     t.write("b.js", b"123456");
-    let opts = Options { max_total_bytes: 8, ..Options::default() };
+    let opts = Options {
+        max_total_bytes: 8,
+        ..Options::default()
+    };
     let snap = snapshot(t.path(), &opts).unwrap();
     assert_eq!(snap.files().len(), 1);
-    assert_eq!(count(&snap, |r| matches!(r, SkipReason::TotalCapReached)), 1);
+    assert_eq!(
+        count(&snap, |r| matches!(r, SkipReason::TotalCapReached)),
+        1
+    );
 }
 
 #[test]
@@ -133,7 +156,10 @@ fn depth_cap_skips_deeper_folders() {
     let t = Tmp::new("depth");
     t.write("a/x.js", b"1");
     t.write("a/b/c.js", b"1");
-    let opts = Options { max_depth: 1, ..Options::default() };
+    let opts = Options {
+        max_depth: 1,
+        ..Options::default()
+    };
     let snap = snapshot(t.path(), &opts).unwrap();
     assert_eq!(snap.files().len(), 1);
     assert_eq!(count(&snap, |r| matches!(r, SkipReason::TooDeep)), 1);
@@ -196,6 +222,9 @@ fn crate_source_contains_no_write_apis() {
         "os::unix::fs::symlink",
         "os::windows::fs::symlink",
     ] {
-        assert!(!src.contains(banned), "intake must stay read-only, found {banned}");
+        assert!(
+            !src.contains(banned),
+            "intake must stay read-only, found {banned}"
+        );
     }
 }
