@@ -46,6 +46,7 @@ pub enum Effect {
     EnvRead,
     SystemInfo,
     DynamicLoad,
+    CodeLoad,
     Timer,
 }
 

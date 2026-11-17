@@ -1,23 +1,27 @@
 //! Whole-file analysis. Pass 1 collects every import and declaration, anywhere in the file,
-//! so a name is known before its uses. Pass 2 walks calls: `require()` and `import()`,
-//! then API calls matched against the catalog. Scope questions ("is this really the
-//! imported `fs`?") are answered by Oxc's semantic analysis, never by name alone.
+//! so a name is known before its uses. Pass 2 walks calls and `new` expressions: `require()`
+//! and `import()`, API calls matched against the catalog, and code-loading sinks.
+//! Scope questions ("is this really the imported `fs`? the global `eval`?") are answered by
+//! Oxc's semantic analysis, never by name alone.
 //!
 //! Policy: a call we cannot match is recorded as unresolved with a reason, never dropped.
 //! The one deliberate silence is a call on a module the catalog does not cover at all.
 
 use super::{normalize_module, Binding, BindingKind, Ctx, FileImports, Require};
 use forge_analysis_catalog::{Catalog, Entry};
-use forge_analysis_schema::{FactKind, Quoted, RelPath, StaticFact, UnresolvedReason};
+use forge_analysis_schema::{Effect, FactKind, Quoted, RelPath, StaticFact, UnresolvedReason};
 use oxc_allocator::Allocator;
 use oxc_ast::ast::{
     Argument, CallExpression, Expression, IdentifierReference, ImportDeclaration, ImportExpression,
-    StaticMemberExpression, VariableDeclarator,
+    NewExpression, StaticMemberExpression, VariableDeclarator,
 };
 use oxc_ast_visit::{walk, Visit};
 use oxc_parser::Parser;
 use oxc_semantic::SemanticBuilder;
 use oxc_span::{GetSpan, SourceType, Span as OxcSpan};
+
+/// Objects that stand for the global scope: `globalThis.eval(x)` is `eval(x)`.
+const GLOBAL_OBJECTS: [&str; 4] = ["globalThis", "window", "self", "global"];
 
 /// Returns None if the file name is not a JS/TS source type.
 pub fn analyze_file(file: &RelPath, source: &str, catalog: &Catalog) -> Option<FileImports> {
@@ -80,6 +84,20 @@ fn root_ident<'x, 'a>(mut e: &'x Expression<'a>) -> Option<&'x IdentifierReferen
     }
 }
 
+/// Sees through `(f)` and `(0, f)`, which call `f` just the same.
+fn unwrap_callee<'x, 'a>(mut e: &'x Expression<'a>) -> &'x Expression<'a> {
+    loop {
+        match e {
+            Expression::ParenthesizedExpression(p) => e = &p.expression,
+            Expression::SequenceExpression(s) => match s.expressions.last() {
+                Some(last) => e = last,
+                None => return e,
+            },
+            _ => return e,
+        }
+    }
+}
+
 impl<'s> Matcher<'s> {
     /// The import this identifier refers to, per Oxc's scope analysis.
     fn import_binding(&self, id: &IdentifierReference<'_>) -> Option<Binding> {
@@ -89,6 +107,15 @@ impl<'s> Matcher<'s> {
         self.ctx.table.lookup_by_decl(scoping.symbol_span(sym).start).cloned()
     }
 
+    /// True if this name is not declared anywhere in the file (so it is the real global).
+    /// With no scope information we cannot tell; treat it as the real thing, not hide it.
+    fn is_global(&self, id: &IdentifierReference<'_>) -> bool {
+        match (self.ctx.scoping, id.reference_id.get()) {
+            (Some(s), Some(rid)) => s.get_reference(rid).symbol_id().is_none(),
+            _ => true,
+        }
+    }
+
     /// None: not called `require`. Some(true): Node's global `require`.
     /// Some(false): `require` is a local name (parameter, variable, function).
     fn require_scope(&self, call: &CallExpression<'_>) -> Option<bool> {
@@ -96,17 +123,23 @@ impl<'s> Matcher<'s> {
         if self.ctx.text(callee.span) != "require" {
             return None;
         }
-        // No scope information means we cannot tell; report it as the real thing, not hide it.
-        let global = match (self.ctx.scoping, callee.reference_id.get()) {
-            (Some(s), Some(rid)) => s.get_reference(rid).symbol_id().is_none(),
-            _ => true,
-        };
-        Some(global)
+        Some(self.is_global(callee))
+    }
+
+    /// The catalog entry for a code-loading global (`eval`, `Function`). Other globals
+    /// (timers) wait for the timing step.
+    fn code_load_global(&self, name: &str) -> Option<&'s Entry> {
+        let cat: &'s Catalog = self.catalog;
+        cat.find_global(name).filter(|e| e.category == Effect::CodeLoad)
+    }
+
+    fn flag_at(&mut self, sp: OxcSpan, reason: UnresolvedReason) {
+        let t = self.ctx.text(sp);
+        self.ctx.unresolved(sp, reason, t);
     }
 
     fn flag(&mut self, call: &CallExpression<'_>, reason: UnresolvedReason) {
-        let t = self.ctx.text(call.span);
-        self.ctx.unresolved(call.span, reason, t);
+        self.flag_at(call.span, reason);
     }
 
     /// `module.name(...)` through any route: namespace, alias, or `require("m").name`.
@@ -134,45 +167,132 @@ impl<'s> Matcher<'s> {
     }
 
     fn emit_effect(&mut self, call: &CallExpression<'_>, entry: &Entry) {
-        let callee_text = self.ctx.text(call.callee.span());
+        self.emit_parts(call.span, &call.callee, &call.arguments, entry);
+    }
+
+    /// One Call fact and one Effect fact for a matched call or `new` expression.
+    fn emit_parts(
+        &mut self,
+        at: OxcSpan,
+        callee: &Expression<'_>,
+        args: &[Argument<'_>],
+        entry: &Entry,
+    ) {
+        let callee_text = self.ctx.text(callee.span());
         let call_fact = StaticFact::new(
             FactKind::Call,
-            self.ctx.span(call.span),
+            self.ctx.span(at),
             Some(Quoted::new(callee_text)),
         );
         self.ctx.facts.push(call_fact);
 
-        // The argument that carries the path, command or URL, if the catalog names one.
-        let role = entry.args.path.or(entry.args.command).or(entry.args.url);
+        // The argument that carries the path, command, URL or code, if the catalog names one.
+        let code_load = entry.category == Effect::CodeLoad;
+        let role = entry
+            .args
+            .path
+            .or(entry.args.command)
+            .or(entry.args.url)
+            .or(if code_load { Some(0) } else { None });
         let mut detail: Option<String> = None;
         let mut problem: Option<(OxcSpan, UnresolvedReason)> = None;
         if let Some(i) = role {
-            match call.arguments.get(usize::from(i)) {
+            match args.get(usize::from(i)) {
                 None => {}
                 Some(Argument::StringLiteral(lit)) => match self.ctx.literal(lit) {
                     Some(v) => detail = Some(v),
                     None => problem = Some((lit.span, UnresolvedReason::UnsupportedSyntax)),
                 },
-                Some(other) => problem = Some((other.span(), UnresolvedReason::ComputedAccess)),
+                Some(other) => {
+                    let reason = if code_load {
+                        UnresolvedReason::Eval
+                    } else {
+                        UnresolvedReason::ComputedAccess
+                    };
+                    problem = Some((other.span(), reason));
+                }
             }
         }
 
         let mut effect = StaticFact::new(
             FactKind::Effect,
-            self.ctx.span(call.span),
+            self.ctx.span(at),
             detail.as_deref().map(Quoted::new),
         );
         effect.effect = Some(entry.category);
         self.ctx.facts.push(effect);
 
         if let Some((sp, reason)) = problem {
-            let t = self.ctx.text(sp);
-            self.ctx.unresolved(sp, reason, t);
+            self.flag_at(sp, reason);
+        }
+    }
+
+    /// `eval(...)`, `Function(...)`: the unshadowed global, or a local we cannot trust.
+    fn global_call(&mut self, call: &CallExpression<'_>, id: &IdentifierReference<'_>) {
+        let name = self.ctx.text(id.span);
+        let Some(entry) = self.code_load_global(name) else { return };
+        if self.is_global(id) {
+            self.emit_effect(call, entry);
+        } else {
+            self.flag(call, UnresolvedReason::AmbiguousBinding);
+        }
+    }
+
+    /// `globalThis.eval(...)`. Returns true if it was one.
+    fn global_object_call(
+        &mut self,
+        call: &CallExpression<'_>,
+        id: &IdentifierReference<'_>,
+        name: &str,
+    ) -> bool {
+        if !GLOBAL_OBJECTS.contains(&self.ctx.text(id.span)) || !self.is_global(id) {
+            return false;
+        }
+        match self.code_load_global(name) {
+            Some(entry) => {
+                self.emit_effect(call, entry);
+                true
+            }
+            None => false,
+        }
+    }
+
+    /// `globalThis["eval"](...)` or `globalThis[name](...)`.
+    fn global_object_computed(
+        &mut self,
+        call: &CallExpression<'_>,
+        id: &IdentifierReference<'_>,
+        key: &Expression<'_>,
+    ) {
+        if !GLOBAL_OBJECTS.contains(&self.ctx.text(id.span)) || !self.is_global(id) {
+            return;
+        }
+        let literal = match key {
+            Expression::StringLiteral(l) => self.ctx.literal(l),
+            _ => None,
+        };
+        match literal {
+            Some(k) => {
+                if let Some(entry) = self.code_load_global(&k) {
+                    self.emit_effect(call, entry);
+                }
+            }
+            None => self.flag(call, UnresolvedReason::ComputedAccess),
         }
     }
 
     fn member_call(&mut self, call: &CallExpression<'_>, m: &StaticMemberExpression<'_>) {
         let name = self.ctx.text(m.property.span);
+
+        // x.constructor.constructor("code"): the classic way to reach Function without naming it.
+        if name == "constructor" {
+            if let Expression::StaticMemberExpression(inner) = &m.object {
+                if self.ctx.text(inner.property.span) == "constructor" {
+                    self.flag(call, UnresolvedReason::Reflection);
+                    return;
+                }
+            }
+        }
 
         // require("m").name(...)
         if let Expression::CallExpression(inner) = &m.object {
@@ -194,7 +314,11 @@ impl<'s> Matcher<'s> {
                     }
                     BindingKind::Named { .. } => self.chain(call, &b.module),
                 },
-                None => self.maybe_unknown(call, name),
+                None => {
+                    if !self.global_object_call(call, id, name) {
+                        self.maybe_unknown(call, name);
+                    }
+                }
             },
             other => match root_ident(other).and_then(|id| self.import_binding(id)) {
                 Some(b) => self.chain(call, &b.module),
@@ -204,25 +328,86 @@ impl<'s> Matcher<'s> {
     }
 
     fn match_call(&mut self, call: &CallExpression<'_>) {
-        match &call.callee {
-            // rf(...) where rf was imported by name
-            Expression::Identifier(id) => {
-                if let Some(b) = self.import_binding(id) {
+        match unwrap_callee(&call.callee) {
+            // rf(...) where rf was imported by name, or eval(...) and friends
+            Expression::Identifier(id) => match self.import_binding(id) {
+                Some(b) => {
                     if let BindingKind::Named { imported } = &b.kind {
                         self.resolve(call, &b.module, imported);
                     }
                 }
-            }
+                None => self.global_call(call, id),
+            },
             Expression::StaticMemberExpression(m) => self.member_call(call, m),
-            // fs[name](...): the member is chosen at runtime
+            // fs[name](...) or globalThis[name](...): the member is chosen at runtime
             Expression::ComputedMemberExpression(m) => {
-                if let Some(b) = root_ident(&m.object).and_then(|id| self.import_binding(id)) {
-                    if self.catalog.knows_module(&b.module) {
-                        self.flag(call, UnresolvedReason::ComputedAccess);
+                match root_ident(&m.object).and_then(|id| self.import_binding(id)) {
+                    Some(b) => {
+                        if self.catalog.knows_module(&b.module) {
+                            self.flag(call, UnresolvedReason::ComputedAccess);
+                        }
+                    }
+                    None => {
+                        if let Expression::Identifier(id) = &m.object {
+                            self.global_object_computed(call, id, &m.expression);
+                        }
                     }
                 }
             }
             _ => {}
+        }
+    }
+
+    /// `new Function(...)`, `new vm.Script(...)`. Uncatalogued constructors stay silent.
+    fn match_new(&mut self, it: &NewExpression<'_>) {
+        let cat = self.catalog;
+        let found: Option<&Entry> = match unwrap_callee(&it.callee) {
+            Expression::Identifier(id) => match self.import_binding(id) {
+                Some(b) => match &b.kind {
+                    BindingKind::Named { imported } => cat.find_constructor(&b.module, imported),
+                    _ => None,
+                },
+                None => {
+                    let name = self.ctx.text(id.span);
+                    match self.code_load_global(name) {
+                        Some(entry) if self.is_global(id) => Some(entry),
+                        Some(_) => {
+                            self.flag_at(it.span, UnresolvedReason::AmbiguousBinding);
+                            None
+                        }
+                        None => None,
+                    }
+                }
+            },
+            Expression::StaticMemberExpression(m) => {
+                let name = self.ctx.text(m.property.span);
+                match &m.object {
+                    Expression::Identifier(id) => match self.import_binding(id) {
+                        Some(b) if matches!(b.kind, BindingKind::Namespace | BindingKind::Default) => {
+                            cat.find_constructor(&b.module, name)
+                        }
+                        Some(_) => None,
+                        None => {
+                            if GLOBAL_OBJECTS.contains(&self.ctx.text(id.span)) && self.is_global(id) {
+                                self.code_load_global(name)
+                            } else {
+                                None
+                            }
+                        }
+                    },
+                    Expression::CallExpression(inner) => match self.ctx.classify_call(inner) {
+                        Some((Require::Literal(lit), _)) => {
+                            cat.find_constructor(&normalize_module(&lit), name)
+                        }
+                        _ => None,
+                    },
+                    _ => None,
+                }
+            }
+            _ => None,
+        };
+        if let Some(entry) = found {
+            self.emit_parts(it.span, &it.callee, &it.arguments, entry);
         }
     }
 }
@@ -242,6 +427,11 @@ impl<'a> Visit<'a> for Matcher<'_> {
         }
         self.match_call(it);
         walk::walk_call_expression(self, it);
+    }
+
+    fn visit_new_expression(&mut self, it: &NewExpression<'a>) {
+        self.match_new(it);
+        walk::walk_new_expression(self, it);
     }
 
     fn visit_import_expression(&mut self, it: &ImportExpression<'a>) {
@@ -466,5 +656,123 @@ mod tests {
         let f = run("a.js", r#"require(name).readFile("x");"#);
         assert!(effect(&f).is_none());
         assert_eq!(reasons(&f), vec![UnresolvedReason::DynamicRequire]);
+    }
+
+    // ---- code-load sinks ----
+
+    #[test]
+    fn eval_with_a_literal_is_a_code_load_fact() {
+        let f = run("a.js", r#"eval("1+1");"#);
+        assert_eq!(effect(&f), Some((Effect::CodeLoad, Some("1+1".into()))));
+        assert_eq!(count(&f, FactKind::Call), 1);
+        assert!(reasons(&f).is_empty());
+    }
+
+    #[test]
+    fn eval_of_a_variable_reports_computed_code() {
+        let f = run("a.js", "eval(code);");
+        assert_eq!(effect(&f), Some((Effect::CodeLoad, None)));
+        assert_eq!(reasons(&f), vec![UnresolvedReason::Eval]);
+    }
+
+    #[test]
+    fn new_function_is_a_code_load() {
+        let f = run("a.js", r#"new Function("return 1");"#);
+        assert_eq!(effect(&f), Some((Effect::CodeLoad, Some("return 1".into()))));
+        assert!(reasons(&f).is_empty());
+    }
+
+    #[test]
+    fn function_called_without_new_is_a_code_load() {
+        let f = run("a.js", "Function(body)();");
+        assert_eq!(effect(&f), Some((Effect::CodeLoad, None)));
+        assert_eq!(reasons(&f), vec![UnresolvedReason::Eval]);
+    }
+
+    #[test]
+    fn vm_run_calls_are_code_loads() {
+        let f = run("a.js", r#"const vm = require("vm"); vm.runInThisContext(src);"#);
+        assert_eq!(effect(&f), Some((Effect::CodeLoad, None)));
+        assert_eq!(reasons(&f), vec![UnresolvedReason::Eval]);
+    }
+
+    #[test]
+    fn new_vm_script_is_a_code_load() {
+        let f = run("a.js", r#"const vm = require("vm"); new vm.Script("1");"#);
+        assert_eq!(effect(&f), Some((Effect::CodeLoad, Some("1".into()))));
+    }
+
+    #[test]
+    fn a_named_import_of_the_vm_constructor_matches() {
+        let f = run("a.js", r#"import { Script } from "vm"; new Script(s);"#);
+        assert_eq!(effect(&f), Some((Effect::CodeLoad, None)));
+        assert_eq!(reasons(&f), vec![UnresolvedReason::Eval]);
+    }
+
+    #[test]
+    fn a_local_function_named_like_a_sink_is_not_trusted() {
+        let f = run("a.js", r#"function f() { function Function(s) { return s; } return Function("x"); }"#);
+        assert!(effect(&f).is_none());
+        assert_eq!(reasons(&f), vec![UnresolvedReason::AmbiguousBinding]);
+    }
+
+    #[test]
+    fn eval_through_the_global_object_is_found() {
+        let f = run("a.js", "globalThis.eval(x);");
+        assert_eq!(effect(&f), Some((Effect::CodeLoad, None)));
+        assert_eq!(reasons(&f), vec![UnresolvedReason::Eval]);
+    }
+
+    #[test]
+    fn indirect_eval_is_found() {
+        let f = run("a.js", r#"(0, eval)("1");"#);
+        assert_eq!(effect(&f), Some((Effect::CodeLoad, Some("1".into()))));
+    }
+
+    #[test]
+    fn a_literal_computed_key_on_the_global_object_is_found() {
+        let f = run("a.js", r#"window["eval"]("1");"#);
+        assert_eq!(effect(&f), Some((Effect::CodeLoad, Some("1".into()))));
+    }
+
+    #[test]
+    fn a_computed_key_on_the_global_object_is_reported() {
+        let f = run("a.js", r#"globalThis[name]("1");"#);
+        assert!(effect(&f).is_none());
+        assert_eq!(reasons(&f), vec![UnresolvedReason::ComputedAccess]);
+    }
+
+    #[test]
+    fn constructor_dot_constructor_is_reported_as_reflection() {
+        let f = run("a.js", r#"[].constructor.constructor("return 1")();"#);
+        assert!(effect(&f).is_none());
+        assert_eq!(reasons(&f), vec![UnresolvedReason::Reflection]);
+    }
+
+    #[test]
+    fn a_remote_dynamic_import_is_a_dynamic_load() {
+        let f = run("a.js", r#"async function f() { await import("https://example.com/x.js"); }"#);
+        assert_eq!(count(&f, FactKind::Import), 1);
+        assert_eq!(effect(&f), Some((Effect::DynamicLoad, Some("https://example.com/x.js".into()))));
+        assert!(reasons(&f).is_empty());
+    }
+
+    #[test]
+    fn a_remote_static_import_is_a_dynamic_load() {
+        let f = run("a.js", r#"import x from "https://example.com/x.js";"#);
+        assert_eq!(effect(&f), Some((Effect::DynamicLoad, Some("https://example.com/x.js".into()))));
+    }
+
+    #[test]
+    fn similar_names_are_not_sinks() {
+        let f = run("a.js", r#"evaluate(x); myeval("1"); obj.eval("1");"#);
+        assert!(effect(&f).is_none());
+        assert!(reasons(&f).is_empty());
+    }
+
+    #[test]
+    fn timers_are_not_matched_yet() {
+        let f = run("a.js", "setTimeout(f, 10);");
+        assert!(effect(&f).is_none());
     }
 }

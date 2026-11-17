@@ -181,6 +181,21 @@ impl Catalog {
                 if exports.iter().any(|x| x == export))
         })
     }
+
+    /// The global-function entry for `name` (`eval`, `setTimeout`, ...).
+    pub fn find_global(&self, name: &str) -> Option<&Entry> {
+        self.entries
+            .iter()
+            .find(|e| matches!(&e.target, Target::Global { name: n } if n == name))
+    }
+
+    /// The constructor entry for `new module.export(...)`.
+    pub fn find_constructor(&self, module: &str, export: &str) -> Option<&Entry> {
+        self.entries.iter().find(|e| {
+            matches!(&e.target, Target::Constructor { module: m, exports }
+                if m == module && exports.iter().any(|x| x == export))
+        })
+    }
 }
 
 // ---- validation helpers ----

@@ -113,3 +113,33 @@ kind = "global"
 global = "setImmediate"
 category = "timer"
 callback_arg = 0
+
+[[effect]]
+id = "node.global.eval"
+kind = "global"
+global = "eval"
+category = "code_load"
+role = "sink"
+
+[[effect]]
+id = "node.global.function"
+kind = "global"
+global = "Function"
+category = "code_load"
+role = "sink"
+
+[[effect]]
+id = "node.vm.run"
+kind = "function"
+module = "vm"
+exports = ["compileFunction", "runInContext", "runInNewContext", "runInThisContext"]
+category = "code_load"
+role = "sink"
+
+[[effect]]
+id = "node.vm.script"
+kind = "constructor"
+module = "vm"
+exports = ["Script", "SourceTextModule"]
+category = "code_load"
+role = "sink"

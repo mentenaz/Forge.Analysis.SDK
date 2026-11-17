@@ -3,7 +3,7 @@
 //! Names and string literals are read from source text by span, so nothing depends on
 //! Oxc's string types, and anything with an escape sequence is reported, not interpreted.
 
-use forge_analysis_schema::{FactKind, Quoted, RelPath, Span, StaticFact, UnresolvedReason};
+use forge_analysis_schema::{FactKind, Quoted, RelPath, Span, StaticFact, UnresolvedReason,Effect};
 
 use oxc_allocator::Allocator;
 use oxc_ast::ast::{
@@ -211,12 +211,20 @@ impl<'s> Ctx<'s> {
     }
 
     fn import_fact(&mut self, sp: OxcSpan, module_as_written: &str) {
-        let f = StaticFact::new(
-            FactKind::Import,
-            self.span(sp),
-            Some(Quoted::new(module_as_written)),
-        );
+        let f = StaticFact::new(FactKind::Import, self.span(sp), Some(Quoted::new(module_as_written)));
         self.facts.push(f);
+
+        // A module fetched from a URL is code we cannot see.
+        let lower = module_as_written.to_ascii_lowercase();
+        if lower.starts_with("http://") || lower.starts_with("https://") || lower.starts_with("data:") {
+            let mut e = StaticFact::new(
+                FactKind::Effect,
+                self.span(sp),
+                Some(Quoted::new(module_as_written)),
+            );
+            e.effect = Some(Effect::DynamicLoad);
+            self.facts.push(e);
+        }
     }
 
     fn unresolved(&mut self, sp: OxcSpan, reason: UnresolvedReason, detail: &str) {
