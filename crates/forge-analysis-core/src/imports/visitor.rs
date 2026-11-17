@@ -7,11 +7,14 @@
 //! Policy: nothing is dropped. A call we cannot match is an unresolved fact with a reason.
 
 use super::{normalize_module, Binding, BindingKind, Ctx, FileImports, Require};
+use super::callgraph;
 use super::flow::{self, FlowHit, Site};
 use super::handles::{self, Handles};
+use super::summary;
 use forge_analysis_catalog::{Catalog, Entry, Role};
 use forge_analysis_schema::{
-    Delay, Effect, FactKind, Lane, Quoted, RelPath, StaticFact, Timing, UnresolvedReason,
+    Delay, Effect, FactKind, FunctionSummary, Lane, Quoted, RelPath, StaticFact, Timing,
+    UnresolvedReason,
 };
 use oxc_allocator::Allocator;
 use oxc_ast::ast::{
@@ -54,6 +57,9 @@ pub struct Analysis {
     /// Places where network data may reach a code or command sink (see `flow`). Each one is
     /// also a `Flow` fact in `file.facts`.
     pub flows: Vec<FlowHit>,
+    /// One per function in the file, in source order; the first is the file's top level.
+    /// Empty when the file did not parse (it has one `ParseFailed` fact and nothing else).
+    pub summaries: Vec<FunctionSummary>,
 }
 
 /// Returns None if the file name is not a JS/TS source type.
@@ -70,7 +76,7 @@ pub fn analyze_file_full(file: &RelPath, source: &str, catalog: &Catalog) -> Opt
     if !ret.diagnostics.is_empty() {
         let mut ctx = Ctx::new(file, source);
         ctx.parse_failed();
-        return Some(Analysis { file: ctx.finish(), flows: Vec::new() });
+        return Some(Analysis { file: ctx.finish(), flows: Vec::new(), summaries: Vec::new() });
     }
 
     let sem = SemanticBuilder::new().build(&ret.program);
@@ -93,9 +99,18 @@ pub fn analyze_file_full(file: &RelPath, source: &str, catalog: &Catalog) -> Opt
         matcher.ctx.facts.push(fact);
     }
 
+    // Which function each fact is inside, and what each function does and reaches.
+    let graph = callgraph::build(&ret.program, sem.semantic.scoping());
+    let mut facts = std::mem::take(&mut matcher.ctx.facts);
+    let summaries = {
+        let ctx = &matcher.ctx;
+        summary::summarize(&graph, &mut facts, &|s| ctx.span(s), &|s| ctx.text(s).to_string())
+    };
+    matcher.ctx.facts = facts;
+
     let mut out = matcher.ctx.finish();
     out.facts.sort_by_key(|f| (f.at().start_byte, f.at().end_byte));
-    Some(Analysis { file: out, flows })
+    Some(Analysis { file: out, flows, summaries })
 }
 
 /// The identifier at the root of `a`, `a.b`, `a.b.c`. None for anything else.
@@ -1658,5 +1673,92 @@ mod tests {
         assert_eq!(effect(&f), Some((Effect::NetOut, Some("https://example.com".into()))));
         let f = run("a.js", r#"const tls = require("tls"); tls.connect(443, "example.com");"#);
         assert_eq!(effect(&f).map(|e| e.0), Some(Effect::NetOut));
+    }
+
+    // ---- function summaries ----
+
+    fn summaries(name: &str, src: &str) -> Vec<forge_analysis_schema::FunctionSummary> {
+        analyze_file_full(&RelPath::new(name).unwrap(), src, &Catalog::node_defaults())
+            .unwrap()
+            .summaries
+    }
+
+    fn named<'a>(
+        v: &'a [forge_analysis_schema::FunctionSummary],
+        n: &str,
+    ) -> &'a forge_analysis_schema::FunctionSummary {
+        v.iter().find(|s| s.name.as_ref().is_some_and(|q| q.text() == n)).unwrap()
+    }
+
+    #[test]
+    fn every_file_has_a_top_level_summary() {
+        let s = summaries("a.js", "1;");
+        assert_eq!(s.len(), 1);
+        assert!(s[0].reachable_from_entry);
+        assert_eq!(s[0].lanes, vec![Lane::Immediate]);
+    }
+
+    #[test]
+    fn a_file_that_does_not_parse_has_no_summaries() {
+        assert!(summaries("a.js", "function (").is_empty());
+    }
+
+    #[test]
+    fn a_delete_inside_a_helper_reaches_the_top_level_through_the_call() {
+        let s = summaries(
+            "a.js",
+            r#"import fs from "fs"; function wipe(p){ fs.unlinkSync(p); } wipe("x");"#,
+        );
+        assert_eq!(named(&s, "wipe").direct_effects.len(), 1);
+        assert_eq!(named(&s, "wipe").direct_effects[0].effect, Effect::FsDelete);
+        assert!(s[0].direct_effects.is_empty());
+        assert!(s[0].transitive_effects.contains(&Effect::FsDelete));
+    }
+
+    #[test]
+    fn an_effect_in_a_timer_callback_is_deferred() {
+        let s = summaries(
+            "a.js",
+            r#"import fs from "fs"; setTimeout(() => { fs.unlinkSync("x"); }, 5000);"#,
+        );
+        assert_eq!(s[1].lanes, vec![Lane::Deferred]);
+        assert_eq!(s[1].direct_effects[0].effect, Effect::FsDelete);
+    }
+
+    #[test]
+    fn an_interval_callback_is_recurring() {
+        let s = summaries("a.js", "setInterval(function tick(){ }, 1000);");
+        assert_eq!(named(&s, "tick").lanes, vec![Lane::Recurring]);
+    }
+
+    #[test]
+    fn an_unused_function_is_listed_but_not_reachable() {
+        let s = summaries("a.js", r#"import fs from "fs"; function later(){ fs.unlinkSync("x"); }"#);
+        let f = named(&s, "later");
+        assert!(!f.reachable_from_entry);
+        assert!(f.transitive_effects.contains(&Effect::FsDelete));
+    }
+
+    #[test]
+    fn facts_carry_the_function_they_are_inside() {
+        let a = analyze_file_full(
+            &RelPath::new("a.js").unwrap(),
+            r#"import fs from "fs"; function wipe(p){ fs.unlinkSync(p); }"#,
+            &Catalog::node_defaults(),
+        )
+        .unwrap();
+        let wipe = named(&a.summaries, "wipe").id;
+        let inside = a.file.facts.iter().filter(|f| f.within == Some(wipe)).count();
+        assert!(inside >= 2, "call and effect facts sit inside wipe");
+        assert!(a.file.facts.iter().all(|f| f.within.is_some()));
+    }
+
+    #[test]
+    fn summaries_do_not_add_or_remove_facts() {
+        // Same source, with and without an extra unreachable function: only that function's
+        // own facts differ.
+        let base = run("a.js", r#"const fs = require("fs"); fs.unlinkSync("x");"#);
+        let more = run("a.js", r#"const fs = require("fs"); fs.unlinkSync("x"); function z(){}"#);
+        assert_eq!(base.facts.len(), more.facts.len());
     }
 }

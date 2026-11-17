@@ -20,6 +20,8 @@ mod handles;
 mod visitor;
 pub use flow::FlowHit;
 pub use visitor::{analyze_file, analyze_file_full, Analysis};
+mod callgraph;
+mod summary;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum BindingKind {

@@ -200,6 +200,8 @@ pub enum ValidationError {
     TimerMissingTiming,
     FlowMissingOrigin,
     OriginOnNonFlow,
+    ReachabilityMismatch,
+    TransitiveMissingDirect,
 }
 
 impl UrlValue {
@@ -299,7 +301,7 @@ impl FactKind {
 
 /// Why something could not be resolved from the code. Each one is a stated
 /// limit of static analysis, never a guess.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize)]
 #[serde(rename_all = "snake_case")]
 pub enum UnresolvedReason {
     DynamicRequire,
@@ -317,7 +319,7 @@ pub enum UnresolvedReason {
     IndirectUse,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize)]
 #[serde(rename_all = "snake_case")]
 pub enum Lane {
     Immediate,
@@ -365,6 +367,66 @@ impl FactId {
     }
 }
 
+/// Index of a function within one file's analysis, in source order.
+/// `FnId(0)` is the file's top level (the module body), which runs first.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize)]
+pub struct FnId(pub u32);
+
+/// An effect a function performs directly, pointing at the fact that shows it.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct EffectUse {
+    pub effect: Effect,
+    pub fact: FactId,
+}
+
+/// What one function does, rolled up from the facts inside it and the functions it reaches.
+/// Built from parsing alone. Calls we cannot follow are counted, never dropped.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct FunctionSummary {
+    pub id: FnId,
+    /// From the code, so quoted. None for the top level and for anonymous functions.
+    pub name: Option<Quoted>,
+    pub at: Span,
+    pub direct_effects: Vec<EffectUse>,
+    /// Everything it can reach: its own effects plus those of every function it calls or
+    /// registers as a callback, to any depth. Sorted, no repeats.
+    pub transitive_effects: Vec<Effect>,
+    /// Unresolved reasons on facts directly inside it. Sorted, no repeats.
+    pub unresolved: Vec<UnresolvedReason>,
+    /// Functions it calls by name, or immediately invokes.
+    pub calls: Vec<FnId>,
+    /// Functions it hands to something else to run later (timer, listener, `.then`, ...).
+    pub callbacks: Vec<FnId>,
+    pub called_from: Vec<FnId>,
+    /// When it can run: the file's own top level is `Immediate`; a timer callback takes the
+    /// timer's lane. Empty means nothing in this file reaches it (it may be exported).
+    pub lanes: Vec<Lane>,
+    pub reachable_from_entry: bool,
+    /// Calls inside it to something we did not follow (methods, parameters, other files,
+    /// built-ins). A count, so the report can say how much was not analysed.
+    pub unfollowed_calls: u32,
+    /// Used as a plain value (stored, returned, exported): it may run from somewhere in this
+    /// file's reach that we cannot see, so `reachable_from_entry` can understate it.
+    pub escapes: bool,
+}
+
+impl FunctionSummary {
+    pub fn validate(&self) -> Vec<ValidationError> {
+        let mut errors = self.at.validate();
+        if self.reachable_from_entry != !self.lanes.is_empty() {
+            errors.push(ValidationError::ReachabilityMismatch);
+        }
+        if self
+            .direct_effects
+            .iter()
+            .any(|u| !self.transitive_effects.contains(&u.effect))
+        {
+            errors.push(ValidationError::TransitiveMissingDirect);
+        }
+        errors
+    }
+}
+
 /// One thing the parser found. The fields that make up the ID are private, so an ID
 /// can't go stale if someone changes the kind or location afterwards.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
@@ -380,6 +442,8 @@ pub struct StaticFact {
     /// Only on `Flow` facts: where the data entered. Not part of the ID, so one flow
     /// fact per sink (the detail carries the quoted source expression).
     pub origin: Option<Span>,
+    /// The function this fact is inside; `FnId(0)` is the file's top level.
+    pub within: Option<FnId>,
 }
 
 impl StaticFact {
@@ -395,6 +459,7 @@ impl StaticFact {
             timing: None,
             unresolved: None,
             origin: None,
+            within: None,
         }
     }
 
@@ -842,5 +907,66 @@ mod tests {
         assert_eq!(v["origin"]["end_byte"], 8);
         let plain = StaticFact::new(FactKind::Call, span(0, 1), None);
         assert!(serde_json::to_value(&plain).unwrap()["origin"].is_null());
+    }
+
+    // ---- FunctionSummary ----
+
+    fn summary() -> FunctionSummary {
+        FunctionSummary {
+            id: FnId(1),
+            name: Some(Quoted::new("cleanup")),
+            at: span(10, 90),
+            direct_effects: vec![EffectUse {
+                effect: Effect::FsDelete,
+                fact: FactId::new(FactKind::Effect, &span(20, 40), None),
+            }],
+            transitive_effects: vec![Effect::FsDelete],
+            unresolved: vec![],
+            calls: vec![],
+            callbacks: vec![],
+            called_from: vec![FnId(0)],
+            lanes: vec![Lane::Immediate],
+            reachable_from_entry: true,
+            unfollowed_calls: 3,
+            escapes: false,
+        }
+    }
+
+    #[test]
+    fn a_consistent_summary_validates() {
+        assert!(summary().validate().is_empty());
+    }
+
+    #[test]
+    fn reachability_must_match_lanes() {
+        let mut s = summary();
+        s.lanes.clear();
+        assert_eq!(s.validate(), vec![ValidationError::ReachabilityMismatch]);
+        let mut s = summary();
+        s.reachable_from_entry = false;
+        assert_eq!(s.validate(), vec![ValidationError::ReachabilityMismatch]);
+    }
+
+    #[test]
+    fn transitive_effects_must_include_direct_ones() {
+        let mut s = summary();
+        s.transitive_effects.clear();
+        assert_eq!(s.validate(), vec![ValidationError::TransitiveMissingDirect]);
+    }
+
+    #[test]
+    fn a_summary_serializes_with_snake_case_and_a_plain_id() {
+        let v = serde_json::to_value(summary()).unwrap();
+        assert_eq!(v["lanes"][0], "immediate");
+        assert_eq!(v["transitive_effects"][0], "fs_delete");
+        assert_eq!(v["called_from"][0], 0);
+        assert_eq!(v["name"]["text"], "cleanup");
+        assert_eq!(v["unfollowed_calls"], 3);
+    }
+
+    #[test]
+    fn facts_start_outside_any_function_until_placed() {
+        let f = StaticFact::new(FactKind::Call, span(0, 1), None);
+        assert_eq!(f.within, None);
     }
 }
