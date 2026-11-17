@@ -51,6 +51,7 @@ kind = "function"
 module = "net"
 exports = ["connect", "createConnection"]
 category = "net_out"
+role = "source"
 
 [[effect]]
 id = "node.http.request"
@@ -58,6 +59,7 @@ kind = "function"
 module = "http"
 exports = ["get", "request"]
 category = "net_out"
+role = "source"
 url_arg = 0
 
 [[effect]]
@@ -66,6 +68,7 @@ kind = "function"
 module = "https"
 exports = ["get", "request"]
 category = "net_out"
+role = "source"
 url_arg = 0
 
 [[effect]]
@@ -74,6 +77,7 @@ kind = "function"
 module = "dns"
 exports = ["lookup", "resolve", "resolve4", "resolve6"]
 category = "net_out"
+role = "source"
 
 [[effect]]
 id = "node.os.info"
@@ -143,3 +147,26 @@ module = "vm"
 exports = ["Script", "SourceTextModule"]
 category = "code_load"
 role = "sink"
+
+[[effect]]
+id = "web.global.fetch"
+kind = "global"
+global = "fetch"
+category = "net_out"
+url_arg = 0
+role = "source"
+
+[[effect]]
+id = "web.global.websocket"
+kind = "global"
+global = "WebSocket"
+category = "net_out"
+url_arg = 0
+role = "source"
+
+[[effect]]
+id = "web.global.xmlhttprequest"
+kind = "global"
+global = "XMLHttpRequest"
+category = "net_out"
+role = "source"

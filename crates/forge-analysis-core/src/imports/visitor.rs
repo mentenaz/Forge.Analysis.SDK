@@ -7,7 +7,8 @@
 //! Policy: nothing is dropped. A call we cannot match is an unresolved fact with a reason.
 
 use super::{normalize_module, Binding, BindingKind, Ctx, FileImports, Require};
-use forge_analysis_catalog::{Catalog, Entry};
+use super::flow::{self, FlowHit, Site};
+use forge_analysis_catalog::{Catalog, Entry, Role};
 use forge_analysis_schema::{Effect, FactKind, Quoted, RelPath, StaticFact, UnresolvedReason};
 use oxc_allocator::Allocator;
 use oxc_ast::ast::{
@@ -19,6 +20,7 @@ use oxc_ast_visit::{walk, Visit};
 use oxc_parser::Parser;
 use oxc_semantic::SemanticBuilder;
 use oxc_span::{GetSpan, SourceType, Span as OxcSpan};
+use std::collections::BTreeMap;
 
 /// Objects that stand for the global scope: `globalThis.eval(x)` is `eval(x)`.
 const GLOBAL_OBJECTS: [&str; 4] = ["globalThis", "window", "self", "global"];
@@ -27,14 +29,28 @@ fn key(sp: OxcSpan) -> (u32, u32) {
     (sp.start, sp.end)
 }
 
-/// The catalog entry for a code-loading global (`eval`, `Function`). Other globals (timers)
-/// wait for the timing step.
-fn code_load<'c>(cat: &'c Catalog, name: &str) -> Option<&'c Entry> {
-    cat.find_global(name).filter(|e| e.category == Effect::CodeLoad)
+/// The catalog entry for a global we match today: code loaders (`eval`, `Function`) and
+/// network globals (`fetch`, `WebSocket`, `XMLHttpRequest`). Other globals (timers) wait for
+/// the timing step.
+fn tracked<'c>(cat: &'c Catalog, name: &str) -> Option<&'c Entry> {
+    cat.find_global(name)
+        .filter(|e| matches!(e.category, Effect::CodeLoad | Effect::NetOut))
+}
+
+/// Everything the analysis of one file produces.
+pub struct Analysis {
+    pub file: FileImports,
+    /// Places where network data may reach a code or command sink (see `flow`).
+    pub flows: Vec<FlowHit>,
 }
 
 /// Returns None if the file name is not a JS/TS source type.
 pub fn analyze_file(file: &RelPath, source: &str, catalog: &Catalog) -> Option<FileImports> {
+    analyze_file_full(file, source, catalog).map(|a| a.file)
+}
+
+/// Like `analyze_file`, and also returns the flow hits.
+pub fn analyze_file_full(file: &RelPath, source: &str, catalog: &Catalog) -> Option<Analysis> {
     let source_type = SourceType::from_path(file.as_quoted().text()).ok()?;
     let allocator = Allocator::default();
     let ret = Parser::new(&allocator, source, source_type).parse();
@@ -42,7 +58,7 @@ pub fn analyze_file(file: &RelPath, source: &str, catalog: &Catalog) -> Option<F
     if !ret.diagnostics.is_empty() {
         let mut ctx = Ctx::new(file, source);
         ctx.parse_failed();
-        return Some(ctx.finish());
+        return Some(Analysis { file: ctx.finish(), flows: Vec::new() });
     }
 
     let sem = SemanticBuilder::new().build(&ret.program);
@@ -51,12 +67,14 @@ pub fn analyze_file(file: &RelPath, source: &str, catalog: &Catalog) -> Option<F
     let mut collector = Collector { ctx, catalog };
     collector.visit_program(&ret.program);
 
-    let mut matcher = Matcher { ctx: collector.ctx, catalog };
+    let mut matcher = Matcher { ctx: collector.ctx, catalog, sites: BTreeMap::new() };
     matcher.visit_program(&ret.program);
+
+    let flows = flow::find_flows(&ret.program, sem.semantic.scoping(), &matcher.sites);
 
     let mut out = matcher.ctx.finish();
     out.facts.sort_by_key(|f| (f.at().start_byte, f.at().end_byte));
-    Some(out)
+    Some(Analysis { file: out, flows })
 }
 
 /// The identifier at the root of `a`, `a.b`, `a.b.c`. None for anything else.
@@ -121,7 +139,7 @@ impl Collector<'_> {
             BindingKind::Named { .. } | BindingKind::Opaque => {
                 Some((BindingKind::Opaque, module.to_string()))
             }
-            BindingKind::GlobalObject => code_load(self.catalog, name)
+            BindingKind::GlobalObject => tracked(self.catalog, name)
                 .map(|_| (BindingKind::GlobalAlias { name: name.to_string() }, String::new())),
             BindingKind::GlobalAlias { .. } => None,
         }
@@ -140,7 +158,7 @@ impl Collector<'_> {
                 let name = self.ctx.text(id.span);
                 if GLOBAL_OBJECTS.contains(&name) {
                     Some((BindingKind::GlobalObject, String::new()))
-                } else if code_load(self.catalog, name).is_some() {
+                } else if tracked(self.catalog, name).is_some() {
                     Some((BindingKind::GlobalAlias { name: name.to_string() }, String::new()))
                 } else {
                     None
@@ -260,6 +278,8 @@ impl<'a> Visit<'a> for Collector<'_> {
 struct Matcher<'s> {
     ctx: Ctx<'s>,
     catalog: &'s Catalog,
+    /// Every matched call or `new`, by span: is it a network source, a code/command sink?
+    sites: BTreeMap<(u32, u32), Site>,
 }
 
 impl<'s> Matcher<'s> {
@@ -281,9 +301,9 @@ impl<'s> Matcher<'s> {
         Some(self.is_global(callee))
     }
 
-    fn code_load_global(&self, name: &str) -> Option<&'s Entry> {
+    fn tracked_global(&self, name: &str) -> Option<&'s Entry> {
         let cat: &'s Catalog = self.catalog;
-        code_load(cat, name)
+        tracked(cat, name)
     }
 
     fn flag_at(&mut self, sp: OxcSpan, reason: UnresolvedReason) {
@@ -342,6 +362,14 @@ impl<'s> Matcher<'s> {
         );
         self.ctx.facts.push(call_fact);
 
+        let site = Site {
+            source: entry.category == Effect::NetOut && entry.role == Some(Role::Source),
+            sink: matches!(entry.category, Effect::CodeLoad | Effect::ProcessSpawn),
+        };
+        if site.source || site.sink {
+            self.sites.insert(key(at), site);
+        }
+
         // The argument that carries the path, command, URL or code, if the catalog names one.
         let code_load = entry.category == Effect::CodeLoad;
         let role = entry
@@ -386,7 +414,7 @@ impl<'s> Matcher<'s> {
     /// `eval(...)`, `Function(...)`: the unshadowed global, or a local we cannot trust.
     fn global_call(&mut self, call: &CallExpression<'_>, id: &IdentifierReference<'_>) {
         let name = self.ctx.text(id.span);
-        let Some(entry) = self.code_load_global(name) else { return };
+        let Some(entry) = self.tracked_global(name) else { return };
         if self.is_global(id) {
             self.emit_effect(call, entry);
         } else {
@@ -404,7 +432,7 @@ impl<'s> Matcher<'s> {
         if !GLOBAL_OBJECTS.contains(&self.ctx.text(id.span)) || !self.is_global(id) {
             return false;
         }
-        match self.code_load_global(name) {
+        match self.tracked_global(name) {
             Some(entry) => {
                 self.emit_effect(call, entry);
                 true
@@ -421,7 +449,7 @@ impl<'s> Matcher<'s> {
         };
         match literal {
             Some(k) => {
-                if let Some(entry) = self.code_load_global(&k) {
+                if let Some(entry) = self.tracked_global(&k) {
                     self.emit_effect(call, entry);
                 }
             }
@@ -464,7 +492,7 @@ impl<'s> Matcher<'s> {
                         self.unmatched(call, &b.module)
                     }
                     BindingKind::GlobalObject => {
-                        if let Some(entry) = self.code_load_global(name) {
+                        if let Some(entry) = self.tracked_global(name) {
                             self.emit_effect(call, entry);
                         }
                     }
@@ -496,7 +524,7 @@ impl<'s> Matcher<'s> {
                         self.unmatched(call, &b.module)
                     }
                     BindingKind::GlobalAlias { name } => {
-                        if let Some(entry) = self.code_load_global(name) {
+                        if let Some(entry) = self.tracked_global(name) {
                             self.emit_effect(call, entry);
                         }
                     }
@@ -540,12 +568,12 @@ impl<'s> Matcher<'s> {
                         found = cat.find_constructor(&b.module, imported);
                         module = Some(b.module.clone());
                     }
-                    BindingKind::GlobalAlias { name } => found = self.code_load_global(name),
+                    BindingKind::GlobalAlias { name } => found = self.tracked_global(name),
                     _ => {}
                 },
                 None => {
                     let name = self.ctx.text(id.span);
-                    if let Some(entry) = self.code_load_global(name) {
+                    if let Some(entry) = self.tracked_global(name) {
                         if self.is_global(id) {
                             found = Some(entry);
                         } else {
@@ -566,12 +594,12 @@ impl<'s> Matcher<'s> {
                             BindingKind::Named { .. } | BindingKind::Opaque => {
                                 module = Some(b.module.clone());
                             }
-                            BindingKind::GlobalObject => found = self.code_load_global(name),
+                            BindingKind::GlobalObject => found = self.tracked_global(name),
                             BindingKind::GlobalAlias { .. } => {}
                         },
                         None => {
                             if GLOBAL_OBJECTS.contains(&self.ctx.text(id.span)) && self.is_global(id) {
-                                found = self.code_load_global(name);
+                                found = self.tracked_global(name);
                             }
                         }
                     },
@@ -611,13 +639,13 @@ impl<'s> Matcher<'s> {
             Expression::Identifier(id) => match self.import_binding(id) {
                 Some(b) => match &b.kind {
                     BindingKind::Namespace | BindingKind::Default => known(&b.module),
-                    BindingKind::GlobalObject => self.code_load_global(name).is_some(),
+                    BindingKind::GlobalObject => self.tracked_global(name).is_some(),
                     _ => false,
                 },
                 None => {
                     GLOBAL_OBJECTS.contains(&self.ctx.text(id.span))
                         && self.is_global(id)
-                        && self.code_load_global(name).is_some()
+                        && self.tracked_global(name).is_some()
                 }
             },
             Expression::CallExpression(inner) => match self.ctx.classify_call(inner) {
@@ -645,7 +673,7 @@ impl<'s> Matcher<'s> {
             },
             None => {
                 let name = self.ctx.text(it.span);
-                self.is_global(it) && self.code_load_global(name).is_some()
+                self.is_global(it) && self.tracked_global(name).is_some()
             }
         };
         if hit {
@@ -1159,5 +1187,148 @@ mod tests {
     fn passing_a_named_import_as_a_value_is_reported() {
         let f = run("a.js", r#"import { exec } from "child_process"; setup(exec);"#);
         assert_eq!(reasons(&f), vec![UnresolvedReason::IndirectUse]);
+    }
+
+    // ---- network globals ----
+
+    #[test]
+    fn fetch_with_a_literal_url_is_a_network_effect() {
+        let f = run("a.js", r#"fetch("https://example.com/x");"#);
+        assert_eq!(effect(&f), Some((Effect::NetOut, Some("https://example.com/x".into()))));
+        assert_eq!(count(&f, FactKind::Call), 1);
+        assert!(reasons(&f).is_empty());
+    }
+
+    #[test]
+    fn fetch_with_a_computed_url_is_reported() {
+        let f = run("a.js", "fetch(u);");
+        assert_eq!(effect(&f), Some((Effect::NetOut, None)));
+        assert_eq!(reasons(&f), vec![UnresolvedReason::ComputedAccess]);
+    }
+
+    #[test]
+    fn fetch_through_the_global_object_or_an_alias_is_found() {
+        let f = run("a.js", r#"globalThis.fetch("a");"#);
+        assert_eq!(effect(&f), Some((Effect::NetOut, Some("a".into()))));
+        let f = run("a.js", r#"const g = fetch; g("b");"#);
+        assert_eq!(effect(&f), Some((Effect::NetOut, Some("b".into()))));
+    }
+
+    #[test]
+    fn a_local_fetch_is_not_trusted() {
+        let f = run("a.js", r#"function f(fetch) { return fetch("x"); }"#);
+        assert!(effect(&f).is_none());
+        assert_eq!(reasons(&f), vec![UnresolvedReason::AmbiguousBinding]);
+    }
+
+    #[test]
+    fn websocket_and_xhr_constructors_are_network_effects() {
+        let f = run("a.js", r#"new WebSocket("wss://example.com/s");"#);
+        assert_eq!(effect(&f), Some((Effect::NetOut, Some("wss://example.com/s".into()))));
+        let f = run("a.js", "new XMLHttpRequest();");
+        assert_eq!(effect(&f), Some((Effect::NetOut, None)));
+        assert!(reasons(&f).is_empty());
+    }
+
+    // ---- network data reaching a sink ----
+
+    fn flows(name: &str, src: &str) -> Vec<(String, String)> {
+        let a = analyze_file_full(&RelPath::new(name).unwrap(), src, &Catalog::node_defaults())
+            .unwrap();
+        let text = |s: OxcSpan| src[s.start as usize..s.end as usize].to_string();
+        a.flows.iter().map(|h| (text(h.sink), text(h.origin))).collect()
+    }
+
+    #[test]
+    fn fetched_text_reaching_eval_is_a_flow() {
+        let f = flows(
+            "a.js",
+            "async function f() { const t = await (await fetch(u)).text(); eval(t); }",
+        );
+        assert_eq!(f, vec![("eval(t)".to_string(), "fetch(u)".to_string())]);
+    }
+
+    #[test]
+    fn an_aliased_fetch_still_counts_as_a_source() {
+        let f = flows("a.js", "const g = fetch; g(u).then(t => eval(t));");
+        assert_eq!(f.len(), 1, "{f:?}");
+        assert_eq!(f[0].0, "eval(t)");
+    }
+
+    #[test]
+    fn http_response_data_reaching_new_function_is_a_flow() {
+        let f = flows(
+            "a.js",
+            r#"const https = require("https");
+               https.get(u, res => { res.on("data", d => { new Function(d)(); }); });"#,
+        );
+        assert_eq!(f.len(), 1, "{f:?}");
+        assert!(f[0].0.starts_with("new Function(d)"));
+        assert!(f[0].1.starts_with("https.get("));
+    }
+
+    #[test]
+    fn a_named_import_source_counts() {
+        let f = flows("a.js", r#"import { get } from "https"; get(u, r => r.on("d", x => eval(x)));"#);
+        assert_eq!(f.len(), 1, "{f:?}");
+    }
+
+    #[test]
+    fn network_data_reaching_a_command_is_a_flow() {
+        let f = flows(
+            "a.js",
+            r#"const cp = require("child_process");
+               async function f() { const t = await (await fetch(u)).text(); cp.exec(t); }"#,
+        );
+        assert_eq!(f.len(), 1, "{f:?}");
+        assert_eq!(f[0].0, "cp.exec(t)");
+    }
+
+    #[test]
+    fn websocket_messages_reaching_vm_are_a_flow() {
+        let f = flows(
+            "a.js",
+            r#"const vm = require("vm");
+               const ws = new WebSocket(u);
+               ws.onmessage = e => { vm.runInThisContext(e.data); };"#,
+        );
+        assert_eq!(f.len(), 1, "{f:?}");
+    }
+
+    #[test]
+    fn local_data_reaching_a_sink_is_not_a_flow() {
+        let f = flows("a.js", r#"const vm = require("vm"); vm.runInThisContext("1");"#);
+        assert!(f.is_empty());
+        let f = flows("a.js", "const c = 'x'; eval(c); fetch(u);");
+        assert!(f.is_empty());
+    }
+
+    #[test]
+    fn file_data_is_not_network_data() {
+        let f = flows("a.js", r#"const fs = require("fs"); fs.readFile(p, (e, d) => eval(d));"#);
+        assert!(f.is_empty(), "{f:?}");
+    }
+
+    #[test]
+    fn a_flow_does_not_replace_the_unresolved_code_fact() {
+        let a = analyze_file_full(
+            &RelPath::new("a.js").unwrap(),
+            "async function f() { const t = await (await fetch(u)).text(); eval(t); }",
+            &Catalog::node_defaults(),
+        )
+        .unwrap();
+        assert_eq!(a.flows.len(), 1);
+        assert!(reasons(&a.file).contains(&UnresolvedReason::Eval));
+    }
+
+    #[test]
+    fn a_file_with_syntax_errors_has_no_flows() {
+        let a = analyze_file_full(
+            &RelPath::new("a.js").unwrap(),
+            "fetch(u).then(t => eval(t)",
+            &Catalog::node_defaults(),
+        )
+        .unwrap();
+        assert!(a.flows.is_empty());
     }
 }
