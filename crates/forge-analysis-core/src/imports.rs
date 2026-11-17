@@ -4,14 +4,18 @@
 //! Oxc's string types, and anything with an escape sequence is reported, not interpreted.
 
 use forge_analysis_schema::{FactKind, Quoted, RelPath, Span, StaticFact, UnresolvedReason};
+
 use oxc_allocator::Allocator;
 use oxc_ast::ast::{
-    Argument, BindingPattern, Expression, ImportDeclaration, ImportDeclarationSpecifier,
-    ModuleExportName, ObjectPattern, PropertyKey, Statement, StringLiteral, VariableDeclarator,
+    Argument, BindingPattern, CallExpression, Expression, ImportDeclaration,
+    ImportDeclarationSpecifier, ModuleExportName, ObjectPattern, Program, PropertyKey, Statement,
+    StringLiteral, VariableDeclarator,
 };
 use oxc_parser::Parser;
 use oxc_span::{SourceType, Span as OxcSpan};
 use std::collections::BTreeSet;
+mod visitor;
+pub use visitor::analyze_file;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum BindingKind {
@@ -71,28 +75,27 @@ pub fn normalize_module(name: &str) -> String {
 }
 
 /// Returns None if the file name is not a JS/TS source type.
+/// Top-level statements only; `analyze_file` is the whole-file version.
 pub fn analyze_imports(file: &RelPath, source: &str) -> Option<FileImports> {
     let source_type = SourceType::from_path(file.as_quoted().text()).ok()?;
     let allocator = Allocator::default();
     let ret = Parser::new(&allocator, source, source_type).parse();
 
-    let mut ctx = Ctx {
-        src: source,
-        file,
-        lines: LineIndex::new(source),
-        table: ImportTable::default(),
-        facts: Vec::new(),
-    };
+    let mut ctx = Ctx::new(file, source);
 
     // A file that did not parse cleanly gets one fact and nothing else: facts taken
     // from a partly recovered tree could be wrong.
     if !ret.diagnostics.is_empty() {
-        let end = u32::try_from(source.len()).unwrap_or(u32::MAX);
-        ctx.unresolved(OxcSpan::new(0, end), UnresolvedReason::ParseFailed, "");
-        return Some(FileImports { table: ctx.table, facts: ctx.facts });
+        ctx.parse_failed();
+        return Some(ctx.finish());
     }
 
-    for stmt in &ret.program.body {
+    top_level(&mut ctx, &ret.program);
+    Some(ctx.finish())
+}
+
+fn top_level(ctx: &mut Ctx<'_>, program: &Program<'_>) {
+    for stmt in &program.body {
         match stmt {
             Statement::ImportDeclaration(decl) => ctx.import_declaration(decl),
             Statement::VariableDeclaration(vd) => {
@@ -108,8 +111,6 @@ pub fn analyze_imports(file: &RelPath, source: &str) -> Option<FileImports> {
             _ => {}
         }
     }
-
-    Some(FileImports { table: ctx.table, facts: ctx.facts })
 }
 
 enum Require {
@@ -144,9 +145,34 @@ struct Ctx<'s> {
     lines: LineIndex,
     table: ImportTable,
     facts: Vec<StaticFact>,
+    /// Start offsets of require calls the top-level pass already reported.
+    handled: BTreeSet<u32>,
 }
 
 impl<'s> Ctx<'s> {
+    fn new(file: &'s RelPath, src: &'s str) -> Self {
+        Self {
+            src,
+            file,
+            lines: LineIndex::new(src),
+            table: ImportTable::default(),
+            facts: Vec::new(),
+            handled: BTreeSet::new(),
+        }
+    }
+
+    fn parse_failed(&mut self) {
+        let end = u32::try_from(self.src.len()).unwrap_or(u32::MAX);
+        self.unresolved(OxcSpan::new(0, end), UnresolvedReason::ParseFailed, "");
+    }
+
+    fn finish(self) -> FileImports {
+        FileImports {
+            table: self.table,
+            facts: self.facts,
+        }
+    }
+
     fn text(&self, sp: OxcSpan) -> &'s str {
         let src: &'s str = self.src;
         src.get(sp.start as usize..sp.end as usize).unwrap_or("")
@@ -163,12 +189,20 @@ impl<'s> Ctx<'s> {
     }
 
     fn import_fact(&mut self, sp: OxcSpan, module_as_written: &str) {
-        let f = StaticFact::new(FactKind::Import, self.span(sp), Some(Quoted::new(module_as_written)));
+        let f = StaticFact::new(
+            FactKind::Import,
+            self.span(sp),
+            Some(Quoted::new(module_as_written)),
+        );
         self.facts.push(f);
     }
 
     fn unresolved(&mut self, sp: OxcSpan, reason: UnresolvedReason, detail: &str) {
-        let mut f = StaticFact::new(FactKind::Unresolved, self.span(sp), Some(Quoted::new(detail)));
+        let mut f = StaticFact::new(
+            FactKind::Unresolved,
+            self.span(sp),
+            Some(Quoted::new(detail)),
+        );
         f.unresolved = Some(reason);
         self.facts.push(f);
     }
@@ -189,15 +223,27 @@ impl<'s> Ctx<'s> {
     }
 
     fn bind(&mut self, sp: OxcSpan, local: String, module: &str, kind: BindingKind) {
-        let b = Binding { local: local.clone(), module: module.to_string(), kind };
+        let b = Binding {
+            local: local.clone(),
+            module: module.to_string(),
+            kind,
+        };
         if !self.table.add(b) {
             self.unresolved(sp, UnresolvedReason::AmbiguousBinding, &local);
         }
     }
 
     fn classify_require(&self, expr: &Expression<'_>) -> Option<(Require, OxcSpan)> {
-        let Expression::CallExpression(call) = expr else { return None };
-        let Expression::Identifier(callee) = &call.callee else { return None };
+        let Expression::CallExpression(call) = expr else {
+            return None;
+        };
+        self.classify_call(call)
+    }
+
+    fn classify_call(&self, call: &CallExpression<'_>) -> Option<(Require, OxcSpan)> {
+        let Expression::Identifier(callee) = &call.callee else {
+            return None;
+        };
         if self.text(callee.span) != "require" {
             return None;
         }
@@ -213,6 +259,7 @@ impl<'s> Ctx<'s> {
 
     /// Records the fact for a require call. Returns the module if it was a plain literal.
     fn emit_require(&mut self, outcome: &Require, sp: OxcSpan) -> Option<String> {
+        self.handled.insert(sp.start);
         match outcome {
             Require::Literal(m) => {
                 self.import_fact(sp, m);
@@ -239,18 +286,24 @@ impl<'s> Ctx<'s> {
         self.import_fact(decl.span, &written);
         let module = normalize_module(&written);
 
-        let Some(specs) = &decl.specifiers else { return };
+        let Some(specs) = &decl.specifiers else {
+            return;
+        };
         for spec in specs {
             match spec {
                 ImportDeclarationSpecifier::ImportSpecifier(s) => {
                     let imported = match &s.imported {
                         ModuleExportName::IdentifierName(n) => Some(self.text(n.span).to_string()),
-                        ModuleExportName::IdentifierReference(r) => Some(self.text(r.span).to_string()),
+                        ModuleExportName::IdentifierReference(r) => {
+                            Some(self.text(r.span).to_string())
+                        }
                         ModuleExportName::StringLiteral(l) => self.literal(l),
                     };
                     let local = self.text(s.local.span).to_string();
                     match imported {
-                        Some(imported) => self.bind(s.span, local, &module, BindingKind::Named { imported }),
+                        Some(imported) => {
+                            self.bind(s.span, local, &module, BindingKind::Named { imported })
+                        }
                         None => {
                             let t = self.text(s.span);
                             self.unresolved(s.span, UnresolvedReason::UnsupportedSyntax, t);
@@ -274,7 +327,9 @@ impl<'s> Ctx<'s> {
 
         // const x = require("m")   /   const { a, b: c } = require("m")
         if let Some((outcome, sp)) = self.classify_require(init) {
-            let Some(module) = self.emit_require(&outcome, sp) else { return };
+            let Some(module) = self.emit_require(&outcome, sp) else {
+                return;
+            };
             match &d.id {
                 BindingPattern::BindingIdentifier(id) => {
                     let local = self.text(id.span).to_string();
@@ -368,7 +423,12 @@ mod tests {
         assert_eq!(f.table.lookup("fs").unwrap().kind, BindingKind::Default);
         let rf = f.table.lookup("rf").unwrap();
         assert_eq!(rf.module, "fs");
-        assert_eq!(rf.kind, BindingKind::Named { imported: "readFile".into() });
+        assert_eq!(
+            rf.kind,
+            BindingKind::Named {
+                imported: "readFile".into()
+            }
+        );
         assert_eq!(f.table.lookup("writeFile").unwrap().module, "fs");
         assert_eq!(f.table.lookup("os").unwrap().kind, BindingKind::Namespace);
         assert_eq!(count(&f, FactKind::Import), 3);
@@ -385,9 +445,22 @@ mod tests {
 
     #[test]
     fn require_destructuring_with_alias_and_default() {
-        let f = run("a.js", r#"const { exec, spawn: sp, x = 1 } = require("node:child_process");"#);
-        assert_eq!(f.table.lookup("exec").unwrap().kind, BindingKind::Named { imported: "exec".into() });
-        assert_eq!(f.table.lookup("sp").unwrap().kind, BindingKind::Named { imported: "spawn".into() });
+        let f = run(
+            "a.js",
+            r#"const { exec, spawn: sp, x = 1 } = require("node:child_process");"#,
+        );
+        assert_eq!(
+            f.table.lookup("exec").unwrap().kind,
+            BindingKind::Named {
+                imported: "exec".into()
+            }
+        );
+        assert_eq!(
+            f.table.lookup("sp").unwrap().kind,
+            BindingKind::Named {
+                imported: "spawn".into()
+            }
+        );
         assert_eq!(f.table.lookup("x").unwrap().module, "child_process");
         assert!(unresolved_reasons(&f).is_empty());
     }
@@ -396,14 +469,22 @@ mod tests {
     fn require_with_member_access() {
         let f = run("a.js", r#"const rf = require("fs").readFile;"#);
         let b = f.table.lookup("rf").unwrap();
-        assert_eq!(b.kind, BindingKind::Named { imported: "readFile".into() });
+        assert_eq!(
+            b.kind,
+            BindingKind::Named {
+                imported: "readFile".into()
+            }
+        );
     }
 
     #[test]
     fn dynamic_require_is_unresolved_and_binds_nothing() {
         let f = run("a.js", r#"const name = "fs"; const m = require(name);"#);
         assert!(f.table.lookup("m").is_none());
-        assert_eq!(unresolved_reasons(&f), vec![UnresolvedReason::DynamicRequire]);
+        assert_eq!(
+            unresolved_reasons(&f),
+            vec![UnresolvedReason::DynamicRequire]
+        );
         assert_eq!(count(&f, FactKind::Import), 0);
     }
 
@@ -418,7 +499,10 @@ mod tests {
     fn a_name_bound_twice_is_ambiguous() {
         let f = run("a.js", r#"var a = require("x"); var a = require("y");"#);
         assert!(f.table.lookup("a").is_none());
-        assert_eq!(unresolved_reasons(&f), vec![UnresolvedReason::AmbiguousBinding]);
+        assert_eq!(
+            unresolved_reasons(&f),
+            vec![UnresolvedReason::AmbiguousBinding]
+        );
     }
 
     #[test]
@@ -462,7 +546,10 @@ mod tests {
     fn computed_destructuring_key_is_reported() {
         let f = run("a.js", r#"const k = "a"; const { [k]: v } = require("m");"#);
         assert!(f.table.lookup("v").is_none());
-        assert_eq!(unresolved_reasons(&f), vec![UnresolvedReason::ComputedAccess]);
+        assert_eq!(
+            unresolved_reasons(&f),
+            vec![UnresolvedReason::ComputedAccess]
+        );
     }
 
     #[test]
@@ -470,13 +557,19 @@ mod tests {
         let f = run("a.js", r#"const { a, ...rest } = require("m");"#);
         assert!(f.table.lookup("a").is_some());
         assert!(f.table.lookup("rest").is_none());
-        assert_eq!(unresolved_reasons(&f), vec![UnresolvedReason::UnsupportedSyntax]);
+        assert_eq!(
+            unresolved_reasons(&f),
+            vec![UnresolvedReason::UnsupportedSyntax]
+        );
     }
 
     #[test]
     fn escape_sequences_in_module_names_are_not_interpreted() {
         let f = run("a.js", r#"import x from "a\u0062";"#);
         assert!(f.table.lookup("x").is_none());
-        assert_eq!(unresolved_reasons(&f), vec![UnresolvedReason::UnsupportedSyntax]);
+        assert_eq!(
+            unresolved_reasons(&f),
+            vec![UnresolvedReason::UnsupportedSyntax]
+        );
     }
 }
