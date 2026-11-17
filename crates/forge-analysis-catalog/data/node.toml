@@ -197,3 +197,65 @@ module = "timers"
 exports = ["setImmediate"]
 category = "timer"
 callback_arg = 0
+
+[[effect]]
+id = "node.fs.promises.read"
+kind = "function"
+module = "fs/promises"
+exports = ["readFile", "readdir"]
+category = "fs_read"
+path_arg = 0
+role = "source"
+
+[[effect]]
+id = "node.fs.promises.write"
+kind = "function"
+module = "fs/promises"
+exports = ["appendFile", "copyFile", "mkdir", "rename", "writeFile"]
+category = "fs_write"
+path_arg = 0
+role = "sink"
+
+[[effect]]
+id = "node.fs.promises.delete"
+kind = "function"
+module = "fs/promises"
+exports = ["rm", "rmdir", "unlink"]
+category = "fs_delete"
+path_arg = 0
+role = "sink"
+
+[[effect]]
+id = "node.fs.promises.chmod"
+kind = "function"
+module = "fs/promises"
+exports = ["chmod"]
+category = "fs_chmod"
+path_arg = 0
+role = "sink"
+
+[[effect]]
+id = "node.http2.connect"
+kind = "function"
+module = "http2"
+exports = ["connect"]
+category = "net_out"
+url_arg = 0
+role = "source"
+
+[[effect]]
+id = "node.tls.connect"
+kind = "function"
+module = "tls"
+exports = ["connect"]
+category = "net_out"
+role = "source"
+
+[[effect]]
+id = "node.worker.new"
+kind = "constructor"
+module = "worker_threads"
+exports = ["Worker"]
+category = "dynamic_load"
+path_arg = 0
+role = "sink"

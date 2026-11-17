@@ -392,7 +392,10 @@ impl<'s> Matcher<'s> {
 
         let site = Site {
             source: entry.category == Effect::NetOut && entry.role == Some(Role::Source),
-            sink: matches!(entry.category, Effect::CodeLoad | Effect::ProcessSpawn),
+            sink: matches!(
+                entry.category,
+                Effect::CodeLoad | Effect::ProcessSpawn | Effect::DynamicLoad
+            ),
             arg: None,
         };
         if site.source || site.sink {
@@ -1600,5 +1603,60 @@ mod tests {
         assert!(f.is_empty(), "{f:?}");
         let f = flows("a.js", "fetch(u); setTimeout(go, 10);");
         assert!(f.is_empty(), "{f:?}");
+    }
+
+    // ---- more catalog coverage ----
+
+    #[test]
+    fn fs_promises_calls_match_the_catalog() {
+        let f = run("a.js", r#"import { readFile } from "fs/promises"; readFile("/etc/passwd");"#);
+        assert_eq!(effect(&f), Some((Effect::FsRead, Some("/etc/passwd".into()))));
+        let f = run(
+            "a.js",
+            r#"const fsp = require("fs/promises"); async function f() { await fsp.unlink("x"); }"#,
+        );
+        assert_eq!(effect(&f), Some((Effect::FsDelete, Some("x".into()))));
+        assert!(reasons(&f).is_empty());
+    }
+
+    #[test]
+    fn the_node_prefix_reaches_the_same_entries() {
+        let f = run("a.js", r#"import { writeFile } from "node:fs/promises"; writeFile("a", "b");"#);
+        assert_eq!(effect(&f), Some((Effect::FsWrite, Some("a".into()))));
+    }
+
+    #[test]
+    fn an_fs_promises_member_we_do_not_catalogue_is_reported() {
+        let f = run("a.js", r#"import { open } from "fs/promises"; open("x");"#);
+        assert!(effect(&f).is_none());
+        assert_eq!(reasons(&f), vec![UnresolvedReason::UncatalogedMember]);
+    }
+
+    #[test]
+    fn a_worker_runs_code_from_a_path() {
+        let f = run("a.js", r#"const { Worker } = require("worker_threads"); new Worker("./w.js");"#);
+        assert_eq!(effect(&f), Some((Effect::DynamicLoad, Some("./w.js".into()))));
+        let f = run("a.js", r#"const { Worker } = require("worker_threads"); new Worker(p);"#);
+        assert_eq!(effect(&f), Some((Effect::DynamicLoad, None)));
+        assert_eq!(reasons(&f), vec![UnresolvedReason::ComputedAccess]);
+    }
+
+    #[test]
+    fn network_data_reaching_a_worker_is_a_flow() {
+        let f = flows(
+            "a.js",
+            r#"const { Worker } = require("worker_threads");
+               async function f() { const t = await (await fetch(u)).text(); new Worker(t); }"#,
+        );
+        assert_eq!(f.len(), 1, "{f:?}");
+        assert!(f[0].0.starts_with("new Worker(t)"));
+    }
+
+    #[test]
+    fn http2_and_tls_connections_are_network_effects() {
+        let f = run("a.js", r#"const h2 = require("http2"); h2.connect("https://example.com");"#);
+        assert_eq!(effect(&f), Some((Effect::NetOut, Some("https://example.com".into()))));
+        let f = run("a.js", r#"const tls = require("tls"); tls.connect(443, "example.com");"#);
+        assert_eq!(effect(&f).map(|e| e.0), Some(Effect::NetOut));
     }
 }
