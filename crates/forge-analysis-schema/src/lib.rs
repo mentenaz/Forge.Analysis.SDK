@@ -108,6 +108,62 @@ impl Hash {
     pub fn as_str(&self) -> &str { &self.0 }
 }
 
+pub const URL_HOST_MAX_CHARS: u32 = 253; // DNS limit
+pub const URL_QUERY_KEY_MAX_CHARS: u32 = 64;
+pub const URL_FULL_MAX_BYTES: u32 = 8 * 1024;
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum Mode {
+    StaticOnly,
+    WithRun,
+}
+
+/// Report header. Forge-authored fields only, so plain strings are fine here.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct Header {
+    pub schema: u32,
+    pub engine: String,
+    pub catalog_sha256: Hash,
+    pub snapshot_sha256: Hash,
+    pub mode: Mode,
+}
+
+/// Typed, so callers and tests match on the kind of problem, not on message text.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ValidationError {
+    HostTooLong { len: u32 },
+    EmptyHost,
+    QueryKeyTooLong { index: usize, len: u32 },
+    FullTooLarge { size: u32 },
+    FullHashMismatch,
+}
+
+impl UrlValue {
+    /// Returns every problem found, not just the first.
+    pub fn validate(&self) -> Vec<ValidationError> {
+        let mut errors = Vec::new();
+        if self.host.original_len() == 0 {
+            errors.push(ValidationError::EmptyHost);
+        }
+        if self.host.original_len() > URL_HOST_MAX_CHARS {
+            errors.push(ValidationError::HostTooLong { len: self.host.original_len() });
+        }
+        for (index, key) in self.query_keys.iter().enumerate() {
+            if key.original_len() > URL_QUERY_KEY_MAX_CHARS {
+                errors.push(ValidationError::QueryKeyTooLong { index, len: key.original_len() });
+            }
+        }
+        if self.full.size > URL_FULL_MAX_BYTES {
+            errors.push(ValidationError::FullTooLarge { size: self.full.size });
+        }
+        if self.full.sha256 != self.sha256 {
+            errors.push(ValidationError::FullHashMismatch);
+        }
+        errors
+    }
+}
+
 /// Reference to a stored full value (blob store), by hash and size. Never inlined.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct BlobRef {
@@ -284,5 +340,84 @@ mod tests {
         let v = serde_json::to_value(&u).unwrap();
         assert_eq!(v["scheme"], "https");
         assert_eq!(v["has_userinfo"], true);
+    }
+
+    // ---- UrlValue::validate ----
+
+    fn good_url() -> UrlValue {
+        UrlValue {
+            scheme: Scheme::Https,
+            host: Quoted::new("api.example.com"),
+            port: None,
+            path: Quoted::new("/status"),
+            query_keys: vec![Quoted::new("token")],
+            query_len: 11,
+            has_userinfo: false,
+            sha256: Hash::of(b"u"),
+            full: BlobRef { sha256: Hash::of(b"u"), size: 1 },
+        }
+    }
+
+    #[test]
+    fn a_well_formed_url_value_passes() {
+        assert!(good_url().validate().is_empty());
+    }
+
+    #[test]
+    fn host_at_253_passes_and_254_fails() {
+        let mut u = good_url();
+        u.host = Quoted::new(&"a".repeat(253));
+        assert!(u.validate().is_empty());
+        u.host = Quoted::new(&"a".repeat(254));
+        assert_eq!(u.validate(), vec![ValidationError::HostTooLong { len: 254 }]);
+    }
+
+    #[test]
+    fn empty_host_fails() {
+        let mut u = good_url();
+        u.host = Quoted::new("");
+        assert_eq!(u.validate(), vec![ValidationError::EmptyHost]);
+    }
+
+    #[test]
+    fn overlong_query_key_is_reported_with_its_position() {
+        let mut u = good_url();
+        u.query_keys = vec![Quoted::new("ok"), Quoted::new(&"k".repeat(65))];
+        assert_eq!(u.validate(), vec![ValidationError::QueryKeyTooLong { index: 1, len: 65 }]);
+    }
+
+    #[test]
+    fn oversized_blob_fails() {
+        let mut u = good_url();
+        u.full.size = URL_FULL_MAX_BYTES + 1;
+        assert_eq!(u.validate(), vec![ValidationError::FullTooLarge { size: URL_FULL_MAX_BYTES + 1 }]);
+    }
+
+    #[test]
+    fn mismatched_hashes_fail() {
+        let mut u = good_url();
+        u.full.sha256 = Hash::of(b"something else");
+        assert_eq!(u.validate(), vec![ValidationError::FullHashMismatch]);
+    }
+
+    #[test]
+    fn several_problems_are_all_reported() {
+        let mut u = good_url();
+        u.host = Quoted::new("");
+        u.full.size = URL_FULL_MAX_BYTES + 1;
+        assert_eq!(u.validate().len(), 2);
+    }
+
+    #[test]
+    fn header_serializes_mode_as_snake_case() {
+        let h = Header {
+            schema: 1,
+            engine: "0.1.0".into(),
+            catalog_sha256: Hash::of(b"catalog"),
+            snapshot_sha256: Hash::of(b"snapshot"),
+            mode: Mode::StaticOnly,
+        };
+        let v = serde_json::to_value(&h).unwrap();
+        assert_eq!(v["mode"], "static_only");
     }
 }
