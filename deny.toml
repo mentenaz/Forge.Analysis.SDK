@@ -1,0 +1,34 @@
+# Dependency rules for forge-analysis-core: bytes in, facts out.
+# Run against core only:
+#   cargo deny --manifest-path crates/forge-analysis-core/Cargo.toml check bans
+
+[graph]
+all-features = true
+
+[bans]
+multiple-versions = "warn"
+wildcards = "deny"
+allow-wildcard-paths = true
+deny = [
+  # network
+  { crate = "reqwest" }, { crate = "hyper" }, { crate = "ureq" }, { crate = "isahc" },
+  { crate = "curl" }, { crate = "surf" }, { crate = "attohttpc" },
+  { crate = "tokio" }, { crate = "async-std" }, { crate = "smol" },
+  { crate = "mio" }, { crate = "socket2" },
+  { crate = "tungstenite" }, { crate = "tokio-tungstenite" },
+  { crate = "native-tls" }, { crate = "openssl" }, { crate = "rustls" },
+
+  # process spawning
+  { crate = "duct" }, { crate = "subprocess" }, { crate = "command-group" }, { crate = "shared_child" },
+
+  # dynamic loading
+  { crate = "libloading" }, { crate = "dlopen" }, { crate = "dlopen2" },
+
+  # raw OS bindings: nothing in core has a reason to touch the OS, so any of
+  # these appearing in the tree means someone must review why
+  # libc is allowed only as a direct dependency of cpufeatures (CPU feature detection for sha2).
+  # Anything else depending on it directly is flagged for review.
+  { crate = "libc", wrappers = ["cpufeatures"] },
+  { crate = "nix" }, { crate = "rustix" },
+  { crate = "windows-sys" }, { crate = "windows" }, { crate = "winapi" },
+]
