@@ -31,6 +31,24 @@ pub enum Severity {
     High
 }
 
+/// What an API call does, as a closed set. A catalog entry with any other
+/// category is refused at load, so a typo can't produce an effect the report can't word.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum Effect {
+    FsRead,
+    FsWrite,
+    FsDelete,
+    FsChmod,
+    NetOut,
+    NetListen,
+    ProcessSpawn,
+    EnvRead,
+    SystemInfo,
+    DynamicLoad,
+    Timer,
+}
+
 /// Text derived from the target (or the guest). The only way to build one is
 /// `Quoted::new`, so the sanitising rules cannot be skipped.
 /// Serialize only: nothing can deserialize a forged `Quoted` from JSON.
@@ -419,5 +437,11 @@ mod tests {
         };
         let v = serde_json::to_value(&h).unwrap();
         assert_eq!(v["mode"], "static_only");
+    }
+
+    #[test]
+    fn effect_serializes_as_snake_case() {
+        assert_eq!(serde_json::to_string(&Effect::FsDelete).unwrap(), "\"fs_delete\"");
+        assert_eq!(serde_json::to_string(&Effect::ProcessSpawn).unwrap(), "\"process_spawn\"");
     }
 }

@@ -1,0 +1,115 @@
+# Node core effect catalog. Facts about APIs only: no severity, no weakness mapping.
+
+[[effect]]
+id = "node.fs.read"
+kind = "function"
+module = "fs"
+exports = ["createReadStream", "readFile", "readFileSync", "readdir", "readdirSync"]
+category = "fs_read"
+path_arg = 0
+role = "source"
+
+[[effect]]
+id = "node.fs.write"
+kind = "function"
+module = "fs"
+exports = ["appendFile", "appendFileSync", "copyFile", "copyFileSync", "createWriteStream", "mkdir", "mkdirSync", "rename", "renameSync", "writeFile", "writeFileSync"]
+category = "fs_write"
+path_arg = 0
+role = "sink"
+
+[[effect]]
+id = "node.fs.delete"
+kind = "function"
+module = "fs"
+exports = ["rm", "rmSync", "rmdir", "rmdirSync", "unlink", "unlinkSync"]
+category = "fs_delete"
+path_arg = 0
+role = "sink"
+
+[[effect]]
+id = "node.fs.chmod"
+kind = "function"
+module = "fs"
+exports = ["chmod", "chmodSync"]
+category = "fs_chmod"
+path_arg = 0
+role = "sink"
+
+[[effect]]
+id = "node.child_process.spawn"
+kind = "function"
+module = "child_process"
+exports = ["exec", "execFile", "execFileSync", "execSync", "fork", "spawn", "spawnSync"]
+category = "process_spawn"
+command_arg = 0
+role = "sink"
+
+[[effect]]
+id = "node.net.connect"
+kind = "function"
+module = "net"
+exports = ["connect", "createConnection"]
+category = "net_out"
+
+[[effect]]
+id = "node.http.request"
+kind = "function"
+module = "http"
+exports = ["get", "request"]
+category = "net_out"
+url_arg = 0
+
+[[effect]]
+id = "node.https.request"
+kind = "function"
+module = "https"
+exports = ["get", "request"]
+category = "net_out"
+url_arg = 0
+
+[[effect]]
+id = "node.dns.lookup"
+kind = "function"
+module = "dns"
+exports = ["lookup", "resolve", "resolve4", "resolve6"]
+category = "net_out"
+
+[[effect]]
+id = "node.os.info"
+kind = "function"
+module = "os"
+exports = ["arch", "cpus", "freemem", "hostname", "networkInterfaces", "platform", "release", "totalmem", "type", "userInfo"]
+category = "system_info"
+
+[[effect]]
+id = "node.process.env"
+kind = "property"
+object = "process"
+property = "env"
+category = "env_read"
+role = "source"
+
+[[effect]]
+id = "node.timers.interval"
+kind = "global"
+global = "setInterval"
+category = "timer"
+callback_arg = 0
+delay_arg = 1
+repeats = true
+
+[[effect]]
+id = "node.timers.timeout"
+kind = "global"
+global = "setTimeout"
+category = "timer"
+callback_arg = 0
+delay_arg = 1
+
+[[effect]]
+id = "node.timers.immediate"
+kind = "global"
+global = "setImmediate"
+category = "timer"
+callback_arg = 0
