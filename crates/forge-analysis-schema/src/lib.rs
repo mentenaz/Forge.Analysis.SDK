@@ -198,6 +198,8 @@ pub enum ValidationError {
     UnresolvedMismatch,
     EffectMissing,
     TimerMissingTiming,
+    FlowMissingOrigin,
+    OriginOnNonFlow,
 }
 
 impl UrlValue {
@@ -274,6 +276,9 @@ pub enum FactKind {
     LifecycleScript,
     Dependency,
     Unresolved,
+    /// Data from a source (the network) may reach a sink (code or a command).
+    /// Located at the sink; `StaticFact::origin` is where the data came from.
+    Flow,
 }
 
 impl FactKind {
@@ -287,6 +292,7 @@ impl FactKind {
             FactKind::LifecycleScript => "lifecycle_script",
             FactKind::Dependency => "dependency",
             FactKind::Unresolved => "unresolved",
+            FactKind::Flow => "flow",
         }
     }
 }
@@ -371,6 +377,9 @@ pub struct StaticFact {
     pub url: Option<UrlValue>,
     pub timing: Option<Timing>,
     pub unresolved: Option<UnresolvedReason>,
+    /// Only on `Flow` facts: where the data entered. Not part of the ID, so one flow
+    /// fact per sink (the detail carries the quoted source expression).
+    pub origin: Option<Span>,
 }
 
 impl StaticFact {
@@ -385,6 +394,7 @@ impl StaticFact {
             url: None,
             timing: None,
             unresolved: None,
+            origin: None,
         }
     }
 
@@ -411,6 +421,16 @@ impl StaticFact {
         }
         if self.kind == FactKind::Timer && self.timing.is_none() {
             errors.push(ValidationError::TimerMissingTiming);
+        }
+        if (self.kind == FactKind::Flow) != self.origin.is_some() {
+            errors.push(if self.kind == FactKind::Flow {
+                ValidationError::FlowMissingOrigin
+            } else {
+                ValidationError::OriginOnNonFlow
+            });
+        }
+        if let Some(origin) = &self.origin {
+            errors.extend(origin.validate());
         }
         if let Some(url) = &self.url {
             errors.extend(url.validate());
@@ -780,5 +800,47 @@ mod tests {
         assert_eq!(v["kind"], "unresolved");
         assert_eq!(v["unresolved"], "computed_access");
         assert!(v["id"].as_str().unwrap().starts_with("fact:"));
+    }
+
+    // ---- Flow facts ----
+
+    #[test]
+    fn a_flow_fact_needs_an_origin_and_only_a_flow_may_have_one() {
+        let mut f = StaticFact::new(FactKind::Flow, span(40, 50), Some(Quoted::new("fetch(u)")));
+        assert_eq!(f.validate(), vec![ValidationError::FlowMissingOrigin]);
+        f.origin = Some(span(0, 8));
+        assert!(f.validate().is_empty());
+
+        let mut c = StaticFact::new(FactKind::Call, span(0, 1), None);
+        c.origin = Some(span(0, 1));
+        assert_eq!(c.validate(), vec![ValidationError::OriginOnNonFlow]);
+    }
+
+    #[test]
+    fn a_backwards_origin_span_is_reported() {
+        let mut f = StaticFact::new(FactKind::Flow, span(40, 50), None);
+        f.origin = Some(span(9, 3));
+        assert_eq!(f.validate(), vec![ValidationError::SpanBytesBackwards]);
+    }
+
+    #[test]
+    fn a_flow_id_differs_from_other_kinds_at_the_same_place() {
+        let q = Some(&Quoted::new("x"));
+        assert_ne!(
+            FactId::new(FactKind::Flow, &span(0, 5), q),
+            FactId::new(FactKind::Effect, &span(0, 5), q)
+        );
+    }
+
+    #[test]
+    fn a_flow_fact_serializes_with_its_origin() {
+        let mut f = StaticFact::new(FactKind::Flow, span(40, 50), Some(Quoted::new("fetch(u)")));
+        f.origin = Some(span(0, 8));
+        let v = serde_json::to_value(&f).unwrap();
+        assert_eq!(v["kind"], "flow");
+        assert_eq!(v["origin"]["start_byte"], 0);
+        assert_eq!(v["origin"]["end_byte"], 8);
+        let plain = StaticFact::new(FactKind::Call, span(0, 1), None);
+        assert!(serde_json::to_value(&plain).unwrap()["origin"].is_null());
     }
 }

@@ -40,7 +40,8 @@ fn tracked<'c>(cat: &'c Catalog, name: &str) -> Option<&'c Entry> {
 /// Everything the analysis of one file produces.
 pub struct Analysis {
     pub file: FileImports,
-    /// Places where network data may reach a code or command sink (see `flow`).
+    /// Places where network data may reach a code or command sink (see `flow`). Each one is
+    /// also a `Flow` fact in `file.facts`.
     pub flows: Vec<FlowHit>,
 }
 
@@ -71,6 +72,14 @@ pub fn analyze_file_full(file: &RelPath, source: &str, catalog: &Catalog) -> Opt
     matcher.visit_program(&ret.program);
 
     let flows = flow::find_flows(&ret.program, sem.semantic.scoping(), &matcher.sites);
+    for hit in &flows {
+        // Located at the sink; the detail is the quoted source expression; `origin` is where
+        // the data entered. An unresolved fact for the same sink (computed code) stays beside it.
+        let detail = Quoted::new(matcher.ctx.text(hit.origin));
+        let mut fact = StaticFact::new(FactKind::Flow, matcher.ctx.span(hit.sink), Some(detail));
+        fact.origin = Some(matcher.ctx.span(hit.origin));
+        matcher.ctx.facts.push(fact);
+    }
 
     let mut out = matcher.ctx.finish();
     out.facts.sort_by_key(|f| (f.at().start_byte, f.at().end_byte));
@@ -1330,5 +1339,41 @@ mod tests {
         )
         .unwrap();
         assert!(a.flows.is_empty());
+    }
+
+    #[test]
+    fn a_flow_is_a_valid_fact_at_the_sink_with_its_origin() {
+        let src = "async function f() { const t = await (await fetch(u)).text(); eval(t); }";
+        let f = run("a.js", src);
+        let flow: Vec<_> = f.facts.iter().filter(|x| x.kind() == FactKind::Flow).collect();
+        assert_eq!(flow.len(), 1);
+        let fact = flow[0];
+        assert!(fact.validate().is_empty());
+        assert_eq!(fact.detail().map(|d| d.text()), Some("fetch(u)"));
+        let at = fact.at();
+        assert_eq!(&src[at.start_byte as usize..at.end_byte as usize], "eval(t)");
+        let o = fact.origin.as_ref().unwrap();
+        assert_eq!(&src[o.start_byte as usize..o.end_byte as usize], "fetch(u)");
+    }
+
+    #[test]
+    fn flow_facts_have_distinct_ids_and_sit_beside_the_other_facts() {
+        let f = run(
+            "a.js",
+            "async function f() { const t = await (await fetch(u)).text(); eval(t); eval(t); }",
+        );
+        assert_eq!(count(&f, FactKind::Flow), 2);
+        assert_eq!(count(&f, FactKind::Effect), 3); // fetch + two evals
+        let mut ids: Vec<_> = f.facts.iter().map(|x| x.id().clone()).collect();
+        ids.sort();
+        ids.dedup();
+        assert_eq!(ids.len(), f.facts.len());
+        assert!(f.facts.iter().all(|x| x.validate().is_empty()));
+    }
+
+    #[test]
+    fn no_flow_means_no_flow_facts() {
+        let f = run("a.js", "const c = 'x'; eval(c); fetch('https://example.com');");
+        assert_eq!(count(&f, FactKind::Flow), 0);
     }
 }
