@@ -202,6 +202,8 @@ pub enum ValidationError {
     OriginOnNonFlow,
     ReachabilityMismatch,
     TransitiveMissingDirect,
+    ScriptMismatch,
+    DependencyMismatch,
 }
 
 impl UrlValue {
@@ -299,6 +301,83 @@ impl FactKind {
     }
 }
 
+/// When a `package.json` script runs.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ScriptTrigger {
+    /// `preinstall`, `install`, `postinstall`, and the implicit `node-gyp rebuild` of a
+    /// package with a `binding.gyp` and no `install` script: run on every consumer's machine.
+    Install,
+    /// `prepare`, `preprepare`, `postprepare`, `prepublish`: run on a local install and when
+    /// the package is installed from git.
+    Prepare,
+    /// Runs by itself around another command (`pretest`, `postbuild`) or at publish time
+    /// (`prepack`, `prepublishOnly`, `version`, ...).
+    Hook,
+    /// Runs only when someone asks for it (`npm run x`, `npm start`).
+    Manual,
+}
+
+/// A script in `package.json`: its name (from the code, so quoted) and when it runs.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct Script {
+    pub name: Quoted,
+    pub trigger: ScriptTrigger,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum DepSection {
+    Dependencies,
+    Dev,
+    Optional,
+    Peer,
+    Bundled,
+    /// `overrides`, `resolutions`, `pnpm.overrides`: rewrite what a dependency resolves to.
+    Overrides,
+}
+
+/// Where a dependency's code comes from.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum DependencySource {
+    /// A version, range or tag on the package registry.
+    Registry,
+    /// `npm:other@1`: a registry package installed under another name.
+    Alias,
+    /// A git repository (`git+https://`, `github:user/repo`, `user/repo`).
+    Git,
+    /// A tarball fetched from a URL.
+    Url,
+    /// `file:`, `link:`, `portal:` or a path on disk.
+    LocalPath,
+    /// `workspace:`: another package of this repository.
+    Workspace,
+    /// Listed in `bundledDependencies`: shipped inside the package itself.
+    Bundled,
+    /// A form we do not recognise.
+    Other,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct DependencyInfo {
+    pub section: DepSection,
+    /// The version spec exactly as written (from the code, so quoted).
+    pub spec: Quoted,
+    pub source: DependencySource,
+}
+
+/// An entry point of a package that could not be tied to a file we analysed.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct EntryIssue {
+    /// The `package.json` it was declared in.
+    pub from: RelPath,
+    /// Which declaration: `main`, `bin.tool`, `exports`, `scripts.postinstall`.
+    pub label: Quoted,
+    pub spec: Quoted,
+    pub reason: UnlinkedReason,
+}
+
 /// Why something could not be resolved from the code. Each one is a stated
 /// limit of static analysis, never a guess.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize)]
@@ -317,6 +396,9 @@ pub enum UnresolvedReason {
     UncatalogedMember,
     UncoveredModule,
     IndirectUse,
+    /// A shell command in a script that we do not follow (anything but `node <file>` and
+    /// `npm run <script>` forms), or one whose text is built at run time.
+    ShellCommand,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize)]
@@ -327,6 +409,8 @@ pub enum Lane {
     Recurring,
     EventDriven,
     Exit,
+    /// Runs when the package is installed, before anything else of it runs.
+    Install,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
@@ -438,8 +522,11 @@ pub struct FnRef {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize)]
 #[serde(rename_all = "snake_case")]
 pub enum UnlinkedReason {
-    /// A package, not a file in the analysed folder. Its code was not analysed.
+    /// A package, not a file in the analysed folder. Its code was not analysed. (A path alias
+    /// from a bundler or `tsconfig` paths looks the same, and may really be a local file.)
     ExternalPackage,
+    /// `#name`: mapped by the `imports` field of `package.json`, which is not followed yet.
+    SubpathImport,
     /// A relative path that matches no file.
     MissingFile,
     /// A path that climbs out of the analysed folder.
@@ -492,6 +579,10 @@ pub struct Linked {
     pub files: Vec<RelPath>,
     pub entry_basis: EntryBasis,
     pub entries: Vec<u32>,
+    /// Files that run at install time (from install-trigger scripts).
+    pub install_entries: Vec<u32>,
+    /// Declared entry points that did not tie to an analysed file.
+    pub entry_issues: Vec<EntryIssue>,
     /// Every function of every file, by file then function.
     pub fns: Vec<LinkedFn>,
     pub unlinked: Vec<Unlinked>,
@@ -516,6 +607,10 @@ pub struct StaticFact {
     pub origin: Option<Span>,
     /// The function this fact is inside; `FnId(0)` is the file's top level.
     pub within: Option<FnId>,
+    /// Only on `LifecycleScript` facts.
+    pub script: Option<Script>,
+    /// Only on `Dependency` facts.
+    pub dependency: Option<DependencyInfo>,
 }
 
 impl StaticFact {
@@ -532,6 +627,8 @@ impl StaticFact {
             unresolved: None,
             origin: None,
             within: None,
+            script: None,
+            dependency: None,
         }
     }
 
@@ -565,6 +662,12 @@ impl StaticFact {
             } else {
                 ValidationError::OriginOnNonFlow
             });
+        }
+        if (self.kind == FactKind::LifecycleScript) != self.script.is_some() {
+            errors.push(ValidationError::ScriptMismatch);
+        }
+        if (self.kind == FactKind::Dependency) != self.dependency.is_some() {
+            errors.push(ValidationError::DependencyMismatch);
         }
         if let Some(origin) = &self.origin {
             errors.extend(origin.validate());
@@ -1048,6 +1151,7 @@ mod tests {
     fn unlinked_reasons_serialize_in_snake_case() {
         assert_eq!(serde_json::to_string(&UnlinkedReason::ExternalPackage).unwrap(), "\"external_package\"");
         assert_eq!(serde_json::to_string(&UnlinkedReason::OutsideRoot).unwrap(), "\"outside_root\"");
+        assert_eq!(serde_json::to_string(&UnlinkedReason::SubpathImport).unwrap(), "\"subpath_import\"");
     }
 
     #[test]
@@ -1070,5 +1174,56 @@ mod tests {
         let a = FnRef { file: 0, func: FnId(5) };
         let b = FnRef { file: 1, func: FnId(0) };
         assert!(a < b);
+    }
+
+    // ---- package facts ----
+
+    fn pkg_span() -> Span {
+        Span { file: RelPath::new("package.json").unwrap(), start_line: 3, end_line: 3, start_byte: 40, end_byte: 70 }
+    }
+
+    #[test]
+    fn a_script_fact_needs_its_script_and_only_it() {
+        let mut f = StaticFact::new(FactKind::LifecycleScript, pkg_span(), Some(Quoted::new("node x.js")));
+        assert_eq!(f.validate(), vec![ValidationError::ScriptMismatch]);
+        f.script = Some(Script { name: Quoted::new("postinstall"), trigger: ScriptTrigger::Install });
+        assert!(f.validate().is_empty());
+        let mut call = StaticFact::new(FactKind::Call, pkg_span(), None);
+        call.script = f.script.clone();
+        assert_eq!(call.validate(), vec![ValidationError::ScriptMismatch]);
+    }
+
+    #[test]
+    fn a_dependency_fact_needs_its_info_and_only_it() {
+        let mut f = StaticFact::new(FactKind::Dependency, pkg_span(), Some(Quoted::new("left-pad")));
+        assert_eq!(f.validate(), vec![ValidationError::DependencyMismatch]);
+        f.dependency = Some(DependencyInfo {
+            section: DepSection::Dependencies,
+            spec: Quoted::new("github:a/b"),
+            source: DependencySource::Git,
+        });
+        assert!(f.validate().is_empty());
+    }
+
+    #[test]
+    fn package_enums_serialize_in_snake_case() {
+        assert_eq!(serde_json::to_string(&ScriptTrigger::Install).unwrap(), "\"install\"");
+        assert_eq!(serde_json::to_string(&DependencySource::LocalPath).unwrap(), "\"local_path\"");
+        assert_eq!(serde_json::to_string(&DepSection::Dev).unwrap(), "\"dev\"");
+        assert_eq!(serde_json::to_string(&Lane::Install).unwrap(), "\"install\"");
+        assert_eq!(serde_json::to_string(&UnresolvedReason::ShellCommand).unwrap(), "\"shell_command\"");
+    }
+
+    #[test]
+    fn install_sorts_after_the_runtime_lanes() {
+        assert!(Lane::Exit < Lane::Install);
+    }
+
+    #[test]
+    fn a_script_serializes_with_a_quoted_name() {
+        let s = Script { name: Quoted::new("post\u{202e}install"), trigger: ScriptTrigger::Prepare };
+        let v = serde_json::to_value(&s).unwrap();
+        assert_eq!(v["name"]["text"], "postinstall");
+        assert_eq!(v["trigger"], "prepare");
     }
 }

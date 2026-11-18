@@ -10,8 +10,8 @@
 //! and for everything else it says why not (`UnlinkedReason`), never dropping it.
 
 use forge_analysis_schema::{
-    Effect, EntryBasis, FnId, FnRef, Lane, Linked, LinkedFn, Quoted, RelPath, Unlinked,
-    UnlinkedReason,
+    Effect, EntryBasis, EntryIssue, FnId, FnRef, Lane, Linked, LinkedFn, Quoted, RelPath,
+    Unlinked, UnlinkedReason,
 };
 use std::collections::{BTreeMap, BTreeSet, VecDeque};
 
@@ -105,6 +105,7 @@ enum Res {
     Missing,
     Outside,
     Package,
+    Subpath,
     Builtin,
 }
 
@@ -138,6 +139,9 @@ impl Resolver<'_> {
         if !(spec.starts_with("./") || spec.starts_with("../") || spec == "." || spec == "..") {
             if spec.starts_with('/') {
                 return Res::Outside;
+            }
+            if spec.starts_with('#') {
+                return Res::Subpath;
             }
             return if is_builtin(spec) { Res::Builtin } else { Res::Package };
         }
@@ -194,6 +198,7 @@ fn reason_of(r: &Res) -> Option<UnlinkedReason> {
         Res::Missing => Some(UnlinkedReason::MissingFile),
         Res::Outside => Some(UnlinkedReason::OutsideRoot),
         Res::Package => Some(UnlinkedReason::ExternalPackage),
+        Res::Subpath => Some(UnlinkedReason::SubpathImport),
     }
 }
 
@@ -247,6 +252,81 @@ struct Out {
 }
 
 pub fn link(files: &[LinkFile<'_>], all_files: &BTreeSet<String>, entries: &[usize]) -> Linked {
+    link_seeded(files, all_files, entries, &[])
+}
+
+/// A declared entry point: a file named by a `package.json` field or script.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct EntryWant {
+    /// The `package.json` that declares it; the path is read relative to its folder.
+    pub from: RelPath,
+    /// Which declaration, for the report: `main`, `bin.tool`, `scripts.postinstall`.
+    pub label: String,
+    pub spec: String,
+    /// Runs at install time rather than when the package is used.
+    pub install: bool,
+    /// A guess that need not exist (Node's default `index.js`): no issue when it is absent.
+    pub optional: bool,
+}
+
+/// `link` with entry points taken from `package.json` files. A declaration that does not tie
+/// to an analysed file is reported in `entry_issues`; if none tie at all the entries fall back
+/// to roots, exactly as with no declarations.
+pub fn link_project(
+    files: &[LinkFile<'_>],
+    all_files: &BTreeSet<String>,
+    wants: &[EntryWant],
+) -> Linked {
+    let paths: Vec<String> = files.iter().map(|f| norm(f.path.as_quoted().text())).collect();
+    let rs = Resolver {
+        analysed: paths.iter().cloned().enumerate().map(|(i, p)| (p, i)).collect(),
+        all: all_files,
+    };
+    let (mut run, mut install) = (BTreeSet::new(), BTreeSet::new());
+    let mut issues: Vec<(String, String, String, UnlinkedReason)> = Vec::new();
+    let mut seen_issue = BTreeSet::new();
+    for w in wants {
+        let from = norm(w.from.as_quoted().text());
+        let spec = if w.spec.starts_with("./") || w.spec.starts_with("../") || w.spec.starts_with('/') {
+            w.spec.clone()
+        } else {
+            format!("./{}", w.spec)
+        };
+        match rs.resolve(&from, &spec) {
+            Res::File(i) => {
+                if w.install { install.insert(i) } else { run.insert(i) };
+            }
+            _ if w.optional => {}
+            other => {
+                let reason = reason_of(&other).unwrap_or(UnlinkedReason::MissingFile);
+                let key = (from.clone(), w.label.clone(), w.spec.clone(), reason);
+                if seen_issue.insert(key.clone()) {
+                    issues.push(key);
+                }
+            }
+        }
+    }
+    let run: Vec<usize> = run.into_iter().collect();
+    let install: Vec<usize> = install.into_iter().collect();
+    let mut linked = link_seeded(files, all_files, &run, &install);
+    issues.sort();
+    linked.entry_issues = issues
+        .into_iter()
+        .filter_map(|(from, label, spec, reason)| {
+            let from = wants.iter().find(|w| norm(w.from.as_quoted().text()) == from)?.from.clone();
+            Some(EntryIssue { from, label: Quoted::new(&label), spec: Quoted::new(&spec), reason })
+        })
+        .collect();
+    linked
+}
+
+/// `link` with a second set of entries that run at install time (`Lane::Install`).
+pub fn link_seeded(
+    files: &[LinkFile<'_>],
+    all_files: &BTreeSet<String>,
+    entries: &[usize],
+    install_entries: &[usize],
+) -> Linked {
     let paths: Vec<String> = files.iter().map(|f| norm(f.path.as_quoted().text())).collect();
     let rs = Resolver {
         analysed: paths.iter().cloned().enumerate().map(|(i, p)| (p, i)).collect(),
@@ -347,6 +427,15 @@ pub fn link(files: &[LinkFile<'_>], all_files: &BTreeSet<String>, entries: &[usi
             queue.push_back(n);
         }
     }
+    let mut install: Vec<usize> = install_entries.iter().copied().filter(|&i| i < files.len()).collect();
+    install.sort_unstable();
+    install.dedup();
+    for &e in &install {
+        let n = offset[e];
+        if lanes[n].insert(Lane::Install) {
+            queue.push_back(n);
+        }
+    }
     while let Some(from) = queue.pop_front() {
         let here: Vec<Lane> = lanes[from].iter().copied().collect();
         for o in out[from].clone() {
@@ -424,6 +513,8 @@ pub fn link(files: &[LinkFile<'_>], all_files: &BTreeSet<String>, entries: &[usi
         files: files.iter().map(|f| f.path.clone()).collect(),
         entry_basis: basis,
         entries: entries.iter().map(|&e| e as u32).collect(),
+        install_entries: install.iter().map(|&e| e as u32).collect(),
+        entry_issues: Vec::new(),
         fns,
         unlinked,
         links_made,
@@ -460,7 +551,7 @@ fn roots(n: usize, edges: &[BTreeSet<usize>]) -> Vec<usize> {
 }
 
 #[cfg(test)]
-mod tests {
+pub(crate) mod tests {
     use super::*;
     use crate::imports::callgraph;
     use crate::imports::exports;
@@ -526,7 +617,7 @@ mod tests {
 
     /// Facts are placed by text: `DEL` is an FsDelete effect; a `setTimeout(...)` call is a
     /// deferred timer.
-    fn info(path: &str, src: &str) -> LinkInfo {
+    pub(crate) fn info(path: &str, src: &str) -> LinkInfo {
         let alloc = Allocator::default();
         let ret = Parser::new(&alloc, src, SourceType::from_path(path).unwrap()).parse();
         assert!(ret.diagnostics.is_empty(), "{path}: {:?}", ret.diagnostics);

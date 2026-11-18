@@ -25,6 +25,12 @@ mod summary;
 mod exports;
 mod link;
 pub use link::{link as link_files, ExportName, ExportTarget, Exports, ExtCall, ImportEdge, ImportKind, LinkFile, LinkInfo, LocalEdges};
+mod json;
+mod package;
+
+pub use link::{link_project, link_seeded, EntryWant};
+pub use package::{analyze_package, classify_dependency, interpret_command, Action, PackageAnalysis};
+
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum BindingKind {
