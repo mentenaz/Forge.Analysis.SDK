@@ -1,0 +1,26 @@
+[package]
+name = "forge-analysis-cli"
+edition.workspace = true
+version.workspace = true
+publish.workspace = true
+
+[lints]
+workspace = true
+
+[lib]
+name = "forge_analysis_cli"
+path = "src/lib.rs"
+
+[[bin]]
+name = "forge-analysis"
+path = "src/main.rs"
+
+[dependencies]
+forge-analysis-schema.workspace = true
+forge-analysis-catalog.workspace = true
+forge-analysis-intake = { path = "../forge-analysis-intake" }
+forge-analysis-core = { path = "../forge-analysis-core" }
+forge-analysis-report = { path = "../forge-analysis-report" }
+
+[dev-dependencies]
+serde_json.workspace = true

@@ -1,0 +1,412 @@
+{
+  "header": {
+    "schema": 1,
+    "engine": "forge-analysis 0.0.1",
+    "catalog_sha256": "3964b56eb1f291b361d5245379fe30f34f914abad7446a37f6ac4c56aa0c11e0",
+    "snapshot_sha256": "cba6ce1d98dfe0b5012bf70cc0e5f73700b73588bc6c75ae16a5b38c530e52b5",
+    "mode": "static_only"
+  },
+  "index": [
+    {
+      "section": "overview",
+      "number": 1,
+      "title": "Overview",
+      "explanation": "What was analysed, whether the picture is complete, and one count for everything we could not see.",
+      "count": null,
+      "anchor": "overview"
+    },
+    {
+      "section": "entry_points",
+      "number": 2,
+      "title": "Entry points",
+      "explanation": "What runs first: runtime and install entry files, and declared entries that do not match any analysed file.",
+      "count": 1,
+      "anchor": "entry-points"
+    },
+    {
+      "section": "timeline",
+      "number": 3,
+      "title": "Execution timeline",
+      "explanation": "When code runs: which functions run immediately, later, repeatedly, on events, at exit or at install, and every timer.",
+      "count": 3,
+      "anchor": "execution-timeline"
+    },
+    {
+      "section": "effects",
+      "number": 4,
+      "title": "Effects",
+      "explanation": "What the code does to the outside world: files, network, processes, environment and loading of code, each with its location.",
+      "count": 0,
+      "anchor": "effects"
+    },
+    {
+      "section": "flows",
+      "number": 5,
+      "title": "Data flows",
+      "explanation": "Data from the network or a file that can reach code execution or a command, from where it enters to where it is used.",
+      "count": 0,
+      "anchor": "data-flows"
+    },
+    {
+      "section": "scripts",
+      "number": 6,
+      "title": "Install scripts and shell commands",
+      "explanation": "Every package.json script, when it runs, and the commands inside it that we could not follow.",
+      "count": 0,
+      "anchor": "install-scripts-and-shell-commands"
+    },
+    {
+      "section": "dependencies",
+      "number": 7,
+      "title": "Dependencies",
+      "explanation": "Every declared dependency with where its code comes from: registry, git, URL, local path or bundled.",
+      "count": 0,
+      "anchor": "dependencies"
+    },
+    {
+      "section": "unresolved",
+      "number": 8,
+      "title": "Unresolved",
+      "explanation": "Places where static analysis cannot say what happens (computed code, dynamic loads, shell commands). Each one hides behaviour.",
+      "count": 0,
+      "anchor": "unresolved"
+    },
+    {
+      "section": "unlinked",
+      "number": 9,
+      "title": "Unlinked imports",
+      "explanation": "Imports we could not follow to their source: packages, missing files and names that are not exported.",
+      "count": 0,
+      "anchor": "unlinked-imports"
+    },
+    {
+      "section": "not_analysed",
+      "number": 10,
+      "title": "Not analysed",
+      "explanation": "Files and folders that were not read as code, by kind, and anything skipped by a limit.",
+      "count": 0,
+      "anchor": "not-analysed"
+    },
+    {
+      "section": "functions",
+      "number": 11,
+      "title": "Function index",
+      "explanation": "Every function with its lanes, effects, callers and the facts inside it.",
+      "count": 3,
+      "anchor": "function-index"
+    }
+  ],
+  "overview": {
+    "files_analysed": 2,
+    "files_not_analysed": 0,
+    "functions": 3,
+    "facts": 2,
+    "links_made": 2,
+    "completeness": "complete",
+    "coverage": [
+      {
+        "section": "unresolved",
+        "label": "places where static analysis cannot say what happens",
+        "count": 0
+      },
+      {
+        "section": "unlinked",
+        "label": "imports not followed to their source",
+        "count": 0
+      },
+      {
+        "section": "entry_points",
+        "label": "declared entry points that match no analysed file",
+        "count": 0
+      },
+      {
+        "section": "not_analysed",
+        "label": "files or folders not read as code",
+        "count": 0
+      },
+      {
+        "section": "dependencies",
+        "label": "dependencies whose own code and install scripts were not analysed",
+        "count": 0
+      }
+    ],
+    "fact_counts": [
+      {
+        "kind": "entry",
+        "count": 0
+      },
+      {
+        "kind": "import",
+        "count": 1
+      },
+      {
+        "kind": "call",
+        "count": 0
+      },
+      {
+        "kind": "effect",
+        "count": 0
+      },
+      {
+        "kind": "timer",
+        "count": 0
+      },
+      {
+        "kind": "lifecycle_script",
+        "count": 0
+      },
+      {
+        "kind": "dependency",
+        "count": 0
+      },
+      {
+        "kind": "unresolved",
+        "count": 1
+      },
+      {
+        "kind": "flow",
+        "count": 0
+      }
+    ]
+  },
+  "entry_points": {
+    "basis": "declared",
+    "runtime": [
+      {
+        "text": "index.js",
+        "truncated": false,
+        "original_len": 8,
+        "sha256": "e727e4bdf3657fd1d798edcd6b099d6e092f8573cba266154583a746bba0f346"
+      }
+    ],
+    "install": [],
+    "issues": []
+  },
+  "timeline": {
+    "lanes": [
+      {
+        "lane": "immediate",
+        "functions": [
+          {
+            "file": {
+              "text": "index.js",
+              "truncated": false,
+              "original_len": 8,
+              "sha256": "e727e4bdf3657fd1d798edcd6b099d6e092f8573cba266154583a746bba0f346"
+            },
+            "func": 0,
+            "name": null,
+            "line": 1
+          },
+          {
+            "file": {
+              "text": "util.js",
+              "truncated": false,
+              "original_len": 7,
+              "sha256": "e92f63f5acde594e588a7a616b4af3cbfd20cca8ef5a383ba52e2f14915d1ddf"
+            },
+            "func": 0,
+            "name": null,
+            "line": 1
+          },
+          {
+            "file": {
+              "text": "util.js",
+              "truncated": false,
+              "original_len": 7,
+              "sha256": "e92f63f5acde594e588a7a616b4af3cbfd20cca8ef5a383ba52e2f14915d1ddf"
+            },
+            "func": 1,
+            "name": {
+              "text": "add",
+              "truncated": false,
+              "original_len": 3,
+              "sha256": "7e9e5ac30f2216fd0fd6f5faed316f2d5983361a4203c3330cfa46ef65bb4767"
+            },
+            "line": 1
+          }
+        ]
+      }
+    ],
+    "timers": []
+  },
+  "effects": [],
+  "flows": [],
+  "scripts": [],
+  "dependencies": [],
+  "unresolved": [],
+  "unlinked": [],
+  "not_analysed": {
+    "groups": [],
+    "unrecorded": 0
+  },
+  "functions": {
+    "functions": [
+      {
+        "at": {
+          "file": {
+            "text": "index.js",
+            "truncated": false,
+            "original_len": 8,
+            "sha256": "e727e4bdf3657fd1d798edcd6b099d6e092f8573cba266154583a746bba0f346"
+          },
+          "start_line": 1,
+          "end_line": 2,
+          "start_byte": 0,
+          "end_byte": 59
+        },
+        "file": {
+          "text": "index.js",
+          "truncated": false,
+          "original_len": 8,
+          "sha256": "e727e4bdf3657fd1d798edcd6b099d6e092f8573cba266154583a746bba0f346"
+        },
+        "func": 0,
+        "name": null,
+        "lanes": [
+          "immediate"
+        ],
+        "reachable_from_entry": true,
+        "escapes": false,
+        "direct_effects": [],
+        "transitive_effects": [],
+        "unresolved": [],
+        "unfollowed_calls": 3,
+        "calls": [],
+        "callbacks": [],
+        "called_from": [],
+        "followed_calls": [
+          {
+            "to": {
+              "file": {
+                "text": "util.js",
+                "truncated": false,
+                "original_len": 7,
+                "sha256": "e92f63f5acde594e588a7a616b4af3cbfd20cca8ef5a383ba52e2f14915d1ddf"
+              },
+              "func": 1,
+              "name": {
+                "text": "add",
+                "truncated": false,
+                "original_len": 3,
+                "sha256": "7e9e5ac30f2216fd0fd6f5faed316f2d5983361a4203c3330cfa46ef65bb4767"
+              },
+              "line": 1
+            },
+            "spec": {
+              "text": "./util",
+              "truncated": false,
+              "original_len": 6,
+              "sha256": "66355662f722510d0facf86f68466c583ff4cb25e795cd75d97aabbfdf7a22a8"
+            },
+            "name": {
+              "text": "add",
+              "truncated": false,
+              "original_len": 3,
+              "sha256": "7e9e5ac30f2216fd0fd6f5faed316f2d5983361a4203c3330cfa46ef65bb4767"
+            },
+            "start_byte": 47,
+            "end_byte": 56
+          }
+        ],
+        "followed_called_from": [],
+        "facts": [
+          "fact:20fc86e92cbfc568",
+          "fact:6471d2a2a1f54e8d"
+        ]
+      },
+      {
+        "at": {
+          "file": {
+            "text": "util.js",
+            "truncated": false,
+            "original_len": 7,
+            "sha256": "e92f63f5acde594e588a7a616b4af3cbfd20cca8ef5a383ba52e2f14915d1ddf"
+          },
+          "start_line": 1,
+          "end_line": 4,
+          "start_byte": 0,
+          "end_byte": 65
+        },
+        "file": {
+          "text": "util.js",
+          "truncated": false,
+          "original_len": 7,
+          "sha256": "e92f63f5acde594e588a7a616b4af3cbfd20cca8ef5a383ba52e2f14915d1ddf"
+        },
+        "func": 0,
+        "name": null,
+        "lanes": [
+          "immediate"
+        ],
+        "reachable_from_entry": true,
+        "escapes": false,
+        "direct_effects": [],
+        "transitive_effects": [],
+        "unresolved": [],
+        "unfollowed_calls": 0,
+        "calls": [],
+        "callbacks": [],
+        "called_from": [],
+        "followed_calls": [],
+        "followed_called_from": [],
+        "facts": []
+      },
+      {
+        "at": {
+          "file": {
+            "text": "util.js",
+            "truncated": false,
+            "original_len": 7,
+            "sha256": "e92f63f5acde594e588a7a616b4af3cbfd20cca8ef5a383ba52e2f14915d1ddf"
+          },
+          "start_line": 1,
+          "end_line": 3,
+          "start_byte": 0,
+          "end_byte": 38
+        },
+        "file": {
+          "text": "util.js",
+          "truncated": false,
+          "original_len": 7,
+          "sha256": "e92f63f5acde594e588a7a616b4af3cbfd20cca8ef5a383ba52e2f14915d1ddf"
+        },
+        "func": 1,
+        "name": {
+          "text": "add",
+          "truncated": false,
+          "original_len": 3,
+          "sha256": "7e9e5ac30f2216fd0fd6f5faed316f2d5983361a4203c3330cfa46ef65bb4767"
+        },
+        "lanes": [
+          "immediate"
+        ],
+        "reachable_from_entry": true,
+        "escapes": true,
+        "direct_effects": [],
+        "transitive_effects": [],
+        "unresolved": [],
+        "unfollowed_calls": 0,
+        "calls": [],
+        "callbacks": [],
+        "called_from": [],
+        "followed_calls": [],
+        "followed_called_from": [
+          {
+            "file": {
+              "text": "index.js",
+              "truncated": false,
+              "original_len": 8,
+              "sha256": "e727e4bdf3657fd1d798edcd6b099d6e092f8573cba266154583a746bba0f346"
+            },
+            "func": 0,
+            "name": null,
+            "line": 1
+          }
+        ],
+        "facts": []
+      }
+    ],
+    "unplaced_facts": []
+  }
+}

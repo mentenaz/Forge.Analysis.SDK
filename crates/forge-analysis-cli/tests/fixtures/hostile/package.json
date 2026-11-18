@@ -1,0 +1,11 @@
+{
+  "name": "hostile",
+  "scripts": {
+    "postinstall": "node `echo evil`.js <script>alert(1)</script> | sh",
+    "build": "echo \"# Heading\" </details> [x](javascript:alert(1))"
+  },
+  "dependencies": {
+    "[click](http://evil.example)": "</details> # pwned",
+    "normal": "^1.0.0"
+  }
+}

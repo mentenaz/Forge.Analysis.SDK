@@ -297,6 +297,8 @@ pub enum NotAnalysedKind {
     Container,
     CiWorkflow,
     NativeBinary,
+    /// Not valid UTF-8: analysed after replacing the bad bytes, so some text may differ.
+    InvalidUtf8,
     OtherFile,
     TooLarge,
     Symlink,
@@ -327,6 +329,18 @@ pub struct NotAnalysedSection {
     pub unrecorded: u64,
 }
 
+/// A call that was followed to the function it runs, in this or another file.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct CrossCall {
+    pub to: FnLoc,
+    /// The import specifier the call went through.
+    pub spec: Quoted,
+    /// The export that was called (`default` for the default export).
+    pub name: Quoted,
+    pub start_byte: u32,
+    pub end_byte: u32,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct FunctionItem {
     pub at: Span,
@@ -344,6 +358,10 @@ pub struct FunctionItem {
     pub calls: Vec<FnId>,
     pub callbacks: Vec<FnId>,
     pub called_from: Vec<FnId>,
+    /// Calls made through an import that were followed to the function they run.
+    pub followed_calls: Vec<CrossCall>,
+    /// Functions elsewhere that call this one through an import.
+    pub followed_called_from: Vec<FnLoc>,
     /// Every fact inside it, whatever its kind.
     pub facts: Vec<FactId>,
 }

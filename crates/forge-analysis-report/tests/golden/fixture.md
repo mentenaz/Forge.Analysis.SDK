@@ -225,7 +225,7 @@ Another 3 skipped items were counted but not listed, because the intake record l
 
 Every function with its lanes, effects, callers and the facts inside it.
 
-### a.js (2)
+### `a.js` (2)
 
 - top level at line 1
   - runs: immediate
@@ -234,7 +234,7 @@ Every function with its lanes, effects, callers and the facts inside it.
   - runs: deferred
   - facts: `fact:a07b607b83c09a53`, `fact:0e4ff757cc5cba32`, `fact:cf3143cf54501e93`, `fact:173633518a7cb701`
 
-### b.js (1)
+### `b.js` (1)
 
 - top level at line 1
   - runs: none (not reached from an entry)

@@ -805,6 +805,8 @@
         "calls": [],
         "callbacks": [],
         "called_from": [],
+        "followed_calls": [],
+        "followed_called_from": [],
         "facts": [
           "fact:06589c8cb711bcba",
           "fact:0511e22de35daf03",
@@ -849,6 +851,8 @@
         "calls": [],
         "callbacks": [],
         "called_from": [],
+        "followed_calls": [],
+        "followed_called_from": [],
         "facts": [
           "fact:a07b607b83c09a53",
           "fact:0e4ff757cc5cba32",
@@ -887,6 +891,8 @@
         "calls": [],
         "callbacks": [],
         "called_from": [],
+        "followed_calls": [],
+        "followed_called_from": [],
         "facts": [
           "fact:d6c167efacea4263"
         ]

