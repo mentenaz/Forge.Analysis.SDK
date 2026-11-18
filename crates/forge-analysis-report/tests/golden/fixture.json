@@ -1,0 +1,897 @@
+{
+  "header": {
+    "schema": 1,
+    "engine": "test",
+    "catalog_sha256": "2e7d2c03a9507ae265ecf5b5356885a53393a2029d241394997265a1a25aefc6",
+    "snapshot_sha256": "043a718774c572bd8a25adbeb1bfcd5c0256ae11cecf9f9c3f925d0e52beaf89",
+    "mode": "static_only"
+  },
+  "index": [
+    {
+      "section": "overview",
+      "number": 1,
+      "title": "Overview",
+      "explanation": "What was analysed, whether the picture is complete, and one count for everything we could not see.",
+      "count": null,
+      "anchor": "overview"
+    },
+    {
+      "section": "entry_points",
+      "number": 2,
+      "title": "Entry points",
+      "explanation": "What runs first: runtime and install entry files, and declared entries that do not match any analysed file.",
+      "count": 1,
+      "anchor": "entry-points"
+    },
+    {
+      "section": "timeline",
+      "number": 3,
+      "title": "Execution timeline",
+      "explanation": "When code runs: which functions run immediately, later, repeatedly, on events, at exit or at install, and every timer.",
+      "count": 3,
+      "anchor": "execution-timeline"
+    },
+    {
+      "section": "effects",
+      "number": 4,
+      "title": "Effects",
+      "explanation": "What the code does to the outside world: files, network, processes, environment and loading of code, each with its location.",
+      "count": 3,
+      "anchor": "effects"
+    },
+    {
+      "section": "flows",
+      "number": 5,
+      "title": "Data flows",
+      "explanation": "Data from the network or a file that can reach code execution or a command, from where it enters to where it is used.",
+      "count": 1,
+      "anchor": "data-flows"
+    },
+    {
+      "section": "scripts",
+      "number": 6,
+      "title": "Install scripts and shell commands",
+      "explanation": "Every package.json script, when it runs, and the commands inside it that we could not follow.",
+      "count": 1,
+      "anchor": "install-scripts-and-shell-commands"
+    },
+    {
+      "section": "dependencies",
+      "number": 7,
+      "title": "Dependencies",
+      "explanation": "Every declared dependency with where its code comes from: registry, git, URL, local path or bundled.",
+      "count": 2,
+      "anchor": "dependencies"
+    },
+    {
+      "section": "unresolved",
+      "number": 8,
+      "title": "Unresolved",
+      "explanation": "Places where static analysis cannot say what happens (computed code, dynamic loads, shell commands). Each one hides behaviour.",
+      "count": 3,
+      "anchor": "unresolved"
+    },
+    {
+      "section": "unlinked",
+      "number": 9,
+      "title": "Unlinked imports",
+      "explanation": "Imports we could not follow to their source: packages, missing files and names that are not exported.",
+      "count": 3,
+      "anchor": "unlinked-imports"
+    },
+    {
+      "section": "not_analysed",
+      "number": 10,
+      "title": "Not analysed",
+      "explanation": "Files and folders that were not read as code, by kind, and anything skipped by a limit.",
+      "count": 5,
+      "anchor": "not-analysed"
+    },
+    {
+      "section": "functions",
+      "number": 11,
+      "title": "Function index",
+      "explanation": "Every function with its lanes, effects, callers and the facts inside it.",
+      "count": 3,
+      "anchor": "function-index"
+    }
+  ],
+  "overview": {
+    "files_analysed": 2,
+    "files_not_analysed": 2,
+    "functions": 3,
+    "facts": 13,
+    "links_made": 2,
+    "completeness": "incomplete",
+    "coverage": [
+      {
+        "section": "unresolved",
+        "label": "places where static analysis cannot say what happens",
+        "count": 3
+      },
+      {
+        "section": "unlinked",
+        "label": "imports not followed to their source",
+        "count": 3
+      },
+      {
+        "section": "entry_points",
+        "label": "declared entry points that match no analysed file",
+        "count": 0
+      },
+      {
+        "section": "not_analysed",
+        "label": "files or folders not read as code",
+        "count": 5
+      },
+      {
+        "section": "dependencies",
+        "label": "dependencies whose own code and install scripts were not analysed",
+        "count": 1
+      }
+    ],
+    "fact_counts": [
+      {
+        "kind": "entry",
+        "count": 0
+      },
+      {
+        "kind": "import",
+        "count": 1
+      },
+      {
+        "kind": "call",
+        "count": 1
+      },
+      {
+        "kind": "effect",
+        "count": 3
+      },
+      {
+        "kind": "timer",
+        "count": 1
+      },
+      {
+        "kind": "lifecycle_script",
+        "count": 1
+      },
+      {
+        "kind": "dependency",
+        "count": 2
+      },
+      {
+        "kind": "unresolved",
+        "count": 3
+      },
+      {
+        "kind": "flow",
+        "count": 1
+      }
+    ]
+  },
+  "entry_points": {
+    "basis": "declared",
+    "runtime": [
+      {
+        "text": "a.js",
+        "truncated": false,
+        "original_len": 4,
+        "sha256": "dc5985b2a377c4ea735c99979da277be3bd24be88cf411c11b52b5c3f9570536"
+      }
+    ],
+    "install": [],
+    "issues": []
+  },
+  "timeline": {
+    "lanes": [
+      {
+        "lane": "immediate",
+        "functions": [
+          {
+            "file": {
+              "text": "a.js",
+              "truncated": false,
+              "original_len": 4,
+              "sha256": "dc5985b2a377c4ea735c99979da277be3bd24be88cf411c11b52b5c3f9570536"
+            },
+            "func": 0,
+            "name": null,
+            "line": 1
+          }
+        ]
+      },
+      {
+        "lane": "deferred",
+        "functions": [
+          {
+            "file": {
+              "text": "a.js",
+              "truncated": false,
+              "original_len": 4,
+              "sha256": "dc5985b2a377c4ea735c99979da277be3bd24be88cf411c11b52b5c3f9570536"
+            },
+            "func": 1,
+            "name": {
+              "text": "helper",
+              "truncated": false,
+              "original_len": 6,
+              "sha256": "e81d3b0e9d82feaaf5f6e55bdff24731d7eee08632ffa63801e6397290c5d20a"
+            },
+            "line": 4
+          }
+        ]
+      }
+    ],
+    "timers": [
+      {
+        "id": "fact:eb1d7990b2535690",
+        "at": {
+          "file": {
+            "text": "a.js",
+            "truncated": false,
+            "original_len": 4,
+            "sha256": "dc5985b2a377c4ea735c99979da277be3bd24be88cf411c11b52b5c3f9570536"
+          },
+          "start_line": 3,
+          "end_line": 3,
+          "start_byte": 300,
+          "end_byte": 305
+        },
+        "detail": {
+          "text": "t",
+          "truncated": false,
+          "original_len": 1,
+          "sha256": "e3b98a4da31a127d4bde6e43033f66ba274cab0eb7eb1c70ec41402bf6273dd8"
+        },
+        "timing": {
+          "lane": "deferred",
+          "delay_ms": {
+            "known": 10
+          },
+          "cleared": null
+        },
+        "in_fn": {
+          "file": {
+            "text": "a.js",
+            "truncated": false,
+            "original_len": 4,
+            "sha256": "dc5985b2a377c4ea735c99979da277be3bd24be88cf411c11b52b5c3f9570536"
+          },
+          "func": 0,
+          "name": null,
+          "line": 1
+        },
+        "lanes": [
+          "immediate"
+        ],
+        "reachable": true
+      }
+    ]
+  },
+  "effects": [
+    {
+      "effect": "fs_delete",
+      "items": [
+        {
+          "id": "fact:a07b607b83c09a53",
+          "at": {
+            "file": {
+              "text": "a.js",
+              "truncated": false,
+              "original_len": 4,
+              "sha256": "dc5985b2a377c4ea735c99979da277be3bd24be88cf411c11b52b5c3f9570536"
+            },
+            "start_line": 5,
+            "end_line": 5,
+            "start_byte": 500,
+            "end_byte": 505
+          },
+          "detail": {
+            "text": "x",
+            "truncated": false,
+            "original_len": 1,
+            "sha256": "2d711642b726b04401627ca9fbac32f5c8530fb1903cc4db02258717921a4881"
+          },
+          "url": null,
+          "in_fn": {
+            "file": {
+              "text": "a.js",
+              "truncated": false,
+              "original_len": 4,
+              "sha256": "dc5985b2a377c4ea735c99979da277be3bd24be88cf411c11b52b5c3f9570536"
+            },
+            "func": 1,
+            "name": {
+              "text": "helper",
+              "truncated": false,
+              "original_len": 6,
+              "sha256": "e81d3b0e9d82feaaf5f6e55bdff24731d7eee08632ffa63801e6397290c5d20a"
+            },
+            "line": 4
+          },
+          "lanes": [
+            "deferred"
+          ],
+          "reachable": true
+        }
+      ]
+    },
+    {
+      "effect": "net_out",
+      "items": [
+        {
+          "id": "fact:0511e22de35daf03",
+          "at": {
+            "file": {
+              "text": "a.js",
+              "truncated": false,
+              "original_len": 4,
+              "sha256": "dc5985b2a377c4ea735c99979da277be3bd24be88cf411c11b52b5c3f9570536"
+            },
+            "start_line": 2,
+            "end_line": 2,
+            "start_byte": 200,
+            "end_byte": 205
+          },
+          "detail": {
+            "text": "x",
+            "truncated": false,
+            "original_len": 1,
+            "sha256": "2d711642b726b04401627ca9fbac32f5c8530fb1903cc4db02258717921a4881"
+          },
+          "url": null,
+          "in_fn": {
+            "file": {
+              "text": "a.js",
+              "truncated": false,
+              "original_len": 4,
+              "sha256": "dc5985b2a377c4ea735c99979da277be3bd24be88cf411c11b52b5c3f9570536"
+            },
+            "func": 0,
+            "name": null,
+            "line": 1
+          },
+          "lanes": [
+            "immediate"
+          ],
+          "reachable": true
+        }
+      ]
+    },
+    {
+      "effect": "fs_read",
+      "items": [
+        {
+          "id": "fact:d6c167efacea4263",
+          "at": {
+            "file": {
+              "text": "b.js",
+              "truncated": false,
+              "original_len": 4,
+              "sha256": "41d3e1ce7c366144d43201b66b8732780392eab1cc2944869b15357c96631fd8"
+            },
+            "start_line": 1,
+            "end_line": 1,
+            "start_byte": 10,
+            "end_byte": 15
+          },
+          "detail": {
+            "text": "x",
+            "truncated": false,
+            "original_len": 1,
+            "sha256": "2d711642b726b04401627ca9fbac32f5c8530fb1903cc4db02258717921a4881"
+          },
+          "url": null,
+          "in_fn": {
+            "file": {
+              "text": "b.js",
+              "truncated": false,
+              "original_len": 4,
+              "sha256": "41d3e1ce7c366144d43201b66b8732780392eab1cc2944869b15357c96631fd8"
+            },
+            "func": 0,
+            "name": null,
+            "line": 1
+          },
+          "lanes": [],
+          "reachable": false
+        }
+      ]
+    }
+  ],
+  "flows": [
+    {
+      "id": "fact:173633518a7cb701",
+      "at": {
+        "file": {
+          "text": "a.js",
+          "truncated": false,
+          "original_len": 4,
+          "sha256": "dc5985b2a377c4ea735c99979da277be3bd24be88cf411c11b52b5c3f9570536"
+        },
+        "start_line": 9,
+        "end_line": 9,
+        "start_byte": 900,
+        "end_byte": 905
+      },
+      "origin": {
+        "file": {
+          "text": "a.js",
+          "truncated": false,
+          "original_len": 4,
+          "sha256": "dc5985b2a377c4ea735c99979da277be3bd24be88cf411c11b52b5c3f9570536"
+        },
+        "start_line": 8,
+        "end_line": 8,
+        "start_byte": 800,
+        "end_byte": 805
+      },
+      "detail": {
+        "text": "fetch",
+        "truncated": false,
+        "original_len": 5,
+        "sha256": "e7d3799ecc09f5cbc446aa0a79bb1fb9d0126395fa19a5903b7425f42e5e92e7"
+      },
+      "in_fn": {
+        "file": {
+          "text": "a.js",
+          "truncated": false,
+          "original_len": 4,
+          "sha256": "dc5985b2a377c4ea735c99979da277be3bd24be88cf411c11b52b5c3f9570536"
+        },
+        "func": 1,
+        "name": {
+          "text": "helper",
+          "truncated": false,
+          "original_len": 6,
+          "sha256": "e81d3b0e9d82feaaf5f6e55bdff24731d7eee08632ffa63801e6397290c5d20a"
+        },
+        "line": 4
+      },
+      "lanes": [
+        "deferred"
+      ],
+      "reachable": true
+    }
+  ],
+  "scripts": [
+    {
+      "id": "fact:b934746d524b34da",
+      "at": {
+        "file": {
+          "text": "package.json",
+          "truncated": false,
+          "original_len": 12,
+          "sha256": "7ae45ad102eab3b6d7e7896acd08c427a9b25b346470d7bc6507b6481575d519"
+        },
+        "start_line": 4,
+        "end_line": 4,
+        "start_byte": 40,
+        "end_byte": 60
+      },
+      "name": {
+        "text": "postinstall",
+        "truncated": false,
+        "original_len": 11,
+        "sha256": "b7bed52642190d60236c5c1670142b732793f371fbc6e1cc3d3070c6e43420a1"
+      },
+      "trigger": "install",
+      "command": {
+        "text": "curl x | sh",
+        "truncated": false,
+        "original_len": 11,
+        "sha256": "a49e7322879b508315216932484ab33ee6052833f93ea74ce332df4e65e8fb12"
+      },
+      "unfollowed": [
+        {
+          "text": "curl",
+          "truncated": false,
+          "original_len": 4,
+          "sha256": "427e4b79b1f0fc90306cbe064b1297b21dc6835bfa656d3bf46bc156e3f24bb0"
+        },
+        {
+          "text": "sh",
+          "truncated": false,
+          "original_len": 2,
+          "sha256": "89c4ec9f6b3f1086b158d8ef03dfe8155e6f79d9e66434b8f9b3432fe8720e50"
+        }
+      ]
+    }
+  ],
+  "dependencies": [
+    {
+      "id": "fact:1896fcda9229aea1",
+      "at": {
+        "file": {
+          "text": "package.json",
+          "truncated": false,
+          "original_len": 12,
+          "sha256": "7ae45ad102eab3b6d7e7896acd08c427a9b25b346470d7bc6507b6481575d519"
+        },
+        "start_line": 8,
+        "end_line": 8,
+        "start_byte": 100,
+        "end_byte": 105
+      },
+      "name": {
+        "text": "lodash",
+        "truncated": false,
+        "original_len": 6,
+        "sha256": "94a755535d135f12850ccd5848d10cc7266bbcdb74ad22c7817228ce7abaa506"
+      },
+      "info": {
+        "section": "dependencies",
+        "spec": {
+          "text": "1",
+          "truncated": false,
+          "original_len": 1,
+          "sha256": "6b86b273ff34fce19d6b804eff5a3f5747ada4eaa22f1d49c01e52ddb7875b4b"
+        },
+        "source": "registry"
+      }
+    },
+    {
+      "id": "fact:7932a808c7a5a296",
+      "at": {
+        "file": {
+          "text": "package.json",
+          "truncated": false,
+          "original_len": 12,
+          "sha256": "7ae45ad102eab3b6d7e7896acd08c427a9b25b346470d7bc6507b6481575d519"
+        },
+        "start_line": 8,
+        "end_line": 8,
+        "start_byte": 110,
+        "end_byte": 115
+      },
+      "name": {
+        "text": "mine",
+        "truncated": false,
+        "original_len": 4,
+        "sha256": "3fd30542fe3f61b14bd4a4b2dc0b6fb30fa6f63ebce52dd1778aaa8c4dc02cff"
+      },
+      "info": {
+        "section": "dependencies",
+        "spec": {
+          "text": "1",
+          "truncated": false,
+          "original_len": 1,
+          "sha256": "6b86b273ff34fce19d6b804eff5a3f5747ada4eaa22f1d49c01e52ddb7875b4b"
+        },
+        "source": "local_path"
+      }
+    }
+  ],
+  "unresolved": [
+    {
+      "reason": "eval",
+      "items": [
+        {
+          "id": "fact:0e4ff757cc5cba32",
+          "at": {
+            "file": {
+              "text": "a.js",
+              "truncated": false,
+              "original_len": 4,
+              "sha256": "dc5985b2a377c4ea735c99979da277be3bd24be88cf411c11b52b5c3f9570536"
+            },
+            "start_line": 6,
+            "end_line": 6,
+            "start_byte": 600,
+            "end_byte": 605
+          },
+          "detail": {
+            "text": "u",
+            "truncated": false,
+            "original_len": 1,
+            "sha256": "0bfe935e70c321c7ca3afc75ce0d0ca2f98b5422e008bb31c00c6d7f1f1c0ad6"
+          },
+          "in_fn": {
+            "file": {
+              "text": "a.js",
+              "truncated": false,
+              "original_len": 4,
+              "sha256": "dc5985b2a377c4ea735c99979da277be3bd24be88cf411c11b52b5c3f9570536"
+            },
+            "func": 1,
+            "name": {
+              "text": "helper",
+              "truncated": false,
+              "original_len": 6,
+              "sha256": "e81d3b0e9d82feaaf5f6e55bdff24731d7eee08632ffa63801e6397290c5d20a"
+            },
+            "line": 4
+          },
+          "lanes": [
+            "deferred"
+          ],
+          "reachable": true
+        }
+      ]
+    },
+    {
+      "reason": "shell_command",
+      "items": [
+        {
+          "id": "fact:3068ce58618e9e9b",
+          "at": {
+            "file": {
+              "text": "package.json",
+              "truncated": false,
+              "original_len": 12,
+              "sha256": "7ae45ad102eab3b6d7e7896acd08c427a9b25b346470d7bc6507b6481575d519"
+            },
+            "start_line": 4,
+            "end_line": 4,
+            "start_byte": 40,
+            "end_byte": 60
+          },
+          "detail": {
+            "text": "curl",
+            "truncated": false,
+            "original_len": 4,
+            "sha256": "427e4b79b1f0fc90306cbe064b1297b21dc6835bfa656d3bf46bc156e3f24bb0"
+          },
+          "in_fn": null,
+          "lanes": [],
+          "reachable": null
+        },
+        {
+          "id": "fact:550c7b07faad34eb",
+          "at": {
+            "file": {
+              "text": "package.json",
+              "truncated": false,
+              "original_len": 12,
+              "sha256": "7ae45ad102eab3b6d7e7896acd08c427a9b25b346470d7bc6507b6481575d519"
+            },
+            "start_line": 4,
+            "end_line": 4,
+            "start_byte": 40,
+            "end_byte": 60
+          },
+          "detail": {
+            "text": "sh",
+            "truncated": false,
+            "original_len": 2,
+            "sha256": "89c4ec9f6b3f1086b158d8ef03dfe8155e6f79d9e66434b8f9b3432fe8720e50"
+          },
+          "in_fn": null,
+          "lanes": [],
+          "reachable": null
+        }
+      ]
+    }
+  ],
+  "unlinked": [
+    {
+      "reason": "missing_file",
+      "items": [
+        {
+          "spec": {
+            "text": "./gone",
+            "truncated": false,
+            "original_len": 6,
+            "sha256": "c422fa89339235100344b7eff9173d4cb80901a74f020c59f41d337bf9801379"
+          },
+          "name": null,
+          "from": [
+            {
+              "file": {
+                "text": "b.js",
+                "truncated": false,
+                "original_len": 4,
+                "sha256": "41d3e1ce7c366144d43201b66b8732780392eab1cc2944869b15357c96631fd8"
+              },
+              "func": 0,
+              "name": null,
+              "line": 1
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "reason": "external_package",
+      "items": [
+        {
+          "spec": {
+            "text": "lodash",
+            "truncated": false,
+            "original_len": 6,
+            "sha256": "94a755535d135f12850ccd5848d10cc7266bbcdb74ad22c7817228ce7abaa506"
+          },
+          "name": null,
+          "from": [
+            {
+              "file": {
+                "text": "a.js",
+                "truncated": false,
+                "original_len": 4,
+                "sha256": "dc5985b2a377c4ea735c99979da277be3bd24be88cf411c11b52b5c3f9570536"
+              },
+              "func": 0,
+              "name": null,
+              "line": 1
+            },
+            {
+              "file": {
+                "text": "a.js",
+                "truncated": false,
+                "original_len": 4,
+                "sha256": "dc5985b2a377c4ea735c99979da277be3bd24be88cf411c11b52b5c3f9570536"
+              },
+              "func": 1,
+              "name": {
+                "text": "helper",
+                "truncated": false,
+                "original_len": 6,
+                "sha256": "e81d3b0e9d82feaaf5f6e55bdff24731d7eee08632ffa63801e6397290c5d20a"
+              },
+              "line": 4
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "not_analysed": {
+    "groups": [
+      {
+        "kind": "npm_config",
+        "items": [
+          {
+            "path": {
+              "text": ".npmrc",
+              "truncated": false,
+              "original_len": 6,
+              "sha256": "e813096d69c49812e40e00be9ac8fa14d77f0ec1f97ab4c45cb096b3bedd35de"
+            },
+            "size": 5,
+            "kind": "npm_config"
+          }
+        ]
+      },
+      {
+        "kind": "shell_script",
+        "items": [
+          {
+            "path": {
+              "text": "run.sh",
+              "truncated": false,
+              "original_len": 6,
+              "sha256": "d31ce0453051853c17ba2a5225b3d1bfab548e095bab0967d6acfd1b3ce1b35d"
+            },
+            "size": 10,
+            "kind": "shell_script"
+          }
+        ]
+      }
+    ],
+    "unrecorded": 3
+  },
+  "functions": {
+    "functions": [
+      {
+        "at": {
+          "file": {
+            "text": "a.js",
+            "truncated": false,
+            "original_len": 4,
+            "sha256": "dc5985b2a377c4ea735c99979da277be3bd24be88cf411c11b52b5c3f9570536"
+          },
+          "start_line": 1,
+          "end_line": 1,
+          "start_byte": 0,
+          "end_byte": 50
+        },
+        "file": {
+          "text": "a.js",
+          "truncated": false,
+          "original_len": 4,
+          "sha256": "dc5985b2a377c4ea735c99979da277be3bd24be88cf411c11b52b5c3f9570536"
+        },
+        "func": 0,
+        "name": null,
+        "lanes": [
+          "immediate"
+        ],
+        "reachable_from_entry": true,
+        "escapes": false,
+        "direct_effects": [],
+        "transitive_effects": [],
+        "unresolved": [],
+        "unfollowed_calls": 0,
+        "calls": [],
+        "callbacks": [],
+        "called_from": [],
+        "facts": [
+          "fact:06589c8cb711bcba",
+          "fact:0511e22de35daf03",
+          "fact:eb1d7990b2535690"
+        ]
+      },
+      {
+        "at": {
+          "file": {
+            "text": "a.js",
+            "truncated": false,
+            "original_len": 4,
+            "sha256": "dc5985b2a377c4ea735c99979da277be3bd24be88cf411c11b52b5c3f9570536"
+          },
+          "start_line": 4,
+          "end_line": 4,
+          "start_byte": 100,
+          "end_byte": 150
+        },
+        "file": {
+          "text": "a.js",
+          "truncated": false,
+          "original_len": 4,
+          "sha256": "dc5985b2a377c4ea735c99979da277be3bd24be88cf411c11b52b5c3f9570536"
+        },
+        "func": 1,
+        "name": {
+          "text": "helper",
+          "truncated": false,
+          "original_len": 6,
+          "sha256": "e81d3b0e9d82feaaf5f6e55bdff24731d7eee08632ffa63801e6397290c5d20a"
+        },
+        "lanes": [
+          "deferred"
+        ],
+        "reachable_from_entry": true,
+        "escapes": false,
+        "direct_effects": [],
+        "transitive_effects": [],
+        "unresolved": [],
+        "unfollowed_calls": 0,
+        "calls": [],
+        "callbacks": [],
+        "called_from": [],
+        "facts": [
+          "fact:a07b607b83c09a53",
+          "fact:0e4ff757cc5cba32",
+          "fact:cf3143cf54501e93",
+          "fact:173633518a7cb701"
+        ]
+      },
+      {
+        "at": {
+          "file": {
+            "text": "b.js",
+            "truncated": false,
+            "original_len": 4,
+            "sha256": "41d3e1ce7c366144d43201b66b8732780392eab1cc2944869b15357c96631fd8"
+          },
+          "start_line": 1,
+          "end_line": 1,
+          "start_byte": 0,
+          "end_byte": 50
+        },
+        "file": {
+          "text": "b.js",
+          "truncated": false,
+          "original_len": 4,
+          "sha256": "41d3e1ce7c366144d43201b66b8732780392eab1cc2944869b15357c96631fd8"
+        },
+        "func": 0,
+        "name": null,
+        "lanes": [],
+        "reachable_from_entry": false,
+        "escapes": false,
+        "direct_effects": [],
+        "transitive_effects": [],
+        "unresolved": [],
+        "unfollowed_calls": 0,
+        "calls": [],
+        "callbacks": [],
+        "called_from": [],
+        "facts": [
+          "fact:d6c167efacea4263"
+        ]
+      }
+    ],
+    "unplaced_facts": []
+  }
+}
