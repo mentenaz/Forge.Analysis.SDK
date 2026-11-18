@@ -37,11 +37,14 @@ What was analysed, whether the picture is complete, and one count for everything
 | declared entry points that match no analysed file | 0 | [Entry points](#entry-points) |
 | files or folders not read as code | 5 | [Not analysed](#not-analysed) |
 | dependencies whose own code and install scripts were not analysed | 1 | [Dependencies](#dependencies) |
+| calls whose target we could not see (no function followed, no fact) | 0 | [Function index](#function-index) |
 
 - Files analysed: 2
 - Files not analysed: 2
 - Functions: 3
 - Cross-file links made: 2
+- Unresolved facts not listed as open because their call was followed to its source: 0
+- Note: 1 of 3 functions are not reached from any entry point by a call, a callback or a name used as a value we could follow. They are listed in the function index and their facts are reported, but nothing says they run.
 - Facts found: 13
 - Facts by kind: 0 entry, 1 import, 1 call, 3 effect, 1 timer, 1 script, 2 dependency, 3 unresolved, 1 flow
 
@@ -172,8 +175,8 @@ Text is turned into code and run; what it does cannot be read from the source.
 
 A command in a script that is not `node <file>` or `npm run <script>`, or one built at run time.
 
-- `package.json:4`: `curl`
 - `package.json:4`: `sh`
+- `package.json:4`: `curl`
 
 [Back to the index](#index)
 
@@ -229,15 +232,15 @@ Every function with its lanes, effects, callers and the facts inside it.
 
 - top level at line 1
   - runs: immediate
-  - facts: `fact:06589c8cb711bcba`, `fact:0511e22de35daf03`, `fact:eb1d7990b2535690`
+  - facts: `fact:06589c8cb711bcba`, `fact:f1890ba685587673`, `fact:eb1d7990b2535690`
 - `helper` at line 4
   - runs: deferred
-  - facts: `fact:a07b607b83c09a53`, `fact:0e4ff757cc5cba32`, `fact:cf3143cf54501e93`, `fact:173633518a7cb701`
+  - facts: `fact:09823b8c596fb089`, `fact:d5303add7d613da5`, `fact:cf3143cf54501e93`, `fact:173633518a7cb701`
 
 ### `b.js` (1)
 
 - top level at line 1
   - runs: none (not reached from an entry)
-  - facts: `fact:d6c167efacea4263`
+  - facts: `fact:03a802737548469f`
 
 [Back to the index](#index)

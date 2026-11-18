@@ -6,9 +6,9 @@
 
 use crate::imports::callgraph::Graph;
 use crate::imports::exports::Extracted;
-use crate::imports::link::{ExportName, ExtCall, LinkInfo, LocalEdges};
+use crate::imports::link::{ExportName, ExtCall, ExtRef, LinkInfo, LocalEdges};
 use forge_analysis_schema::{
-    Effect, EffectUse, FactKind, FnId, FunctionSummary, Lane, Quoted, Span, StaticFact,
+    ByteRange, Effect, EffectUse, FactKind, FnId, FunctionSummary, Lane, Quoted, Span, StaticFact,
     UnresolvedReason,
 };
 use std::collections::{BTreeMap, BTreeSet};
@@ -65,6 +65,11 @@ pub fn summarize(
         callbacks[c.from as usize].insert(c.to);
         called_from[c.to as usize].insert(c.from);
     }
+    // A function named as a value may run, so it is listed with the ones handed off.
+    for &(a, b) in &graph.references {
+        callbacks[a as usize].insert(b);
+        called_from[b as usize].insert(a);
+    }
 
     let ids = |s: &BTreeSet<u32>| s.iter().map(|&x| FnId(x)).collect::<Vec<_>>();
     graph
@@ -84,6 +89,11 @@ pub fn summarize(
             lanes: lanes[i].iter().copied().collect(),
             reachable_from_entry: !lanes[i].is_empty(),
             unfollowed_calls: f.unfollowed_calls,
+            unfollowed_sites: f
+                .unfollowed_sites
+                .iter()
+                .map(|&(s, e)| ByteRange { start_byte: s, end_byte: e })
+                .collect(),
             escapes: graph.escaped.contains(&f.id),
         })
         .collect()
@@ -134,7 +144,19 @@ pub fn link_info(
             .iter()
             .map(|c| (c.from, c.to, timer_lane.get(&c.call).copied()))
             .collect(),
+        refs: graph.references.clone(),
     };
+    let mut ext_refs: Vec<ExtRef> = Vec::new();
+    for raw in &graph.ext_refs {
+        let Some((spec, bound)) = bind(raw.decl_start) else { continue };
+        let name = match bound {
+            Bound::Default => ExportName::Default,
+            Bound::Named(n) => ExportName::Named(n),
+            // A namespace used as a value is not one function.
+            Bound::Namespace => continue,
+        };
+        ext_refs.push(ExtRef { from: raw.from, spec, name });
+    }
     let mut ext_calls = extracted.ext_calls;
     for raw in &graph.ext_calls {
         let Some((spec, bound)) = bind(raw.decl_start) else { continue };
@@ -147,7 +169,7 @@ pub fn link_info(
         };
         ext_calls.push(ExtCall { from: raw.from, site: raw.site, spec, name });
     }
-    LinkInfo { exports: extracted.exports, imports: extracted.imports, ext_calls, edges, direct }
+    LinkInfo { exports: extracted.exports, imports: extracted.imports, ext_calls, ext_refs, edges, direct }
 }
 
 #[cfg(test)]

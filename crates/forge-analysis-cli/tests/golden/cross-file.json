@@ -2,7 +2,7 @@
   "header": {
     "schema": 1,
     "engine": "forge-analysis 0.0.1",
-    "catalog_sha256": "3964b56eb1f291b361d5245379fe30f34f914abad7446a37f6ac4c56aa0c11e0",
+    "catalog_sha256": "d07904da6193581916ce5290866f86a843b47e51d0ae0122818017134cefef70",
     "snapshot_sha256": "286395761548dfa7a3ee02e6d3ca3534abb33f5af2b50ba052982489a296c0d9",
     "mode": "static_only"
   },
@@ -102,6 +102,7 @@
     "functions": 7,
     "facts": 16,
     "links_made": 4,
+    "unresolved_cleared_by_links": 1,
     "completeness": "incomplete",
     "coverage": [
       {
@@ -127,6 +128,11 @@
       {
         "section": "dependencies",
         "label": "dependencies whose own code and install scripts were not analysed",
+        "count": 0
+      },
+      {
+        "section": "functions",
+        "label": "calls whose target we could not see (no function followed, no fact)",
         "count": 0
       }
     ],
@@ -167,7 +173,9 @@
         "kind": "flow",
         "count": 0
       }
-    ]
+    ],
+    "mirrored_output": [],
+    "unreached_functions": 2
   },
   "entry_points": {
     "basis": "declared",
@@ -306,7 +314,7 @@
       "effect": "process_spawn",
       "items": [
         {
-          "id": "fact:0bac39e12220c3da",
+          "id": "fact:c90798328b471b56",
           "at": {
             "file": {
               "text": "runner.js",
@@ -348,7 +356,7 @@
       "effect": "fs_delete",
       "items": [
         {
-          "id": "fact:1764ad4094257cb8",
+          "id": "fact:6f8704b8ffefc0bd",
           "at": {
             "file": {
               "text": "orphan.js",
@@ -393,7 +401,7 @@
       "reason": "computed_access",
       "items": [
         {
-          "id": "fact:4258b73ee550cc1a",
+          "id": "fact:d87af0f9b1320a05",
           "at": {
             "file": {
               "text": "runner.js",
@@ -439,7 +447,7 @@
       "reason": "uncovered_module",
       "items": [
         {
-          "id": "fact:72428e957c1e45ae",
+          "id": "fact:6406d7e97408dbf1",
           "at": {
             "file": {
               "text": "main.js",
@@ -480,7 +488,7 @@
       "reason": "parse_failed",
       "items": [
         {
-          "id": "fact:5dccd2a31f00f049",
+          "id": "fact:378ba1a3fe935540",
           "at": {
             "file": {
               "text": "broken.js",
@@ -594,6 +602,7 @@
       ]
     }
   ],
+  "package_calls": [],
   "not_analysed": {
     "groups": [],
     "unrecorded": 0
@@ -630,6 +639,10 @@
         "transitive_effects": [],
         "unresolved": [],
         "unfollowed_calls": 0,
+        "calls_followed_across_files": 0,
+        "calls_matched_to_a_fact": 0,
+        "calls_not_traced": 0,
+        "calls_into_packages": [],
         "calls": [],
         "callbacks": [],
         "called_from": [],
@@ -670,6 +683,10 @@
         "transitive_effects": [],
         "unresolved": [],
         "unfollowed_calls": 0,
+        "calls_followed_across_files": 0,
+        "calls_matched_to_a_fact": 0,
+        "calls_not_traced": 0,
+        "calls_into_packages": [],
         "calls": [],
         "callbacks": [],
         "called_from": [],
@@ -709,6 +726,10 @@
         ],
         "unresolved": [],
         "unfollowed_calls": 2,
+        "calls_followed_across_files": 1,
+        "calls_matched_to_a_fact": 1,
+        "calls_not_traced": 0,
+        "calls_into_packages": [],
         "calls": [],
         "callbacks": [
           1
@@ -744,6 +765,7 @@
               "original_len": 3,
               "sha256": "acba25512100f80b56fc3ccd14c65be55d94800cda77585c5f41a887e398f9be"
             },
+            "line": 5,
             "start_byte": 132,
             "end_byte": 141
           }
@@ -754,7 +776,7 @@
           "fact:e5ba01ae63ea9ccd",
           "fact:3aad1bf36a45fb26",
           "fact:da767f241ea70a1d",
-          "fact:efab61581da7098d",
+          "fact:5fff27dfd029eb22",
           "fact:b16b8df71b81b888",
           "fact:0aaa5afc057b9479"
         ]
@@ -791,6 +813,10 @@
           "uncovered_module"
         ],
         "unfollowed_calls": 1,
+        "calls_followed_across_files": 0,
+        "calls_matched_to_a_fact": 1,
+        "calls_not_traced": 0,
+        "calls_into_packages": [],
         "calls": [],
         "callbacks": [],
         "called_from": [
@@ -799,7 +825,7 @@
         "followed_calls": [],
         "followed_called_from": [],
         "facts": [
-          "fact:72428e957c1e45ae"
+          "fact:6406d7e97408dbf1"
         ]
       },
       {
@@ -829,7 +855,7 @@
         "direct_effects": [
           {
             "effect": "fs_delete",
-            "fact": "fact:1764ad4094257cb8"
+            "fact": "fact:6f8704b8ffefc0bd"
           }
         ],
         "transitive_effects": [
@@ -837,6 +863,10 @@
         ],
         "unresolved": [],
         "unfollowed_calls": 2,
+        "calls_followed_across_files": 0,
+        "calls_matched_to_a_fact": 2,
+        "calls_not_traced": 0,
+        "calls_into_packages": [],
         "calls": [],
         "callbacks": [],
         "called_from": [],
@@ -845,7 +875,7 @@
         "facts": [
           "fact:6f61be9e7537cc5e",
           "fact:604213d2ac79fa54",
-          "fact:1764ad4094257cb8"
+          "fact:6f8704b8ffefc0bd"
         ]
       },
       {
@@ -878,6 +908,10 @@
         "transitive_effects": [],
         "unresolved": [],
         "unfollowed_calls": 0,
+        "calls_followed_across_files": 0,
+        "calls_matched_to_a_fact": 0,
+        "calls_not_traced": 0,
+        "calls_into_packages": [],
         "calls": [],
         "callbacks": [],
         "called_from": [],
@@ -921,7 +955,7 @@
         "direct_effects": [
           {
             "effect": "process_spawn",
-            "fact": "fact:0bac39e12220c3da"
+            "fact": "fact:c90798328b471b56"
           }
         ],
         "transitive_effects": [
@@ -931,6 +965,10 @@
           "computed_access"
         ],
         "unfollowed_calls": 1,
+        "calls_followed_across_files": 0,
+        "calls_matched_to_a_fact": 1,
+        "calls_not_traced": 0,
+        "calls_into_packages": [],
         "calls": [],
         "callbacks": [],
         "called_from": [],
@@ -950,13 +988,13 @@
         ],
         "facts": [
           "fact:5d6d958f4743937b",
-          "fact:0bac39e12220c3da",
-          "fact:4258b73ee550cc1a"
+          "fact:c90798328b471b56",
+          "fact:d87af0f9b1320a05"
         ]
       }
     ],
     "unplaced_facts": [
-      "fact:5dccd2a31f00f049"
+      "fact:378ba1a3fe935540"
     ]
   }
 }

@@ -4,7 +4,7 @@
 - Schema: 1
 - Mode: static only (no code was run)
 - Snapshot: `cba6ce1d98dfe0b5012bf70cc0e5f73700b73588bc6c75ae16a5b38c530e52b5`
-- Catalog: `3964b56eb1f291b361d5245379fe30f34f914abad7446a37f6ac4c56aa0c11e0`
+- Catalog: `d07904da6193581916ce5290866f86a843b47e51d0ae0122818017134cefef70`
 
 <a id="index"></a>
 
@@ -28,7 +28,7 @@
 
 What was analysed, whether the picture is complete, and one count for everything we could not see.
 
-**Status: complete.** Nothing was left unseen.
+**Status: incomplete.** Some of the code could not be seen. Each line below says how much, and links to the section that lists every item.
 
 | What we could not see | Count | Listed in |
 |---|---|---|
@@ -37,11 +37,13 @@ What was analysed, whether the picture is complete, and one count for everything
 | declared entry points that match no analysed file | 0 | [Entry points](#entry-points) |
 | files or folders not read as code | 0 | [Not analysed](#not-analysed) |
 | dependencies whose own code and install scripts were not analysed | 0 | [Dependencies](#dependencies) |
+| calls whose target we could not see (no function followed, no fact) | 1 | [Function index](#function-index) |
 
 - Files analysed: 2
 - Files not analysed: 0
 - Functions: 3
 - Cross-file links made: 2
+- Unresolved facts not listed as open because their call was followed to its source: 1
 - Facts found: 2
 - Facts by kind: 0 entry, 1 import, 0 call, 0 effect, 0 timer, 0 script, 0 dependency, 1 unresolved, 0 flow
 
@@ -171,9 +173,9 @@ Every function with its lanes, effects, callers and the facts inside it.
 
 - top level at line 1
   - runs: immediate
-  - calls not followed to a function in this file: 3
-  - followed call to `add` in `util.js`:1 (through `./util`, export `add`, bytes 47-56)
-  - facts: `fact:20fc86e92cbfc568`, `fact:6471d2a2a1f54e8d`
+  - calls to something other than a function in this file: 3 (1 followed across files, 1 matched to a fact, 1 not traced to any code)
+  - followed call at line 2 to `add` in `util.js` line 1 (through `./util`, export `add`)
+  - facts: `fact:20fc86e92cbfc568`, `fact:85fc4adfeb497561`
 
 ### `util.js` (2)
 

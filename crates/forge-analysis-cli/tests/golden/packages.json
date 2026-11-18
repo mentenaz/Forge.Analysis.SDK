@@ -1,0 +1,612 @@
+{
+  "header": {
+    "schema": 1,
+    "engine": "forge-analysis 0.0.1",
+    "catalog_sha256": "d07904da6193581916ce5290866f86a843b47e51d0ae0122818017134cefef70",
+    "snapshot_sha256": "d44f12d7976ed85c78472e2e037262cf742ebbc1ff3a7abd01cb3dfe62cd0884",
+    "mode": "static_only"
+  },
+  "index": [
+    {
+      "section": "overview",
+      "number": 1,
+      "title": "Overview",
+      "explanation": "What was analysed, whether the picture is complete, and one count for everything we could not see.",
+      "count": null,
+      "anchor": "overview"
+    },
+    {
+      "section": "entry_points",
+      "number": 2,
+      "title": "Entry points",
+      "explanation": "What runs first: runtime and install entry files, and declared entries that do not match any analysed file.",
+      "count": 1,
+      "anchor": "entry-points"
+    },
+    {
+      "section": "timeline",
+      "number": 3,
+      "title": "Execution timeline",
+      "explanation": "When code runs: which functions run immediately, later, repeatedly, on events, at exit or at install, and every timer.",
+      "count": 2,
+      "anchor": "execution-timeline"
+    },
+    {
+      "section": "effects",
+      "number": 4,
+      "title": "Effects",
+      "explanation": "What the code does to the outside world: files, network, processes, environment and loading of code, each with its location.",
+      "count": 0,
+      "anchor": "effects"
+    },
+    {
+      "section": "flows",
+      "number": 5,
+      "title": "Data flows",
+      "explanation": "Data from the network or a file that can reach code execution or a command, from where it enters to where it is used.",
+      "count": 0,
+      "anchor": "data-flows"
+    },
+    {
+      "section": "scripts",
+      "number": 6,
+      "title": "Install scripts and shell commands",
+      "explanation": "Every package.json script, when it runs, and the commands inside it that we could not follow.",
+      "count": 0,
+      "anchor": "install-scripts-and-shell-commands"
+    },
+    {
+      "section": "dependencies",
+      "number": 7,
+      "title": "Dependencies",
+      "explanation": "Every declared dependency with where its code comes from: registry, git, URL, local path or bundled.",
+      "count": 0,
+      "anchor": "dependencies"
+    },
+    {
+      "section": "unresolved",
+      "number": 8,
+      "title": "Unresolved",
+      "explanation": "Places where static analysis cannot say what happens (computed code, dynamic loads, shell commands). Each one hides behaviour.",
+      "count": 0,
+      "anchor": "unresolved"
+    },
+    {
+      "section": "unlinked",
+      "number": 9,
+      "title": "Unlinked imports",
+      "explanation": "Imports we could not follow to their source: packages, missing files and names that are not exported.",
+      "count": 2,
+      "anchor": "unlinked-imports"
+    },
+    {
+      "section": "not_analysed",
+      "number": 10,
+      "title": "Not analysed",
+      "explanation": "Files and folders that were not read as code, by kind, and anything skipped by a limit.",
+      "count": 0,
+      "anchor": "not-analysed"
+    },
+    {
+      "section": "functions",
+      "number": 11,
+      "title": "Function index",
+      "explanation": "Every function with its lanes, effects, callers and the facts inside it.",
+      "count": 3,
+      "anchor": "function-index"
+    }
+  ],
+  "overview": {
+    "files_analysed": 1,
+    "files_not_analysed": 0,
+    "functions": 3,
+    "facts": 7,
+    "links_made": 0,
+    "unresolved_cleared_by_links": 0,
+    "completeness": "incomplete",
+    "coverage": [
+      {
+        "section": "unresolved",
+        "label": "places where static analysis cannot say what happens",
+        "count": 0
+      },
+      {
+        "section": "unlinked",
+        "label": "imports not followed to their source",
+        "count": 2
+      },
+      {
+        "section": "entry_points",
+        "label": "declared entry points that match no analysed file",
+        "count": 0
+      },
+      {
+        "section": "not_analysed",
+        "label": "files or folders not read as code",
+        "count": 0
+      },
+      {
+        "section": "dependencies",
+        "label": "dependencies whose own code and install scripts were not analysed",
+        "count": 0
+      },
+      {
+        "section": "functions",
+        "label": "calls whose target we could not see (no function followed, no fact)",
+        "count": 0
+      }
+    ],
+    "fact_counts": [
+      {
+        "kind": "entry",
+        "count": 0
+      },
+      {
+        "kind": "import",
+        "count": 3
+      },
+      {
+        "kind": "call",
+        "count": 1
+      },
+      {
+        "kind": "effect",
+        "count": 0
+      },
+      {
+        "kind": "timer",
+        "count": 0
+      },
+      {
+        "kind": "lifecycle_script",
+        "count": 0
+      },
+      {
+        "kind": "dependency",
+        "count": 0
+      },
+      {
+        "kind": "unresolved",
+        "count": 3
+      },
+      {
+        "kind": "flow",
+        "count": 0
+      }
+    ],
+    "mirrored_output": [],
+    "unreached_functions": 1
+  },
+  "entry_points": {
+    "basis": "declared",
+    "runtime": [
+      {
+        "text": "app.js",
+        "truncated": false,
+        "original_len": 6,
+        "sha256": "e07d531ac040ce3f40e0ce632ac2a059d7cd60f20e61f78268ac3be015b3b28f"
+      }
+    ],
+    "install": [],
+    "issues": []
+  },
+  "timeline": {
+    "lanes": [
+      {
+        "lane": "immediate",
+        "functions": [
+          {
+            "file": {
+              "text": "app.js",
+              "truncated": false,
+              "original_len": 6,
+              "sha256": "e07d531ac040ce3f40e0ce632ac2a059d7cd60f20e61f78268ac3be015b3b28f"
+            },
+            "func": 0,
+            "name": null,
+            "line": 1
+          },
+          {
+            "file": {
+              "text": "app.js",
+              "truncated": false,
+              "original_len": 6,
+              "sha256": "e07d531ac040ce3f40e0ce632ac2a059d7cd60f20e61f78268ac3be015b3b28f"
+            },
+            "func": 1,
+            "name": {
+              "text": "view",
+              "truncated": false,
+              "original_len": 4,
+              "sha256": "2bcb43cbc8f6b7ef66331532881143fcbae60a879db3a8fb853f645bb24c2b3c"
+            },
+            "line": 4
+          }
+        ]
+      }
+    ],
+    "timers": []
+  },
+  "effects": [],
+  "flows": [],
+  "scripts": [],
+  "dependencies": [],
+  "unresolved": [],
+  "unlinked": [
+    {
+      "reason": "external_package",
+      "items": [
+        {
+          "spec": {
+            "text": "ink",
+            "truncated": false,
+            "original_len": 3,
+            "sha256": "b728b7e775f708faf513b988271e39176d3efb8efcb6523124e0592d7c7b4165"
+          },
+          "name": null,
+          "from": [
+            {
+              "file": {
+                "text": "app.js",
+                "truncated": false,
+                "original_len": 6,
+                "sha256": "e07d531ac040ce3f40e0ce632ac2a059d7cd60f20e61f78268ac3be015b3b28f"
+              },
+              "func": 0,
+              "name": null,
+              "line": 1
+            }
+          ]
+        },
+        {
+          "spec": {
+            "text": "react",
+            "truncated": false,
+            "original_len": 5,
+            "sha256": "275976081ce1abf67779eb3c388b5e14531082e52137502e264776e1a6a11595"
+          },
+          "name": null,
+          "from": [
+            {
+              "file": {
+                "text": "app.js",
+                "truncated": false,
+                "original_len": 6,
+                "sha256": "e07d531ac040ce3f40e0ce632ac2a059d7cd60f20e61f78268ac3be015b3b28f"
+              },
+              "func": 0,
+              "name": null,
+              "line": 1
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "package_calls": [
+    {
+      "spec": {
+        "text": "react",
+        "truncated": false,
+        "original_len": 5,
+        "sha256": "275976081ce1abf67779eb3c388b5e14531082e52137502e264776e1a6a11595"
+      },
+      "calls": 2,
+      "functions": 2,
+      "items": [
+        {
+          "id": "fact:ddc7df3b7874275e",
+          "at": {
+            "file": {
+              "text": "app.js",
+              "truncated": false,
+              "original_len": 6,
+              "sha256": "e07d531ac040ce3f40e0ce632ac2a059d7cd60f20e61f78268ac3be015b3b28f"
+            },
+            "start_line": 4,
+            "end_line": 4,
+            "start_byte": 105,
+            "end_byte": 131
+          },
+          "detail": {
+            "text": "React.createElement('div')",
+            "truncated": false,
+            "original_len": 26,
+            "sha256": "d94c76e239779e5f931c50eb091ee60a13dd196e9830cf1477258122b115363d"
+          },
+          "in_fn": {
+            "file": {
+              "text": "app.js",
+              "truncated": false,
+              "original_len": 6,
+              "sha256": "e07d531ac040ce3f40e0ce632ac2a059d7cd60f20e61f78268ac3be015b3b28f"
+            },
+            "func": 1,
+            "name": {
+              "text": "view",
+              "truncated": false,
+              "original_len": 4,
+              "sha256": "2bcb43cbc8f6b7ef66331532881143fcbae60a879db3a8fb853f645bb24c2b3c"
+            },
+            "line": 4
+          },
+          "lanes": [
+            "immediate"
+          ],
+          "reachable": true
+        },
+        {
+          "id": "fact:09cbef54f86a6978",
+          "at": {
+            "file": {
+              "text": "app.js",
+              "truncated": false,
+              "original_len": 6,
+              "sha256": "e07d531ac040ce3f40e0ce632ac2a059d7cd60f20e61f78268ac3be015b3b28f"
+            },
+            "start_line": 5,
+            "end_line": 5,
+            "start_byte": 161,
+            "end_byte": 178
+          },
+          "detail": {
+            "text": "React.useState(0)",
+            "truncated": false,
+            "original_len": 17,
+            "sha256": "7d1d8bd32050b9b9eaa014cd3d14260dd664526081b925a45a76c24e26249152"
+          },
+          "in_fn": {
+            "file": {
+              "text": "app.js",
+              "truncated": false,
+              "original_len": 6,
+              "sha256": "e07d531ac040ce3f40e0ce632ac2a059d7cd60f20e61f78268ac3be015b3b28f"
+            },
+            "func": 2,
+            "name": {
+              "text": "state",
+              "truncated": false,
+              "original_len": 5,
+              "sha256": "4ba69735ca53765ed6a709edb56c6ea236b7193a3b29a6b390c346f0f4340e4e"
+            },
+            "line": 5
+          },
+          "lanes": [],
+          "reachable": false
+        }
+      ]
+    },
+    {
+      "spec": {
+        "text": "ink",
+        "truncated": false,
+        "original_len": 3,
+        "sha256": "b728b7e775f708faf513b988271e39176d3efb8efcb6523124e0592d7c7b4165"
+      },
+      "calls": 1,
+      "functions": 1,
+      "items": [
+        {
+          "id": "fact:3e38faf0f57d911d",
+          "at": {
+            "file": {
+              "text": "app.js",
+              "truncated": false,
+              "original_len": 6,
+              "sha256": "e07d531ac040ce3f40e0ce632ac2a059d7cd60f20e61f78268ac3be015b3b28f"
+            },
+            "start_line": 6,
+            "end_line": 6,
+            "start_byte": 182,
+            "end_byte": 200
+          },
+          "detail": {
+            "text": "ink.render(view())",
+            "truncated": false,
+            "original_len": 18,
+            "sha256": "b14d387e8d695b9aaf7eee6bd7f8564f3eebe56b0be71f3b25a38ba18c9f4ef8"
+          },
+          "in_fn": {
+            "file": {
+              "text": "app.js",
+              "truncated": false,
+              "original_len": 6,
+              "sha256": "e07d531ac040ce3f40e0ce632ac2a059d7cd60f20e61f78268ac3be015b3b28f"
+            },
+            "func": 0,
+            "name": null,
+            "line": 1
+          },
+          "lanes": [
+            "immediate"
+          ],
+          "reachable": true
+        }
+      ]
+    }
+  ],
+  "not_analysed": {
+    "groups": [],
+    "unrecorded": 0
+  },
+  "functions": {
+    "functions": [
+      {
+        "at": {
+          "file": {
+            "text": "app.js",
+            "truncated": false,
+            "original_len": 6,
+            "sha256": "e07d531ac040ce3f40e0ce632ac2a059d7cd60f20e61f78268ac3be015b3b28f"
+          },
+          "start_line": 1,
+          "end_line": 7,
+          "start_byte": 0,
+          "end_byte": 223
+        },
+        "file": {
+          "text": "app.js",
+          "truncated": false,
+          "original_len": 6,
+          "sha256": "e07d531ac040ce3f40e0ce632ac2a059d7cd60f20e61f78268ac3be015b3b28f"
+        },
+        "func": 0,
+        "name": null,
+        "lanes": [
+          "immediate"
+        ],
+        "reachable_from_entry": true,
+        "escapes": false,
+        "direct_effects": [],
+        "transitive_effects": [],
+        "unresolved": [],
+        "unfollowed_calls": 2,
+        "calls_followed_across_files": 0,
+        "calls_matched_to_a_fact": 2,
+        "calls_not_traced": 0,
+        "calls_into_packages": [
+          {
+            "spec": {
+              "text": "ink",
+              "truncated": false,
+              "original_len": 3,
+              "sha256": "b728b7e775f708faf513b988271e39176d3efb8efcb6523124e0592d7c7b4165"
+            },
+            "count": 1
+          }
+        ],
+        "calls": [
+          1
+        ],
+        "callbacks": [],
+        "called_from": [],
+        "followed_calls": [],
+        "followed_called_from": [],
+        "facts": [
+          "fact:0e8974d2e99a81f2",
+          "fact:da328684252dd3ea",
+          "fact:aec0e42933347a43",
+          "fact:3e38faf0f57d911d",
+          "fact:aea167d1093d7fd1"
+        ]
+      },
+      {
+        "at": {
+          "file": {
+            "text": "app.js",
+            "truncated": false,
+            "original_len": 6,
+            "sha256": "e07d531ac040ce3f40e0ce632ac2a059d7cd60f20e61f78268ac3be015b3b28f"
+          },
+          "start_line": 4,
+          "end_line": 4,
+          "start_byte": 80,
+          "end_byte": 134
+        },
+        "file": {
+          "text": "app.js",
+          "truncated": false,
+          "original_len": 6,
+          "sha256": "e07d531ac040ce3f40e0ce632ac2a059d7cd60f20e61f78268ac3be015b3b28f"
+        },
+        "func": 1,
+        "name": {
+          "text": "view",
+          "truncated": false,
+          "original_len": 4,
+          "sha256": "2bcb43cbc8f6b7ef66331532881143fcbae60a879db3a8fb853f645bb24c2b3c"
+        },
+        "lanes": [
+          "immediate"
+        ],
+        "reachable_from_entry": true,
+        "escapes": false,
+        "direct_effects": [],
+        "transitive_effects": [],
+        "unresolved": [],
+        "unfollowed_calls": 1,
+        "calls_followed_across_files": 0,
+        "calls_matched_to_a_fact": 1,
+        "calls_not_traced": 0,
+        "calls_into_packages": [
+          {
+            "spec": {
+              "text": "react",
+              "truncated": false,
+              "original_len": 5,
+              "sha256": "275976081ce1abf67779eb3c388b5e14531082e52137502e264776e1a6a11595"
+            },
+            "count": 1
+          }
+        ],
+        "calls": [],
+        "callbacks": [],
+        "called_from": [
+          0
+        ],
+        "followed_calls": [],
+        "followed_called_from": [],
+        "facts": [
+          "fact:ddc7df3b7874275e"
+        ]
+      },
+      {
+        "at": {
+          "file": {
+            "text": "app.js",
+            "truncated": false,
+            "original_len": 6,
+            "sha256": "e07d531ac040ce3f40e0ce632ac2a059d7cd60f20e61f78268ac3be015b3b28f"
+          },
+          "start_line": 5,
+          "end_line": 5,
+          "start_byte": 135,
+          "end_byte": 181
+        },
+        "file": {
+          "text": "app.js",
+          "truncated": false,
+          "original_len": 6,
+          "sha256": "e07d531ac040ce3f40e0ce632ac2a059d7cd60f20e61f78268ac3be015b3b28f"
+        },
+        "func": 2,
+        "name": {
+          "text": "state",
+          "truncated": false,
+          "original_len": 5,
+          "sha256": "4ba69735ca53765ed6a709edb56c6ea236b7193a3b29a6b390c346f0f4340e4e"
+        },
+        "lanes": [],
+        "reachable_from_entry": false,
+        "escapes": false,
+        "direct_effects": [],
+        "transitive_effects": [],
+        "unresolved": [],
+        "unfollowed_calls": 1,
+        "calls_followed_across_files": 0,
+        "calls_matched_to_a_fact": 1,
+        "calls_not_traced": 0,
+        "calls_into_packages": [
+          {
+            "spec": {
+              "text": "react",
+              "truncated": false,
+              "original_len": 5,
+              "sha256": "275976081ce1abf67779eb3c388b5e14531082e52137502e264776e1a6a11595"
+            },
+            "count": 1
+          }
+        ],
+        "calls": [],
+        "callbacks": [],
+        "called_from": [],
+        "followed_calls": [],
+        "followed_called_from": [],
+        "facts": [
+          "fact:09cbef54f86a6978"
+        ]
+      }
+    ],
+    "unplaced_facts": []
+  }
+}

@@ -29,6 +29,7 @@ pub fn analyze_package(file: &RelPath, src: &str, has_binding_gyp: bool) -> Opti
     let mut k = Pk::new(file, src);
     k.run(has_binding_gyp);
     k.facts.sort_by_key(|f| (f.at().start_byte, f.at().end_byte));
+    forge_analysis_schema::number_repeats(&mut k.facts);
     Some(PackageAnalysis { facts: k.facts, entries: k.wants })
 }
 
@@ -955,6 +956,20 @@ mod tests {
         assert_eq!(t["start"], Manual);
         assert_eq!(t["preorphan"], Manual, "no script called `orphan`");
         valid(&a);
+    }
+
+    #[test]
+    fn two_identical_commands_in_one_script_are_two_facts_with_two_ids() {
+        let a = analyze_package(
+            &RelPath::new("package.json").unwrap(),
+            r#"{"scripts":{"a":"echo x && echo y"}}"#,
+            false,
+        )
+        .unwrap();
+        let ids: std::collections::BTreeSet<String> =
+            a.facts.iter().map(|f| f.id().as_str().to_string()).collect();
+        assert_eq!(ids.len(), a.facts.len(), "no fact shares an ID");
+        assert_eq!(a.facts.iter().filter(|f| f.unresolved.is_some()).count(), 2);
     }
 
     #[test]

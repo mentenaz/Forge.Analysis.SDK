@@ -36,6 +36,7 @@ fn summary(file: &str, id: u32, name: Option<&str>, line: u32, lanes: Vec<Lane>)
         reachable_from_entry: !lanes.is_empty(),
         lanes,
         unfollowed_calls: 0,
+        unfollowed_sites: vec![],
         escapes: false,
     }
 }
@@ -342,7 +343,7 @@ fn classify_path_knows_the_usual_suspects() {
 #[test]
 fn coverage_always_lists_every_line_and_the_status_follows_it() {
     let r = fixture().run();
-    assert_eq!(r.overview.coverage.len(), 5);
+    assert_eq!(r.overview.coverage.len(), 6);
     let c = |s: SectionId| r.overview.coverage.iter().find(|c| c.section == s).unwrap().count;
     assert_eq!(c(SectionId::Unresolved), 3);
     assert_eq!(c(SectionId::Unlinked), 3);
@@ -473,7 +474,7 @@ fn markdown_has_the_index_and_a_heading_for_every_section() {
 fn markdown_says_the_status_and_lists_every_coverage_line() {
     let md = to_markdown(&fixture().run());
     assert!(md.contains("**Status: incomplete.**"));
-    assert_eq!(md.matches("| [").count(), 5, "one table row per coverage line");
+    assert_eq!(md.matches("| [").count(), 6, "one table row per coverage line");
 }
 
 #[test]
@@ -617,4 +618,36 @@ fn a_hostile_file_name_cannot_inject_into_the_function_index_heading_or_summary(
             }
         }
     }
+}
+
+#[test]
+fn built_output_that_mirrors_source_is_flagged_and_nothing_is_dropped() {
+    let files = vec![
+        rp("src/a.ts"),
+        rp("src/ui/b.tsx"),
+        rp("dist/a.js"),
+        rp("dist/ui/b.js"),
+        rp("tools/x.js"),
+    ];
+    let notes = crate::build::mirror_notes(&files);
+    assert_eq!(notes.len(), 1);
+    assert_eq!(notes[0].output_dir.text(), "dist");
+    assert_eq!(notes[0].source_dir.text(), "src");
+    assert_eq!(notes[0].matching_files, 2);
+    assert_eq!(notes[0].output_files, 2);
+}
+
+#[test]
+fn an_unrelated_dist_folder_is_not_flagged() {
+    let files = vec![rp("src/a.ts"), rp("dist/other.js")];
+    assert!(crate::build::mirror_notes(&files).is_empty());
+}
+
+#[test]
+fn the_overview_counts_functions_no_entry_reaches_and_does_not_change_the_status() {
+    let r = fixture().run();
+    let unreached = r.functions.functions.iter().filter(|f| !f.reachable_from_entry).count() as u32;
+    assert_eq!(r.overview.unreached_functions, unreached);
+    assert!(r.overview.coverage.iter().all(|c| !c.label.contains("reach")), "a note, not a coverage line");
+    assert!(crate::markdown::to_markdown(&r).contains("not reached from any entry point") == (unreached > 0));
 }

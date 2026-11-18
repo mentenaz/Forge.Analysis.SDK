@@ -4,7 +4,7 @@
 - Schema: 1
 - Mode: static only (no code was run)
 - Snapshot: `286395761548dfa7a3ee02e6d3ca3534abb33f5af2b50ba052982489a296c0d9`
-- Catalog: `3964b56eb1f291b361d5245379fe30f34f914abad7446a37f6ac4c56aa0c11e0`
+- Catalog: `d07904da6193581916ce5290866f86a843b47e51d0ae0122818017134cefef70`
 
 <a id="index"></a>
 
@@ -37,11 +37,14 @@ What was analysed, whether the picture is complete, and one count for everything
 | declared entry points that match no analysed file | 0 | [Entry points](#entry-points) |
 | files or folders not read as code | 0 | [Not analysed](#not-analysed) |
 | dependencies whose own code and install scripts were not analysed | 0 | [Dependencies](#dependencies) |
+| calls whose target we could not see (no function followed, no fact) | 0 | [Function index](#function-index) |
 
 - Files analysed: 5
 - Files not analysed: 0
 - Functions: 7
 - Cross-file links made: 4
+- Unresolved facts not listed as open because their call was followed to its source: 1
+- Note: 2 of 7 functions are not reached from any entry point by a call, a callback or a name used as a value we could follow. They are listed in the function index and their facts are reported, but nothing says they run.
 - Facts found: 16
 - Facts by kind: 0 entry, 6 import, 3 call, 2 effect, 1 timer, 0 script, 0 dependency, 4 unresolved, 0 flow
 
@@ -224,22 +227,22 @@ Every function with its lanes, effects, callers and the facts inside it.
 - top level at line 1
   - runs: immediate
   - can reach: starts other programs
-  - calls not followed to a function in this file: 2
-  - followed call to `run` in `runner.js`:2 (through `./runner.js`, export `run`, bytes 132-141)
-  - facts: `fact:9e3950ebcee45faf`, `fact:e5ba01ae63ea9ccd`, `fact:3aad1bf36a45fb26`, `fact:da767f241ea70a1d`, `fact:efab61581da7098d`, `fact:b16b8df71b81b888`, `fact:0aaa5afc057b9479`
+  - calls to something other than a function in this file: 2 (1 followed across files, 1 matched to a fact, 0 not traced to any code)
+  - followed call at line 5 to `run` in `runner.js` line 2 (through `./runner.js`, export `run`)
+  - facts: `fact:9e3950ebcee45faf`, `fact:e5ba01ae63ea9ccd`, `fact:3aad1bf36a45fb26`, `fact:da767f241ea70a1d`, `fact:5fff27dfd029eb22`, `fact:b16b8df71b81b888`, `fact:0aaa5afc057b9479`
 - anonymous at line 6
   - runs: deferred
   - unresolved inside: Module our catalog does not cover
-  - calls not followed to a function in this file: 1
-  - facts: `fact:72428e957c1e45ae`
+  - calls to something other than a function in this file: 1 (0 followed across files, 1 matched to a fact, 0 not traced to any code)
+  - facts: `fact:6406d7e97408dbf1`
 
 ### `orphan.js` (1)
 
 - top level at line 1
   - runs: none (not reached from an entry)
   - can reach: deletes files
-  - calls not followed to a function in this file: 2
-  - facts: `fact:6f61be9e7537cc5e`, `fact:604213d2ac79fa54`, `fact:1764ad4094257cb8`
+  - calls to something other than a function in this file: 2 (0 followed across files, 2 matched to a fact, 0 not traced to any code)
+  - facts: `fact:6f61be9e7537cc5e`, `fact:604213d2ac79fa54`, `fact:6f8704b8ffefc0bd`
 
 ### `runner.js` (2)
 
@@ -250,12 +253,12 @@ Every function with its lanes, effects, callers and the facts inside it.
   - runs: immediate; also used as a value, so it may run from elsewhere
   - can reach: starts other programs
   - unresolved inside: Computed property access
-  - calls not followed to a function in this file: 1
+  - calls to something other than a function in this file: 1 (0 followed across files, 1 matched to a fact, 0 not traced to any code)
   - called through an import from: top level in `main.js`
-  - facts: `fact:5d6d958f4743937b`, `fact:0bac39e12220c3da`, `fact:4258b73ee550cc1a`
+  - facts: `fact:5d6d958f4743937b`, `fact:c90798328b471b56`, `fact:d87af0f9b1320a05`
 
 ### Facts not placed in any function (1)
 
-- `fact:5dccd2a31f00f049`
+- `fact:378ba1a3fe935540`
 
 [Back to the index](#index)

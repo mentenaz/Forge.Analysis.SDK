@@ -202,8 +202,12 @@ pub enum ValidationError {
     OriginOnNonFlow,
     ReachabilityMismatch,
     TransitiveMissingDirect,
+    /// `unfollowed_sites` and `unfollowed_calls` disagree.
+    UnfollowedSitesMismatch,
     ScriptMismatch,
     DependencyMismatch,
+    /// A `module` on a fact that is not `Unresolved`.
+    ModuleOnNonUnresolved,
 }
 
 impl UrlValue {
@@ -399,6 +403,10 @@ pub enum UnresolvedReason {
     /// A shell command in a script that we do not follow (anything but `node <file>` and
     /// `npm run <script>` forms), or one whose text is built at run time.
     ShellCommand,
+    /// The file nests brackets so deeply that the parser could overflow its stack on it, or the
+    /// room needed to read it safely could not be reserved, so it was not parsed. Nothing in it
+    /// is known.
+    TooDeeplyNested,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize)]
@@ -434,7 +442,19 @@ pub struct FactId(String);
 
 impl FactId {
     pub fn new(kind: FactKind, at: &Span, detail: Option<&Quoted>) -> Self {
-        let input = format!(
+        Self::with_variant(kind, at, detail, None)
+    }
+
+    /// Like `new`, but a `variant` (the unresolved reason or effect) is mixed in when
+    /// present, so two facts of one kind at one place that differ in why or what stay
+    /// distinct. With no variant the ID is exactly what `new` gives.
+    pub fn with_variant(
+        kind: FactKind,
+        at: &Span,
+        detail: Option<&Quoted>,
+        variant: Option<&str>,
+    ) -> Self {
+        let mut input = format!(
             "{}\0{}\0{}\0{}\0{}",
             kind.tag(),
             at.file.as_quoted().sha256(),
@@ -442,6 +462,10 @@ impl FactId {
             at.end_byte,
             detail.map(|d| d.sha256()).unwrap_or(""),
         );
+        if let Some(v) = variant {
+            input.push('\0');
+            input.push_str(v);
+        }
         let h = Hash::of(input.as_bytes());
         FactId(format!("fact:{}", &h.as_str()[..16]))
     }
@@ -489,9 +513,18 @@ pub struct FunctionSummary {
     /// Calls inside it to something we did not follow (methods, parameters, other files,
     /// built-ins). A count, so the report can say how much was not analysed.
     pub unfollowed_calls: u32,
+    /// Where each of those calls is, in the file (`unfollowed_calls` entries, source order).
+    pub unfollowed_sites: Vec<ByteRange>,
     /// Used as a plain value (stored, returned, exported): it may run from somewhere in this
     /// file's reach that we cannot see, so `reachable_from_entry` can understate it.
     pub escapes: bool,
+}
+
+/// A byte range in a file's text.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize)]
+pub struct ByteRange {
+    pub start_byte: u32,
+    pub end_byte: u32,
 }
 
 impl FunctionSummary {
@@ -506,6 +539,9 @@ impl FunctionSummary {
             .any(|u| !self.transitive_effects.contains(&u.effect))
         {
             errors.push(ValidationError::TransitiveMissingDirect);
+        }
+        if self.unfollowed_sites.len() != self.unfollowed_calls as usize {
+            errors.push(ValidationError::UnfollowedSitesMismatch);
         }
         errors
     }
@@ -610,9 +646,8 @@ pub struct Linked {
 
 /// One thing the parser found. The fields that make up the ID are private, so an ID
 /// can't go stale if someone changes the kind or location afterwards.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct StaticFact {
-    id: FactId,
     kind: FactKind,
     at: Span,
     detail: Option<Quoted>,
@@ -627,15 +662,58 @@ pub struct StaticFact {
     pub within: Option<FnId>,
     /// Only on `LifecycleScript` facts.
     pub script: Option<Script>,
+    /// Only on `Unresolved` facts raised for a call into a module (`UncoveredModule`,
+    /// `UncatalogedMember`): the module the call went through, as normalised (`react`,
+    /// `./util`, `fs`). Not part of the ID.
+    pub module: Option<Quoted>,
     /// Only on `Dependency` facts.
     pub dependency: Option<DependencyInfo>,
+    /// Set only when two facts would otherwise be identical (same kind, place, detail and
+    /// reason: two `echo` commands in one script value). The n-th repeat gets n. Part of the
+    /// ID, so every fact stays its own fact. See `number_repeats`.
+    pub seq: Option<u32>,
+}
+
+/// Gives each repeat of an otherwise identical fact a number, in the order given, so no two
+/// facts share an ID. The first of each keeps `seq: None` and the ID it always had.
+pub fn number_repeats(facts: &mut [StaticFact]) {
+    let mut seen: std::collections::BTreeMap<String, u32> = std::collections::BTreeMap::new();
+    for f in facts.iter_mut() {
+        let n = seen.entry(f.id().as_str().to_string()).or_insert(0);
+        if *n > 0 {
+            f.seq = Some(*n);
+        }
+        *n += 1;
+    }
+}
+
+impl Serialize for StaticFact {
+    fn serialize<S: serde::Serializer>(&self, ser: S) -> Result<S::Ok, S::Error> {
+        use serde::ser::SerializeStruct;
+        let mut st = ser.serialize_struct("StaticFact", 14)?;
+        st.serialize_field("id", &self.id())?;
+        st.serialize_field("kind", &self.kind)?;
+        st.serialize_field("at", &self.at)?;
+        st.serialize_field("detail", &self.detail)?;
+        st.serialize_field("effect", &self.effect)?;
+        st.serialize_field("url", &self.url)?;
+        st.serialize_field("timing", &self.timing)?;
+        st.serialize_field("unresolved", &self.unresolved)?;
+        st.serialize_field("origin", &self.origin)?;
+        st.serialize_field("within", &self.within)?;
+        st.serialize_field("script", &self.script)?;
+        st.serialize_field("module", &self.module)?;
+        st.serialize_field("dependency", &self.dependency)?;
+        if self.seq.is_some() {
+            st.serialize_field("seq", &self.seq)?;
+        }
+        st.end()
+    }
 }
 
 impl StaticFact {
     pub fn new(kind: FactKind, at: Span, detail: Option<Quoted>) -> Self {
-        let id = FactId::new(kind, &at, detail.as_ref());
         Self {
-            id,
             kind,
             at,
             detail,
@@ -646,12 +724,25 @@ impl StaticFact {
             origin: None,
             within: None,
             script: None,
+            module: None,
             dependency: None,
+            seq: None,
         }
     }
 
-    pub fn id(&self) -> &FactId {
-        &self.id
+    /// Computed from the fact's current contents, so it can't go stale when `effect`
+    /// or `unresolved` are set after construction.
+    pub fn id(&self) -> FactId {
+        let mut variant = match (&self.unresolved, &self.effect) {
+            (Some(r), _) => Some(format!("unresolved:{:?}", r)),
+            (None, Some(e)) => Some(format!("effect:{:?}", e)),
+            (None, None) => None,
+        };
+        if let Some(n) = self.seq {
+            let v = variant.get_or_insert_with(String::new);
+            v.push_str(&format!("\0seq:{n}"));
+        }
+        FactId::with_variant(self.kind, &self.at, self.detail.as_ref(), variant.as_deref())
     }
     pub fn kind(&self) -> FactKind {
         self.kind
@@ -686,6 +777,9 @@ impl StaticFact {
         }
         if (self.kind == FactKind::Dependency) != self.dependency.is_some() {
             errors.push(ValidationError::DependencyMismatch);
+        }
+        if self.module.is_some() && self.kind != FactKind::Unresolved {
+            errors.push(ValidationError::ModuleOnNonUnresolved);
         }
         if let Some(origin) = &self.origin {
             errors.extend(origin.validate());
@@ -985,6 +1079,40 @@ mod tests {
     }
 
     #[test]
+    fn identical_repeats_are_numbered_so_no_two_facts_share_an_id() {
+        let mk = || {
+            let mut f = StaticFact::new(FactKind::Unresolved, span(0, 10), Some(Quoted::new("echo")));
+            f.unresolved = Some(UnresolvedReason::ShellCommand);
+            f
+        };
+        let mut v = vec![mk(), mk(), mk()];
+        let first = v[0].id();
+        number_repeats(&mut v);
+        assert_eq!(v[0].id(), first, "the first keeps the ID it always had");
+        assert_eq!(v[0].seq, None);
+        assert_eq!((v[1].seq, v[2].seq), (Some(1), Some(2)));
+        let ids: std::collections::BTreeSet<_> = v.iter().map(|f| f.id()).collect();
+        assert_eq!(ids.len(), 3);
+    }
+
+    #[test]
+    fn two_unresolved_facts_at_one_place_with_different_reasons_get_different_ids() {
+        let mk = |r: UnresolvedReason| {
+            let mut f = StaticFact::new(
+                FactKind::Unresolved,
+                span(0, 10),
+                Some(Quoted::new("join(dir, x)")),
+            );
+            f.unresolved = Some(r);
+            f
+        };
+        let a = mk(UnresolvedReason::ComputedAccess);
+        let b = mk(UnresolvedReason::UncoveredModule);
+        assert_ne!(a.id(), b.id());
+        assert_eq!(a.id(), mk(UnresolvedReason::ComputedAccess).id());
+    }
+
+    #[test]
     fn identical_inputs_give_the_same_id_in_the_expected_shape() {
         let a = FactId::new(FactKind::Call, &span(0, 17), None);
         let b = FactId::new(FactKind::Call, &span(0, 17), None);
@@ -1121,6 +1249,11 @@ mod tests {
             lanes: vec![Lane::Immediate],
             reachable_from_entry: true,
             unfollowed_calls: 3,
+            unfollowed_sites: vec![
+                ByteRange { start_byte: 1, end_byte: 2 },
+                ByteRange { start_byte: 3, end_byte: 4 },
+                ByteRange { start_byte: 5, end_byte: 6 },
+            ],
             escapes: false,
         }
     }
@@ -1145,6 +1278,24 @@ mod tests {
         let mut s = summary();
         s.transitive_effects.clear();
         assert_eq!(s.validate(), vec![ValidationError::TransitiveMissingDirect]);
+    }
+
+    #[test]
+    fn a_module_belongs_only_on_an_unresolved_fact() {
+        let mut call = StaticFact::new(FactKind::Call, span(0, 1), None);
+        call.module = Some(Quoted::new("react"));
+        assert_eq!(call.validate(), vec![ValidationError::ModuleOnNonUnresolved]);
+        let mut u = StaticFact::new(FactKind::Unresolved, span(0, 1), None);
+        u.unresolved = Some(UnresolvedReason::UncoveredModule);
+        u.module = Some(Quoted::new("react"));
+        assert!(u.validate().is_empty());
+    }
+
+    #[test]
+    fn untraced_call_sites_must_match_their_count() {
+        let mut s = summary();
+        s.unfollowed_sites.pop();
+        assert_eq!(s.validate(), vec![ValidationError::UnfollowedSitesMismatch]);
     }
 
     #[test]

@@ -75,13 +75,74 @@ pub fn analyze_file(file: &RelPath, source: &str, catalog: &Catalog) -> Option<F
 /// Like `analyze_file`, and also returns the flow hits.
 pub fn analyze_file_full(file: &RelPath, source: &str, catalog: &Catalog) -> Option<Analysis> {
     let source_type = SourceType::from_path(file.as_quoted().text()).ok()?;
+    if max_bracket_depth(source) > MAX_BRACKET_DEPTH {
+        let mut ctx = Ctx::new(file, source);
+        ctx.too_deep();
+        return Some(Analysis { file: ctx.finish(), flows: Vec::new(), summaries: Vec::new(), link: LinkInfo::default() });
+    }
+    // The parser and our walks recurse on the shape of the code. Run them on a thread with a
+    // large stack so deep but allowed input has room; the depth cap above is what stops hostile
+    // input. If the thread cannot be made, say so rather than fall back to a small stack.
+    let outcome = std::thread::scope(|scope| {
+        std::thread::Builder::new()
+            .stack_size(stack_for(source.len()))
+            .spawn_scoped(scope, || analyze_parsed(file, source, source_type, catalog))
+            .ok()
+            .map(|h| h.join())
+    });
+    match outcome {
+        Some(Ok(a)) => Some(a),
+        // A bug in the analysis is not hidden as a property of the input.
+        Some(Err(panic)) => std::panic::resume_unwind(panic),
+        None => {
+            let mut ctx = Ctx::new(file, source);
+            ctx.too_deep();
+            Some(Analysis { file: ctx.finish(), flows: Vec::new(), summaries: Vec::new(), link: LinkInfo::default() })
+        }
+    }
+}
+
+/// Stack for the thread that parses and walks one file. Code can recurse about once per few
+/// bytes (`a=>a=>a=>`, `a.b.b.b`), so the reservation grows with the file: about 4 KB per byte
+/// in an unoptimised build, which is about twice what the worst chain measured needs (`a=a=a=`). Only the part
+/// touched is committed. If the reservation cannot be made the file is reported, not read.
+fn stack_for(source_len: usize) -> usize {
+    const MIN: usize = 64 * 1024 * 1024;
+    const PER_BYTE: usize = 4096;
+    const MAX: usize = 8 * 1024 * 1024 * 1024;
+    source_len.saturating_mul(PER_BYTE).clamp(MIN, MAX)
+}
+
+/// Deepest nesting of `(`, `[` and `{` allowed. Real code stays far below this; minified bundles
+/// stay below it too. Counted on the raw text, so brackets inside strings count (a file that
+/// has hundreds of unclosed ones in a string is reported, not read).
+pub const MAX_BRACKET_DEPTH: usize = 200;
+
+/// The deepest run of open `(`, `[` and `{` in `source`, counted without recursion.
+pub fn max_bracket_depth(source: &str) -> usize {
+    let mut depth = 0usize;
+    let mut max = 0usize;
+    for b in source.bytes() {
+        match b {
+            b'(' | b'[' | b'{' => {
+                depth += 1;
+                max = max.max(depth);
+            }
+            b')' | b']' | b'}' => depth = depth.saturating_sub(1),
+            _ => {}
+        }
+    }
+    max
+}
+
+fn analyze_parsed(file: &RelPath, source: &str, source_type: SourceType, catalog: &Catalog) -> Analysis {
     let allocator = Allocator::default();
     let ret = Parser::new(&allocator, source, source_type).parse();
 
     if !ret.diagnostics.is_empty() {
         let mut ctx = Ctx::new(file, source);
         ctx.parse_failed();
-        return Some(Analysis { file: ctx.finish(), flows: Vec::new(), summaries: Vec::new(), link: LinkInfo::default() });
+        return Analysis { file: ctx.finish(), flows: Vec::new(), summaries: Vec::new(), link: LinkInfo::default() };
     }
 
     let sem = SemanticBuilder::new().build(&ret.program);
@@ -107,6 +168,8 @@ pub fn analyze_file_full(file: &RelPath, source: &str, catalog: &Catalog) -> Opt
     // Which function each fact is inside, and what each function does and reaches.
     let graph = callgraph::build(&ret.program, sem.semantic.scoping());
     let mut facts = std::mem::take(&mut matcher.ctx.facts);
+    // Before anything copies a fact's ID: identical repeats get their own.
+    forge_analysis_schema::number_repeats(&mut facts);
     let summaries = {
         let ctx = &matcher.ctx;
         summary::summarize(&graph, &mut facts, &|s| ctx.span(s), &|s| ctx.text(s).to_string())
@@ -130,7 +193,7 @@ pub fn analyze_file_full(file: &RelPath, source: &str, catalog: &Catalog) -> Opt
 
     let mut out = matcher.ctx.finish();
     out.facts.sort_by_key(|f| (f.at().start_byte, f.at().end_byte));
-    Some(Analysis { file: out, flows, summaries, link })
+    Analysis { file: out, flows, summaries, link }
 }
 
 /// The identifier at the root of `a`, `a.b`, `a.b.c`. None for anything else.
@@ -373,6 +436,11 @@ impl<'s> Matcher<'s> {
         self.flag_at(call.span, reason);
     }
 
+    fn flag_in(&mut self, sp: OxcSpan, reason: UnresolvedReason, module: &str) {
+        let t = self.ctx.text(sp);
+        self.ctx.unresolved_in(sp, reason, t, Some(module));
+    }
+
     /// The call reaches a module we know nothing, or not enough, about.
     fn unmatched(&mut self, call: &CallExpression<'_>, module: &str) {
         let reason = if self.catalog.knows_module(module) {
@@ -380,7 +448,7 @@ impl<'s> Matcher<'s> {
         } else {
             UnresolvedReason::UncoveredModule
         };
-        self.flag(call, reason);
+        self.flag_in(call.span, reason, module);
     }
 
     /// `module.name(...)` through any route: namespace, alias, or `require("m").name`.
@@ -388,6 +456,15 @@ impl<'s> Matcher<'s> {
         let cat = self.catalog;
         if let Some(entry) = cat.find_function(module, name) {
             self.emit_effect(call, entry);
+        } else if cat.find_known(module, name).is_some() {
+            // Known to do nothing outside the program: a call fact, no effect, nothing unseen.
+            let callee_text = self.ctx.text(call.callee.span());
+            let call_fact = StaticFact::new(
+                FactKind::Call,
+                self.ctx.span(call.span),
+                Some(Quoted::new(callee_text)),
+            );
+            self.ctx.facts.push(call_fact);
         } else {
             self.unmatched(call, module);
         }
@@ -778,7 +855,7 @@ impl<'s> Matcher<'s> {
             } else {
                 UnresolvedReason::UncoveredModule
             };
-            self.flag_at(it.span, reason);
+            self.flag_in(it.span, reason, &m);
         }
     }
 
@@ -1044,7 +1121,7 @@ mod tests {
 
     #[test]
     fn an_uncatalogued_member_of_a_covered_module_is_reported() {
-        let f = run("a.js", r#"const fs = require("fs"); fs.existsSync("a");"#);
+        let f = run("a.js", r#"const fs = require("fs"); fs.watch("a");"#);
         assert!(effect(&f).is_none());
         assert_eq!(reasons(&f), vec![UnresolvedReason::UncatalogedMember]);
     }
@@ -1207,7 +1284,7 @@ mod tests {
 
     #[test]
     fn a_module_the_catalog_does_not_cover_is_reported() {
-        let f = run("a.js", r#"const path = require("path"); path.join("a", "b");"#);
+        let f = run("a.js", r#"const zlib = require("zlib"); zlib.gzipSync("a");"#);
         assert!(effect(&f).is_none());
         assert_eq!(reasons(&f), vec![UnresolvedReason::UncoveredModule]);
     }
@@ -1222,6 +1299,43 @@ mod tests {
     fn an_uncatalogued_constructor_of_a_covered_module_is_reported() {
         let f = run("a.js", r#"const http = require("http"); new http.Agent();"#);
         assert_eq!(reasons(&f), vec![UnresolvedReason::UncatalogedMember]);
+    }
+
+    fn modules(f: &FileImports) -> Vec<Option<String>> {
+        f.facts.iter().filter(|x| x.unresolved.is_some()).map(|x| x.module.as_ref().map(|m| m.text().to_string())).collect()
+    }
+
+    #[test]
+    fn a_call_known_to_have_no_effect_is_a_call_fact_and_nothing_unseen() {
+        let f = run("a.js", "import path from 'path';\nexport const p = path.join('a', 'b');\n");
+        assert!(f.facts.iter().any(|x| x.kind() == FactKind::Call));
+        assert!(!f.facts.iter().any(|x| x.kind() == FactKind::Unresolved || x.kind() == FactKind::Effect));
+    }
+
+    #[test]
+    fn a_member_of_a_known_module_that_is_not_listed_is_still_reported() {
+        let f = run("a.js", "import path from 'path';\nexport const p = path.mystery('a');\n");
+        assert_eq!(reasons(&f), vec![UnresolvedReason::UncatalogedMember]);
+    }
+
+    #[test]
+    fn file_metadata_reads_are_fs_read_effects() {
+        let f = run("a.js", "import fs from 'fs';\nexport const e = fs.existsSync('x.txt');\n");
+        assert!(f.facts.iter().any(|x| x.effect == Some(Effect::FsRead)));
+    }
+
+    #[test]
+    fn a_call_into_a_module_records_which_module() {
+        let f = run("a.js", r#"const zlib = require("node:zlib"); zlib.gzipSync("a"); import React from "react"; React.createElement("div");"#);
+        assert_eq!(modules(&f), vec![Some("zlib".to_string()), Some("react".to_string())]);
+        let g = run("b.js", r#"const ws = require("ws"); new ws.Server();"#);
+        assert_eq!(modules(&g), vec![Some("ws".to_string())]);
+    }
+
+    #[test]
+    fn an_unresolved_fact_that_is_not_a_module_call_has_no_module() {
+        let f = run("a.js", "eval(x);");
+        assert_eq!(modules(&f), vec![None]);
     }
 
     #[test]
@@ -1291,7 +1405,7 @@ mod tests {
 
     #[test]
     fn an_alias_of_an_uncovered_member_is_reported_when_called() {
-        let f = run("a.js", r#"const path = require("path"); const j = path.join; j("a");"#);
+        let f = run("a.js", r#"const zlib = require("zlib"); const j = zlib.gzipSync; j("a");"#);
         assert_eq!(reasons(&f), vec![UnresolvedReason::UncoveredModule]);
     }
 

@@ -115,6 +115,7 @@ fn unresolved_rank(r: UnresolvedReason) -> u8 {
         AmbiguousBinding => 11,
         UnsupportedSyntax => 12,
         ParseFailed => 13,
+        TooDeeplyNested => 14,
     }
 }
 
@@ -227,6 +228,20 @@ pub fn build(input: &ReportInput<'_>) -> Result<Report, BuildError> {
         .iter()
         .map(|c| (c.from.file, c.from.func, c.start_byte, c.end_byte))
         .collect();
+    // A call into an external package (one we saw imported and did not follow) is reported with
+    // its package, not as an open unresolved item: the import already carries "not analysed".
+    let package_specs: std::collections::BTreeSet<String> = linked
+        .unlinked
+        .iter()
+        .filter(|u| u.reason == UnlinkedReason::ExternalPackage)
+        .map(|u| u.spec.text().to_string())
+        .collect();
+    let package_of = |f: &StaticFact| -> Option<Quoted> {
+        match (f.unresolved, &f.module) {
+            (Some(UnresolvedReason::UncoveredModule), Some(m)) if package_specs.contains(m.text()) => Some(m.clone()),
+            _ => None,
+        }
+    };
     let is_followed = |file: &Option<u32>, f: &StaticFact| -> bool {
         match (file, f.unresolved, f.within) {
             (Some(i), Some(UnresolvedReason::UncoveredModule), Some(func)) => {
@@ -260,6 +275,7 @@ pub fn build(input: &ReportInput<'_>) -> Result<Report, BuildError> {
     let mut dependencies: Vec<DependencyItem> = Vec::new();
     let mut unresolved: BTreeMap<u8, (UnresolvedReason, Vec<UnresolvedItem>)> = BTreeMap::new();
     let mut shell: Vec<&StaticFact> = Vec::new();
+    let mut package_map: BTreeMap<(String, String), (Quoted, Vec<UnresolvedItem>)> = BTreeMap::new();
 
     for (file, f) in &facts {
         let place = match file {
@@ -307,7 +323,10 @@ pub fn build(input: &ReportInput<'_>) -> Result<Report, BuildError> {
             }
             _ => {}
         }
-        if let Some(reason) = f.unresolved.filter(|_| !is_followed(file, f)) {
+        if let Some(pkg) = package_of(f).filter(|_| !is_followed(file, f)) {
+            let items = package_map.entry(quoted_key(&pkg)).or_insert_with(|| (pkg.clone(), Vec::new()));
+            items.1.push(UnresolvedItem { id: f.id().clone(), at: f.at().clone(), detail: f.detail().cloned(), place: place.clone() });
+        } else if let Some(reason) = f.unresolved.filter(|_| !is_followed(file, f)) {
             if reason == UnresolvedReason::ShellCommand {
                 shell.push(*f);
             }
@@ -354,6 +373,18 @@ pub fn build(input: &ReportInput<'_>) -> Result<Report, BuildError> {
         items.sort_by_key(|i| span_key(&i.at, &i.id));
         unresolved_groups.push(UnresolvedGroup { reason, items });
     }
+
+    let mut package_calls: Vec<PackageCalls> = Vec::new();
+    for (_, (spec, mut items)) in package_map {
+        items.sort_by_key(|i| span_key(&i.at, &i.id));
+        let functions: std::collections::BTreeSet<(String, u32)> = items
+            .iter()
+            .filter_map(|i| i.place.in_fn.as_ref().map(|f| (f.file.as_quoted().text().to_string(), f.func.0)))
+            .collect();
+        package_calls.push(PackageCalls { spec, calls: items.len() as u32, functions: functions.len() as u32, items });
+    }
+    // Most calls first: that is the package the code leans on most.
+    package_calls.sort_by(|a, b| b.calls.cmp(&a.calls).then_with(|| quoted_key(&a.spec).cmp(&quoted_key(&b.spec))));
 
     // ---- unlinked (merged by what is imported, every importing function kept) ----
     type Key = (String, String, String, String);
@@ -409,8 +440,26 @@ pub fn build(input: &ReportInput<'_>) -> Result<Report, BuildError> {
     let mut still_open: BTreeMap<FnRef, Vec<UnresolvedReason>> = BTreeMap::new();
     for (file, f) in &facts {
         if let (Some(i), Some(reason), Some(func)) = (file, f.unresolved, f.within) {
-            if !is_followed(file, f) {
+            if !is_followed(file, f) && package_of(f).is_none() {
                 still_open.entry(FnRef { file: *i, func }).or_default().push(reason);
+            }
+        }
+    }
+    let mut call_lines: BTreeMap<(u32, FnId, u32, u32), u32> = BTreeMap::new();
+    let mut cleared = 0u32;
+    for (file, f) in &facts {
+        if is_followed(file, f) {
+            cleared += 1;
+            if let (Some(i), Some(func)) = (file, f.within) {
+                call_lines.insert((*i, func, f.at().start_byte, f.at().end_byte), f.at().start_line);
+            }
+        }
+    }
+    let mut pkg_counts: BTreeMap<FnRef, BTreeMap<(String, String), (Quoted, u32)>> = BTreeMap::new();
+    for (file, f) in &facts {
+        if let (Some(i), Some(func), Some(pkg)) = (file, f.within, package_of(f)) {
+            if !is_followed(file, f) {
+                pkg_counts.entry(FnRef { file: *i, func }).or_default().entry(quoted_key(&pkg)).or_insert_with(|| (pkg.clone(), 0)).1 += 1;
             }
         }
     }
@@ -421,6 +470,7 @@ pub fn build(input: &ReportInput<'_>) -> Result<Report, BuildError> {
             to: cx.fn_loc(c.to.file, c.to.func),
             spec: c.spec.clone(),
             name: c.name.clone(),
+            line: call_lines.get(&(c.from.file, c.from.func, c.start_byte, c.end_byte)).copied(),
             start_byte: c.start_byte,
             end_byte: c.end_byte,
         });
@@ -433,9 +483,30 @@ pub fn build(input: &ReportInput<'_>) -> Result<Report, BuildError> {
         v.sort_by_key(|f| (f.file.as_quoted().text().to_string(), f.func));
         v.dedup();
     }
+    // A call that is not to a function in its own file is one of: followed across files, sitting
+    // exactly on a fact, or not traced at all. The last kind is what the coverage line counts.
+    let mut fact_sites: std::collections::BTreeSet<(u32, FnId, u32, u32)> = std::collections::BTreeSet::new();
+    for (file, f) in &facts {
+        if let (Some(i), Some(func)) = (file, f.within) {
+            fact_sites.insert((*i, func, f.at().start_byte, f.at().end_byte));
+        }
+    }
+    let mut not_traced_total = 0u32;
     let mut function_items: Vec<FunctionItem> = Vec::new();
     for (r, s) in &cx.summaries {
         let l = cx.linked_fns.get(r);
+        let (mut by_link, mut by_fact, mut untraced) = (0u32, 0u32, 0u32);
+        for site in &s.unfollowed_sites {
+            let k = (r.file, r.func, site.start_byte, site.end_byte);
+            if followed_sites.contains(&k) {
+                by_link += 1;
+            } else if fact_sites.contains(&k) {
+                by_fact += 1;
+            } else {
+                untraced += 1;
+            }
+        }
+        not_traced_total += untraced;
         function_items.push(FunctionItem {
             at: s.at.clone(),
             file: linked.files[r.file as usize].clone(),
@@ -455,6 +526,13 @@ pub fn build(input: &ReportInput<'_>) -> Result<Report, BuildError> {
                 .filter(|u| *u != UnresolvedReason::UncoveredModule || still_open.get(r).is_some_and(|o| o.contains(u)))
                 .collect(),
             unfollowed_calls: s.unfollowed_calls,
+            calls_followed_across_files: by_link,
+            calls_matched_to_a_fact: by_fact,
+            calls_not_traced: untraced,
+            calls_into_packages: pkg_counts
+                .remove(r)
+                .map(|m| m.into_values().map(|(spec, count)| PackageCount { spec, count }).collect())
+                .unwrap_or_default(),
             calls: s.calls.clone(),
             callbacks: s.callbacks.clone(),
             called_from: s.called_from.clone(),
@@ -483,21 +561,27 @@ pub fn build(input: &ReportInput<'_>) -> Result<Report, BuildError> {
         CoverageLine { section: SectionId::EntryPoints, label: "declared entry points that match no analysed file", count: count(linked.entry_issues.len()) },
         CoverageLine { section: SectionId::NotAnalysed, label: "files or folders not read as code", count: not_analysed_total.min(u32::MAX as u64) as u32 },
         CoverageLine { section: SectionId::Dependencies, label: "dependencies whose own code and install scripts were not analysed", count: count(outside_dependencies) },
+        CoverageLine { section: SectionId::Functions, label: "calls whose target we could not see (no function followed, no fact)", count: not_traced_total },
     ];
     let completeness = if coverage.iter().any(|c| c.count > 0) { Completeness::Incomplete } else { Completeness::Complete };
 
+    let mirrored_output = mirror_notes(&linked.files);
+    let unreached_functions = count(functions.functions.iter().filter(|f| !f.reachable_from_entry).count());
     let overview = Overview {
         files_analysed: count(linked.files.len()),
         files_not_analysed: count(not_analysed.groups.iter().map(|g| g.items.len()).sum()),
         functions: count(functions.functions.len()),
         facts: count(facts.len()),
         links_made: linked.links_made,
+        unresolved_cleared_by_links: cleared,
         completeness,
         coverage,
         fact_counts: FACT_KINDS
             .iter()
             .map(|k| FactCount { kind: *k, count: count(facts.iter().filter(|(_, f)| f.kind() == *k).count()) })
             .collect(),
+        mirrored_output,
+        unreached_functions,
     };
 
     let counts: [Option<u32>; 11] = [
@@ -536,6 +620,7 @@ pub fn build(input: &ReportInput<'_>) -> Result<Report, BuildError> {
         dependencies,
         unresolved: unresolved_groups,
         unlinked: unlinked_groups,
+        package_calls,
         not_analysed,
         functions,
     })
@@ -554,6 +639,7 @@ impl Report {
         self.scripts.iter().for_each(|x| add(&x.id));
         self.dependencies.iter().for_each(|d| add(&d.id));
         self.unresolved.iter().flat_map(|g| &g.items).for_each(|i| add(&i.id));
+        self.package_calls.iter().flat_map(|g| &g.items).for_each(|i| add(&i.id));
         self.functions.functions.iter().flat_map(|f| &f.facts).for_each(&mut add);
         self.functions.unplaced_facts.iter().for_each(&mut add);
         s
@@ -562,4 +648,50 @@ impl Report {
 
 pub fn to_json(report: &Report) -> String {
     serde_json::to_string_pretty(report).expect("a report is always serialisable")
+}
+
+/// Output-like folders (`dist`, `build`, `out`) whose files mostly share names with files under
+/// `src`. Looks only at paths; nothing is dropped or merged.
+pub(crate) fn mirror_notes(files: &[forge_analysis_schema::RelPath]) -> Vec<MirrorNote> {
+    use std::collections::{BTreeMap, BTreeSet};
+    fn stem(p: &str) -> String {
+        let p = p.replace('\\', "/");
+        match p.rfind('.') {
+            Some(i) if i > p.rfind('/').map(|j| j + 1).unwrap_or(0) => p[..i].to_string(),
+            _ => p,
+        }
+    }
+    let mut src: BTreeMap<String, BTreeSet<String>> = BTreeMap::new();
+    let mut out: BTreeMap<(String, String), BTreeSet<String>> = BTreeMap::new();
+    for f in files {
+        let t = f.as_quoted().text().replace('\\', "/");
+        let parts: Vec<&str> = t.split('/').collect();
+        for (i, part) in parts.iter().enumerate() {
+            let prefix = parts[..i].join("/");
+            let rest = stem(&parts[i + 1..].join("/"));
+            if parts.len() <= i + 1 {
+                break;
+            }
+            if *part == "src" {
+                src.entry(prefix.clone()).or_default().insert(rest);
+            } else if matches!(*part, "dist" | "build" | "out") {
+                out.entry((prefix, part.to_string())).or_default().insert(rest);
+            }
+        }
+    }
+    let mut notes = Vec::new();
+    for ((prefix, dir), rests) in &out {
+        let Some(s) = src.get(prefix) else { continue };
+        let matching = rests.iter().filter(|r| s.contains(*r)).count();
+        if matching > 0 && matching * 2 >= rests.len() {
+            let join = |d: &str| if prefix.is_empty() { d.to_string() } else { format!("{prefix}/{d}") };
+            notes.push(MirrorNote {
+                output_dir: Quoted::new(&join(dir)),
+                source_dir: Quoted::new(&join("src")),
+                matching_files: matching as u32,
+                output_files: rests.len() as u32,
+            });
+        }
+    }
+    notes
 }

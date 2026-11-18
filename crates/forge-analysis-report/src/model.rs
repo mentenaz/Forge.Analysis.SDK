@@ -165,10 +165,32 @@ pub struct Overview {
     pub functions: u32,
     pub facts: u32,
     pub links_made: u32,
+    /// Unresolved facts not listed as open because the linker followed their call. Each is
+    /// still a fact, listed in its function.
+    pub unresolved_cleared_by_links: u32,
     pub completeness: Completeness,
     /// Always all lines, zero counts included, so a reader can see each was checked.
     pub coverage: Vec<CoverageLine>,
     pub fact_counts: Vec<FactCount>,
+    /// Folders of built output that look like copies of source folders. Flag only: both
+    /// copies are still analysed and every fact in them is still reported.
+    pub mirrored_output: Vec<MirrorNote>,
+    /// Functions no entry point reaches by any edge we can follow (call, callback or named as a
+    /// value). A note, not a coverage line: they are still listed in the function index and
+    /// their facts are still reported.
+    pub unreached_functions: u32,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct MirrorNote {
+    /// e.g. `dist`
+    pub output_dir: Quoted,
+    /// e.g. `src`
+    pub source_dir: Quoted,
+    /// How many files in the output folder have a same-named file (ignoring extension)
+    /// under the source folder.
+    pub matching_files: u32,
+    pub output_files: u32,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
@@ -282,6 +304,25 @@ pub struct UnlinkedItem {
     pub from: Vec<FnLoc>,
 }
 
+/// Calls made into one external package we did not analyse. Each call is still a fact (listed
+/// here and in its function); they are grouped by package so they do not bury the rest.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct PackageCalls {
+    /// The package specifier as imported (`react`, `react/jsx-runtime`).
+    pub spec: Quoted,
+    pub calls: u32,
+    /// How many different functions make these calls.
+    pub functions: u32,
+    pub items: Vec<UnresolvedItem>,
+}
+
+/// How many calls one function makes into one external package.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct PackageCount {
+    pub spec: Quoted,
+    pub count: u32,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct UnlinkedGroup {
     pub reason: UnlinkedReason,
@@ -337,6 +378,8 @@ pub struct CrossCall {
     pub spec: Quoted,
     /// The export that was called (`default` for the default export).
     pub name: Quoted,
+    /// Line of the call, when a fact at the call says so; the byte range is always there.
+    pub line: Option<u32>,
     pub start_byte: u32,
     pub end_byte: u32,
 }
@@ -355,6 +398,14 @@ pub struct FunctionItem {
     pub transitive_effects: Vec<Effect>,
     pub unresolved: Vec<UnresolvedReason>,
     pub unfollowed_calls: u32,
+    /// Of those calls: followed to a function through an import (listed in `followed_calls`).
+    pub calls_followed_across_files: u32,
+    /// Of those calls: sitting exactly on a fact (effect, import, timer, unresolved...).
+    pub calls_matched_to_a_fact: u32,
+    /// Of those calls: nothing in the analysis says what they run. Counted, not hidden.
+    pub calls_not_traced: u32,
+    /// Calls this function makes into external packages (also facts in `facts`).
+    pub calls_into_packages: Vec<PackageCount>,
     pub calls: Vec<FnId>,
     pub callbacks: Vec<FnId>,
     pub called_from: Vec<FnId>,
@@ -386,6 +437,7 @@ pub struct Report {
     pub dependencies: Vec<DependencyItem>,
     pub unresolved: Vec<UnresolvedGroup>,
     pub unlinked: Vec<UnlinkedGroup>,
+    pub package_calls: Vec<PackageCalls>,
     pub not_analysed: NotAnalysedSection,
     pub functions: FunctionsSection,
 }

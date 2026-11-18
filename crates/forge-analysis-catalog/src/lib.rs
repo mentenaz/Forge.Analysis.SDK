@@ -30,6 +30,26 @@ enum Kind {
 struct RawFile {
     #[serde(default)]
     effect: Vec<RawEntry>,
+    /// Calls known to have no effect outside the program (pure computation).
+    #[serde(default)]
+    known: Vec<RawKnown>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct RawKnown {
+    id: String,
+    module: String,
+    exports: Vec<String>,
+}
+
+/// A module function known to do nothing outside the program: no file, network, process or
+/// environment access. Calling one is recorded as a call, not as something unseen.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct Known {
+    pub id: String,
+    pub module: String,
+    pub exports: Vec<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -98,6 +118,7 @@ pub struct Entry {
 pub enum CatalogError {
     Parse(String),
     BadId { id: String },
+    KnownOverlapsEffect { id: String, module: String, name: String },
     DuplicateId { id: String },
     MissingField { id: String, field: &'static str },
     ForbiddenField { id: String, field: &'static str },
@@ -119,6 +140,7 @@ impl std::error::Error for CatalogError {}
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Catalog {
     entries: Vec<Entry>,
+    known: Vec<Known>,
     version: Hash,
 }
 
@@ -137,12 +159,39 @@ impl Catalog {
         }
         entries.sort_by(|a, b| a.id.cmp(&b.id));
 
+        let mut known = Vec::with_capacity(raw.known.len());
+        for k in raw.known {
+            if !valid_id(&k.id) {
+                return Err(CatalogError::BadId { id: k.id });
+            }
+            if !seen.insert(k.id.clone()) {
+                return Err(CatalogError::DuplicateId { id: k.id });
+            }
+            let module = non_empty(&k.id, k.module, "module")?;
+            let exports = exports_list(&k.id, k.exports)?;
+            for name in &exports {
+                let clash = entries.iter().any(|e| {
+                    matches!(&e.target, Target::Function { module: m, exports: x }
+                        if *m == module && x.contains(name))
+                });
+                if clash {
+                    return Err(CatalogError::KnownOverlapsEffect {
+                        id: k.id.clone(),
+                        module: module.clone(),
+                        name: name.clone(),
+                    });
+                }
+            }
+            known.push(Known { id: k.id, module, exports });
+        }
+        known.sort_by(|a, b| a.id.cmp(&b.id));
+
         // Hash of the canonical form (sorted, validated), not of the raw file text:
         // comments, whitespace and entry order don't change it, real content does.
         let canonical =
-            serde_json::to_vec(&entries).map_err(|e| CatalogError::Parse(e.to_string()))?;
+            serde_json::to_vec(&(&entries, &known)).map_err(|e| CatalogError::Parse(e.to_string()))?;
         let version = Hash::of(&canonical);
-        Ok(Self { entries, version })
+        Ok(Self { entries, known, version })
     }
 
     /// The Node core catalog compiled into the binary.
@@ -153,6 +202,17 @@ impl Catalog {
 
     pub fn entries(&self) -> &[Entry] {
         &self.entries
+    }
+
+    pub fn known(&self) -> &[Known] {
+        &self.known
+    }
+
+    /// True if `module.export` is listed as having no effect outside the program.
+    pub fn find_known(&self, module: &str, export: &str) -> Option<&Known> {
+        self.known
+            .iter()
+            .find(|k| k.module == module && k.exports.iter().any(|x| x == export))
     }
 
     pub fn version_hash(&self) -> &Hash {
@@ -172,6 +232,7 @@ impl Catalog {
         self.entries
             .iter()
             .any(|e| matches!(&e.target, Target::Function { module: m, .. } if m == module))
+            || self.known.iter().any(|k| k.module == module)
     }
 
     /// True if some function entry exports this name, in any module.
@@ -344,6 +405,20 @@ mod tests {
 
     fn one(extra: &str) -> String {
         format!("[[effect]]\nid = \"t.x\"\n{extra}\n")
+    }
+
+    #[test]
+    fn a_known_call_is_found_and_makes_its_module_known() {
+        let c = Catalog::node_defaults();
+        assert!(c.find_known("path", "join").is_some());
+        assert!(c.find_known("path", "nope").is_none());
+        assert!(c.knows_module("path"));
+    }
+
+    #[test]
+    fn a_name_cannot_be_both_an_effect_and_known() {
+        let src = "[[effect]]\nid = \"t.a\"\nkind = \"function\"\nmodule = \"m\"\nexports = [\"f\"]\ncategory = \"fs_read\"\n\n[[known]]\nid = \"t.b\"\nmodule = \"m\"\nexports = [\"f\"]\n";
+        assert!(matches!(Catalog::from_toml(src), Err(CatalogError::KnownOverlapsEffect { .. })));
     }
 
     #[test]

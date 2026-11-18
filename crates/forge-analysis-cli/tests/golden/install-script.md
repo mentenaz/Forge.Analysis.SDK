@@ -4,7 +4,7 @@
 - Schema: 1
 - Mode: static only (no code was run)
 - Snapshot: `21640997110fe94a814caf659f927b541631e8a6969533c39f962f6461898070`
-- Catalog: `3964b56eb1f291b361d5245379fe30f34f914abad7446a37f6ac4c56aa0c11e0`
+- Catalog: `d07904da6193581916ce5290866f86a843b47e51d0ae0122818017134cefef70`
 
 <a id="index"></a>
 
@@ -37,11 +37,14 @@ What was analysed, whether the picture is complete, and one count for everything
 | declared entry points that match no analysed file | 0 | [Entry points](#entry-points) |
 | files or folders not read as code | 3 | [Not analysed](#not-analysed) |
 | dependencies whose own code and install scripts were not analysed | 3 | [Dependencies](#dependencies) |
+| calls whose target we could not see (no function followed, no fact) | 3 | [Function index](#function-index) |
 
 - Files analysed: 3
 - Files not analysed: 3
 - Functions: 7
 - Cross-file links made: 1
+- Unresolved facts not listed as open because their call was followed to its source: 0
+- Note: 1 of 7 functions are not reached from any entry point by a call, a callback or a name used as a value we could follow. They are listed in the function index and their facts are reported, but nothing says they run.
 - Facts found: 22
 - Facts by kind: 0 entry, 2 import, 5 call, 4 effect, 1 timer, 2 script, 4 dependency, 3 unresolved, 1 flow
 
@@ -192,8 +195,8 @@ Text is turned into code and run; what it does cannot be read from the source.
 
 A command in a script that is not `node <file>` or `npm run <script>`, or one built at run time.
 
-- `package.json:6`: `sh`
 - `package.json:6`: `curl`
+- `package.json:6`: `sh`
 
 [Back to the index](#index)
 
@@ -251,28 +254,28 @@ Every function with its lanes, effects, callers and the facts inside it.
 - top level at line 1
   - runs: install
   - can reach: writes files, deletes files, makes network requests, runs code built at run time
-  - calls not followed to a function in this file: 6
-  - facts: `fact:c84dfdaf5bf34872`, `fact:056fe7f3c71e6b50`, `fact:7f00ed5b472bb992`, `fact:4cc140adbcc4fc13`, `fact:4f36fc35ef2f30d4`, `fact:8e90923ec4d7ab03`, `fact:38c761f4499498f8`
+  - calls to something other than a function in this file: 6 (0 followed across files, 4 matched to a fact, 2 not traced to any code)
+  - facts: `fact:c84dfdaf5bf34872`, `fact:056fe7f3c71e6b50`, `fact:7f1a8d20d9216e55`, `fact:4cc140adbcc4fc13`, `fact:4b45608f3cf8d81e`, `fact:8e90923ec4d7ab03`, `fact:38c761f4499498f8`
 - anonymous at line 3
   - runs: install
-  - calls not followed to a function in this file: 1
+  - calls to something other than a function in this file: 1 (0 followed across files, 0 matched to a fact, 1 not traced to any code)
 - anonymous at line 3
   - runs: install
   - can reach: runs code built at run time
   - unresolved inside: Code built at run time
-  - calls not followed to a function in this file: 1
-  - facts: `fact:4fb37decbb748c7f`, `fact:e66f2faa821ef4d1`, `fact:68df2048122e2fe3`, `fact:e9537ed6db62928e`
+  - calls to something other than a function in this file: 1 (0 followed across files, 1 matched to a fact, 0 not traced to any code)
+  - facts: `fact:4fb37decbb748c7f`, `fact:1d5d4970d0d178f7`, `fact:68df2048122e2fe3`, `fact:909a5c4ffb95808e`
 - anonymous at line 4
   - runs: recurring
   - can reach: writes files
-  - calls not followed to a function in this file: 1
-  - facts: `fact:0becde626b3a9a5a`, `fact:a548a44eef68e6a7`
+  - calls to something other than a function in this file: 1 (0 followed across files, 1 matched to a fact, 0 not traced to any code)
+  - facts: `fact:0becde626b3a9a5a`, `fact:0ab78a27a5c9fe51`
 
 ### `test.js` (1)
 
 - top level at line 1
   - runs: immediate
-  - calls not followed to a function in this file: 1
+  - calls to something other than a function in this file: 1 (0 followed across files, 1 matched to a fact, 0 not traced to any code)
   - facts: `fact:0032d2c40c930d98`
 
 [Back to the index](#index)

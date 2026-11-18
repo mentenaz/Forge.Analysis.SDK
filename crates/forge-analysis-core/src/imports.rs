@@ -19,12 +19,12 @@ mod flow;
 mod handles;
 mod visitor;
 pub use flow::FlowHit;
-pub use visitor::{analyze_file, analyze_file_full, Analysis};
+pub use visitor::{analyze_file, analyze_file_full, max_bracket_depth, Analysis, MAX_BRACKET_DEPTH};
 mod callgraph;
 mod summary;
 mod exports;
 mod link;
-pub use link::{link as link_files, ExportName, ExportTarget, Exports, ExtCall, ImportEdge, ImportKind, LinkFile, LinkInfo, LocalEdges};
+pub use link::{link as link_files, ExportName, ExportTarget, Exports, ExtCall, ExtRef, ImportEdge, ImportKind, LinkFile, LinkInfo, LocalEdges};
 mod json;
 mod package;
 
@@ -210,6 +210,11 @@ impl<'s> Ctx<'s> {
         self.unresolved(OxcSpan::new(0, end), UnresolvedReason::ParseFailed, "");
     }
 
+    fn too_deep(&mut self) {
+        let end = u32::try_from(self.src.len()).unwrap_or(u32::MAX);
+        self.unresolved(OxcSpan::new(0, end), UnresolvedReason::TooDeeplyNested, "");
+    }
+
     fn finish(self) -> FileImports {
         FileImports {
             table: self.table,
@@ -250,12 +255,18 @@ impl<'s> Ctx<'s> {
     }
 
     fn unresolved(&mut self, sp: OxcSpan, reason: UnresolvedReason, detail: &str) {
+        self.unresolved_in(sp, reason, detail, None);
+    }
+
+    /// An unresolved fact for a call into `module` (normalised), which the report groups by.
+    fn unresolved_in(&mut self, sp: OxcSpan, reason: UnresolvedReason, detail: &str, module: Option<&str>) {
         let mut f = StaticFact::new(
             FactKind::Unresolved,
             self.span(sp),
             Some(Quoted::new(detail)),
         );
         f.unresolved = Some(reason);
+        f.module = module.map(Quoted::new);
         self.facts.push(f);
     }
 

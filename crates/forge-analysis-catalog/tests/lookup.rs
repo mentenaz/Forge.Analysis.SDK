@@ -12,7 +12,7 @@ fn finds_a_function_by_module_and_export() {
 #[test]
 fn a_missing_export_or_module_finds_nothing() {
     let c = Catalog::node_defaults();
-    assert!(c.find_function("fs", "existsSync").is_none());
+    assert!(c.find_function("fs", "watch").is_none());
     assert!(c.find_function("path", "join").is_none());
 }
 
@@ -20,7 +20,7 @@ fn a_missing_export_or_module_finds_nothing() {
 fn knows_which_modules_it_covers() {
     let c = Catalog::node_defaults();
     assert!(c.knows_module("child_process"));
-    assert!(!c.knows_module("path"));
+    assert!(!c.knows_module("zlib"));
 }
 
 #[test]

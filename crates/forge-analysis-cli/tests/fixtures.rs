@@ -96,7 +96,7 @@ fn json_strings(v: &serde_json::Value, key: &str, found: &mut Vec<(String, Strin
 
 #[test]
 fn there_is_a_fixture_for_each_kind_of_project() {
-    assert_eq!(names(), vec!["clean", "cross-file", "hostile", "install-script"]);
+    assert_eq!(names(), vec!["clean", "cross-file", "hostile", "install-script", "packages"]);
 }
 
 #[test]
@@ -195,17 +195,18 @@ fn a_very_long_name_is_cut_and_says_how_long_it_was() {
     assert!(md.contains("characters in all)"));
 }
 
-/// `index.js` calls `add` from `./util`. The link follows that call to its target, so the
-/// per-file "module not in the catalog" flag for it is cleared and the project is complete.
-/// The followed call stays visible in the function index, on both sides.
+/// `index.js` has three calls to something other than a function in its own file:
+/// `require('./util')` (sits on an import fact), `add(1, 2)` (followed to `util.js`) and
+/// `console.log(...)` (nothing says what it runs). The first two are accounted for and the
+/// third is counted on the coverage line, so the project is Incomplete for that one reason only.
 #[test]
-fn clean_is_complete_and_shows_the_followed_call_on_both_sides() {
+fn clean_accounts_for_each_call_and_counts_the_one_it_cannot_trace() {
     let r = report("clean");
     assert_eq!(r.entry_points.basis, EntryBasis::Declared);
     assert_eq!(r.overview.files_analysed, 2);
     assert!(r.unresolved.is_empty(), "{:?}", r.unresolved);
-    assert_eq!(r.overview.completeness, Completeness::Complete);
     assert_eq!(r.overview.links_made, 2, "the import and the call were both followed");
+    assert_eq!(r.overview.unresolved_cleared_by_links, 1);
     let by = |file: &str, name: Option<&str>| {
         r.functions
             .functions
@@ -214,13 +215,41 @@ fn clean_is_complete_and_shows_the_followed_call_on_both_sides() {
             .unwrap()
     };
     let top = by("index.js", None);
+    assert_eq!(top.unfollowed_calls, 3);
+    assert_eq!(
+        (top.calls_followed_across_files, top.calls_matched_to_a_fact, top.calls_not_traced),
+        (1, 1, 1),
+        "add is followed, require sits on an import fact, console.log is not traced"
+    );
     assert_eq!(top.followed_calls.len(), 1);
     assert_eq!(top.followed_calls[0].to.file.as_quoted().text(), "util.js");
+    assert_eq!(top.followed_calls[0].line, Some(2), "the call is on line 2 of index.js");
     assert!(top.unresolved.is_empty(), "the function no longer claims an open module alarm");
     let add = by("util.js", Some("add"));
     assert_eq!(add.followed_called_from.len(), 1);
     assert_eq!(add.followed_called_from[0].file.as_quoted().text(), "index.js");
     assert_eq!(r.fact_ids().len() as u32, r.overview.facts, "the cleared fact is still listed, in its function");
+    let c = |s: SectionId| r.overview.coverage.iter().find(|c| c.section == s).unwrap().count;
+    assert_eq!((c(SectionId::Unresolved), c(SectionId::Unlinked), c(SectionId::NotAnalysed), c(SectionId::EntryPoints), c(SectionId::Dependencies)), (0, 0, 0, 0, 0));
+    assert_eq!(c(SectionId::Functions), 1, "the one call we cannot trace");
+    assert_eq!(r.overview.completeness, Completeness::Incomplete);
+}
+
+/// Calls into external packages are grouped by package under Unlinked imports and are not open
+/// unresolved items; `path.join` is known to have no effect, so it is a call fact and nothing is
+/// left open. Every call is still a fact in its function.
+#[test]
+fn calls_into_packages_are_grouped_by_package_not_listed_as_unresolved() {
+    let r = report("packages");
+    let pkgs: Vec<(String, u32, u32)> =
+        r.package_calls.iter().map(|p| (p.spec.text().to_string(), p.calls, p.functions)).collect();
+    assert_eq!(pkgs, vec![("react".to_string(), 2, 2), ("ink".to_string(), 1, 1)]);
+    let open: Vec<(UnresolvedReason, usize)> = r.unresolved.iter().map(|g| (g.reason, g.items.len())).collect();
+    assert!(open.is_empty(), "path.join is a known call, so nothing stays open: {open:?}");
+    let view = r.functions.functions.iter().find(|f| f.name.as_ref().map(|n| n.text()) == Some("view")).unwrap();
+    assert_eq!(view.calls_into_packages.len(), 1);
+    assert!(view.unresolved.is_empty(), "a function whose only flag is a package call has no open flag");
+    assert_eq!(r.fact_ids().len() as u32, r.overview.facts);
 }
 
 /// Only an exact followed call clears the flag. In `cross-file`, `run('ls')` is followed and

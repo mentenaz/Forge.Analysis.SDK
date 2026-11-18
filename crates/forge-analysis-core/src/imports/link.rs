@@ -66,12 +66,25 @@ pub struct ExtCall {
     pub name: ExportName,
 }
 
+/// "Function `from` names the export `name` of module `spec` as a value" (`<App />`, a callback
+/// held in a variable). The export may run. This makes a reachability edge and nothing else: it
+/// is not a followed call, clears no alarm, and a name that cannot be followed is not reported
+/// here (the import itself already is).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ExtRef {
+    pub from: u32,
+    pub spec: String,
+    pub name: ExportName,
+}
+
 /// The call graph inside one file, in the shape the linker needs.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct LocalEdges {
     pub calls: Vec<(u32, u32)>,
     /// `(registrar, callback, lane)`: the lane is the timer's, when the receiving call is one.
     pub callbacks: Vec<(u32, u32, Option<Lane>)>,
+    /// `(namer, named)`: the function `named` is used as a value inside `namer`.
+    pub refs: Vec<(u32, u32)>,
 }
 
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
@@ -79,6 +92,7 @@ pub struct LinkInfo {
     pub exports: Exports,
     pub imports: Vec<ImportEdge>,
     pub ext_calls: Vec<ExtCall>,
+    pub ext_refs: Vec<ExtRef>,
     pub edges: LocalEdges,
     /// Per function: the effects it performs directly.
     pub direct: Vec<BTreeSet<Effect>>,
@@ -366,6 +380,11 @@ pub fn link_seeded(
                 add(&mut out, x, Out { to: y, lane: None, callback: false });
             }
         }
+        for &(a, b) in &f.info.edges.refs {
+            if let (Some(x), Some(y)) = (node(fi, a), node(fi, b)) {
+                add(&mut out, x, Out { to: y, lane: None, callback: false });
+            }
+        }
         for &(a, b, lane) in &f.info.edges.callbacks {
             if let (Some(x), Some(y)) = (node(fi, a), node(fi, b)) {
                 out[x].push(Out { to: y, lane, callback: true });
@@ -387,6 +406,15 @@ pub fn link_seeded(
                     if let Some(r) = reason_of(other) {
                         unlinked.push((r, fi, imp.from, imp.spec.clone(), None));
                     }
+                }
+            }
+        }
+        for c in &f.info.ext_refs {
+            let Res::File(j) = rs.resolve(&paths[fi], &c.spec) else { continue };
+            let mut seen = BTreeSet::new();
+            if let Ok((tf, tfn)) = find_export(files, &paths, &rs, j, &c.name, &mut seen) {
+                if let (Some(x), Some(y)) = (node(fi, c.from), node(tf, tfn)) {
+                    add(&mut out, x, Out { to: y, lane: None, callback: false });
                 }
             }
         }
@@ -807,6 +835,21 @@ pub(crate) mod tests {
                 UnlinkedReason::NotAnalysed,
             ]
         );
+    }
+
+    #[test]
+    fn a_function_named_as_a_value_in_another_file_may_run_but_is_not_a_followed_call() {
+        let a = "import { wipe } from './b.js';\nconst handler = wipe;\nexport { handler };";
+        let l = project(&[("a.js", a), ("b.js", "export function wipe(){ DEL; }")], &[], &[]);
+        assert_eq!(top(&l, 0).transitive_effects, vec![Effect::FsDelete], "it may run");
+        assert!(l.followed_calls.is_empty(), "a reference is not a call: {:?}", l.followed_calls);
+    }
+
+    #[test]
+    fn an_import_that_is_only_called_or_member_accessed_makes_no_reference() {
+        let a = "import def from './b.js';\ndef.x;";
+        let l = project(&[("a.js", a), ("b.js", "export default function(){ DEL; }")], &[], &[]);
+        assert!(top(&l, 0).transitive_effects.is_empty());
     }
 
     #[test]

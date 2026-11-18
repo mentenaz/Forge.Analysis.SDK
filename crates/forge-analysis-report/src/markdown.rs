@@ -151,6 +151,7 @@ fn unresolved_text(r: UnresolvedReason) -> (&'static str, &'static str) {
         AmbiguousBinding => ("Ambiguous name", "A name is bound more than once, so which one is used is unknown."),
         UnsupportedSyntax => ("Syntax not supported", "A form this version of the analysis does not read."),
         ParseFailed => ("File did not parse", "The file has syntax errors, so nothing in it is known."),
+        TooDeeplyNested => ("File too deeply nested to read safely", "The file nests brackets so deeply, or the machine could not give the analysis enough room to read it safely, so it was not read and nothing in it is known."),
     }
 }
 
@@ -382,6 +383,25 @@ fn overview(w: &mut W, r: &Report) {
     w.item(&format!("Files not analysed: {}", o.files_not_analysed));
     w.item(&format!("Functions: {}", o.functions));
     w.item(&format!("Cross-file links made: {}", o.links_made));
+    w.item(&format!(
+        "Unresolved facts not listed as open because their call was followed to its source: {}",
+        o.unresolved_cleared_by_links
+    ));
+    for n in &o.mirrored_output {
+        w.item(&format!(
+            "Note: {} looks like built output of {} ({} of {} files share a name). Both were analysed and both are reported, so the same behaviour can appear twice.",
+            q(&n.output_dir),
+            q(&n.source_dir),
+            n.matching_files,
+            n.output_files
+        ));
+    }
+    if o.unreached_functions > 0 {
+        w.item(&format!(
+            "Note: {} of {} functions are not reached from any entry point by a call, a callback or a name used as a value we could follow. They are listed in the function index and their facts are reported, but nothing says they run.",
+            o.unreached_functions, o.functions
+        ));
+    }
     w.item(&format!("Facts found: {}", o.facts));
     let kinds: Vec<String> = o.fact_counts.iter().map(|f| format!("{} {}", f.count, kind_word(f.kind))).collect();
     w.item(&format!("Facts by kind: {}", kinds.join(", ")));
@@ -562,6 +582,25 @@ fn unlinked(w: &mut W, r: &Report) {
             }
         });
     }
+    for p in &r.package_calls {
+        let title = format!("Calls made into {}", q(&p.spec));
+        let note = format!(
+            "{} {} from {} {}. The package was not analysed, so what these calls do is not known. Each call is also listed in its function.",
+            p.calls,
+            if p.calls == 1 { "call" } else { "calls" },
+            p.functions,
+            if p.functions == 1 { "function" } else { "functions" },
+        );
+        w.group(&title, &note, p.items.len(), |w| {
+            for i in &p.items {
+                let mut s = at_line(&i.at, &i.place);
+                if i.detail.is_some() {
+                    let _ = write!(s, ": {}", oq(&i.detail));
+                }
+                w.item(&s);
+            }
+        });
+    }
     w.back();
 }
 
@@ -617,23 +656,33 @@ fn functions(w: &mut W, r: &Report) {
                     w.line(&format!("  - unresolved inside: {}", u.join(", ")));
                 }
                 if f.unfollowed_calls > 0 {
-                    w.line(&format!("  - calls not followed to a function in this file: {}", f.unfollowed_calls));
+                    w.line(&format!(
+                        "  - calls to something other than a function in this file: {} ({} followed across files, {} matched to a fact, {} not traced to any code)",
+                        f.unfollowed_calls, f.calls_followed_across_files, f.calls_matched_to_a_fact, f.calls_not_traced
+                    ));
                 }
                 for c in &f.followed_calls {
                     let target = match &c.to.name {
                         Some(n) => q(n),
                         None => "top level".to_string(),
                     };
+                    let site = match c.line {
+                        Some(l) => format!("line {l}"),
+                        None => format!("bytes {}-{}", c.start_byte, c.end_byte),
+                    };
                     w.line(&format!(
-                        "  - followed call to {} in {}{} (through {}, export {}, bytes {}-{})",
+                        "  - followed call at {} to {} in {}{} (through {}, export {})",
+                        site,
                         target,
                         q(c.to.file.as_quoted()),
-                        c.to.line.map(|l| format!(":{l}")).unwrap_or_default(),
+                        c.to.line.map(|l| format!(" line {l}")).unwrap_or_default(),
                         q(&c.spec),
                         q(&c.name),
-                        c.start_byte,
-                        c.end_byte
                     ));
+                }
+                if !f.calls_into_packages.is_empty() {
+                    let p: Vec<String> = f.calls_into_packages.iter().map(|c| format!("{} ×{}", q(&c.spec), c.count)).collect();
+                    w.line(&format!("  - calls into packages we did not analyse: {}", p.join(", ")));
                 }
                 if !f.followed_called_from.is_empty() {
                     let from: Vec<String> = f

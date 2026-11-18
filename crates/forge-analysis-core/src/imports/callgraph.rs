@@ -13,10 +13,18 @@
 //!   * calls to methods, parameters, imports, built-ins, or anything else not resolved to a
 //!     function in this file (`unfollowed_calls` on the calling function);
 //!   * functions used as plain values (returned, stored, exported, assigned): `escaped`.
+//!
+//! References: a local function named anywhere other than as a callee or call argument
+//! (`<App />`, `const x = f`, `return f`, `{ f }`) is a REFERENCE edge from the function that
+//! names it: it MAY run, so its effects and lanes count for the one that names it. This
+//! over-approximates and is used only for reachability, never to clear an alarm. Naming it in an
+//! export (`export { f }`, `export default f`, `module.exports = ...`) is not a reference: it
+//! does not run when the file loads. An imported name used the same way is an `ExtRef`.
 
 use oxc_ast::ast::{
-    Argument, ArrowFunctionExpression, BindingPattern, CallExpression, Declaration,
-    ExportDeclaration, ExportDefaultDeclaration, ExportDefaultDeclarationKind, Expression,
+    Argument, ArrowFunctionExpression, AssignmentExpression, AssignmentTarget, BindingPattern,
+    CallExpression, ComputedMemberExpression, Declaration, ExportDeclaration, ExportSpecifier,
+    StaticMemberExpression, ExportDefaultDeclaration, ExportDefaultDeclarationKind, Expression,
     Function, IdentifierReference, NewExpression, Program, VariableDeclarator,
 };
 use oxc_ast_visit::{walk, Visit};
@@ -31,6 +39,8 @@ pub struct FnNode {
     pub at: Span,
     pub name: Option<Span>,
     pub unfollowed_calls: u32,
+    /// Byte range of each of those calls (`unfollowed_calls` entries).
+    pub unfollowed_sites: Vec<(u32, u32)>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -62,6 +72,18 @@ pub struct Graph {
     pub calls: Vec<(u32, u32)>,
     pub callbacks: Vec<CallbackEdge>,
     pub escaped: BTreeSet<u32>,
+    /// `(from, to)`: `from` names the function `to` as a value, so `to` may run.
+    pub references: Vec<(u32, u32)>,
+    /// Names of non-local symbols used as values (candidates for imports), once per
+    /// (function, declaration).
+    pub ext_refs: Vec<RawExtRef>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct RawExtRef {
+    pub from: u32,
+    /// Byte offset of the declaration of the referenced name.
+    pub decl_start: u32,
 }
 
 type SymFn = BTreeMap<SymbolId, u32>;
@@ -69,6 +91,18 @@ type Key = (u32, u32);
 
 fn key(s: Span) -> Key {
     (s.start, s.end)
+}
+
+/// True for the left side of an export assignment: `module.exports`, `module.exports.x`,
+/// `exports.x`, `exports.x.y`.
+fn member_is_exports(m: &StaticMemberExpression<'_>) -> bool {
+    match peel(&m.object) {
+        Expression::Identifier(o) => {
+            o.name == "exports" || (o.name == "module" && m.property.name == "exports")
+        }
+        Expression::StaticMemberExpression(inner) => member_is_exports(inner),
+        _ => false,
+    }
 }
 
 fn peel<'e, 'a>(mut e: &'e Expression<'a>) -> &'e Expression<'a> {
@@ -80,7 +114,7 @@ fn peel<'e, 'a>(mut e: &'e Expression<'a>) -> &'e Expression<'a> {
 
 pub fn build(program: &Program<'_>, scoping: &Scoping) -> Graph {
     let mut p1 = Table::default();
-    p1.fns.push(FnNode { id: 0, at: program.span, name: None, unfollowed_calls: 0 });
+    p1.fns.push(FnNode { id: 0, at: program.span, name: None, unfollowed_calls: 0, unfollowed_sites: Vec::new() });
     p1.visit_program(program);
     let by_span: BTreeMap<Key, u32> = p1.fns.iter().skip(1).map(|f| (key(f.at), f.id)).collect();
     let mut p2 = Edges {
@@ -89,6 +123,9 @@ pub fn build(program: &Program<'_>, scoping: &Scoping) -> Graph {
         by_span,
         stack: vec![0],
         consumed: BTreeSet::new(),
+        not_a_value: BTreeSet::new(),
+        export_depth: 0,
+        seen_ext: BTreeSet::new(),
         g: Graph { fns: p1.fns, ..Graph::default() },
     };
     p2.visit_program(program);
@@ -123,6 +160,7 @@ impl Graph {
             .iter()
             .copied()
             .chain(self.callbacks.iter().map(|c| (c.from, c.to)))
+            .chain(self.references.iter().copied())
             .collect();
         // Monotone, so it settles in at most one round per function.
         for _ in 0..=self.fns.len() {
@@ -149,7 +187,7 @@ impl Graph {
         out[0].insert(root);
         for _ in 0..=self.fns.len() {
             let mut changed = false;
-            for &(from, to) in &self.calls {
+            for &(from, to) in self.calls.iter().chain(self.references.iter()) {
                 let add: Vec<L> = out[from as usize].iter().copied().collect();
                 for l in add {
                     changed |= out[to as usize].insert(l);
@@ -193,7 +231,7 @@ impl Table {
             self.sym_fn.insert(sym, id);
             name = Some(sp);
         }
-        self.fns.push(FnNode { id, at, name, unfollowed_calls: 0 });
+        self.fns.push(FnNode { id, at, name, unfollowed_calls: 0, unfollowed_sites: Vec::new() });
     }
 }
 
@@ -231,6 +269,11 @@ struct Edges<'s> {
     by_span: BTreeMap<Key, u32>,
     stack: Vec<u32>,
     consumed: BTreeSet<Key>,
+    /// Identifiers that are a callee or the object of a member access, not a value.
+    not_a_value: BTreeSet<Key>,
+    /// Above zero while walking something that only exports (no edge is made).
+    export_depth: u32,
+    seen_ext: BTreeSet<(u32, u32)>,
     g: Graph,
 }
 
@@ -299,9 +342,10 @@ impl Edges<'_> {
             }
         }
     }
-    fn unfollowed(&mut self) {
+    fn unfollowed(&mut self, site: Span) {
         let c = self.cur() as usize;
         self.g.fns[c].unfollowed_calls += 1;
+        self.g.fns[c].unfollowed_sites.push((site.start, site.end));
     }
     fn enter(&mut self, at: Span) {
         if let Some(&id) = self.by_span.get(&key(at)) {
@@ -328,6 +372,9 @@ impl<'a> Visit<'a> for Edges<'_> {
     }
     fn visit_call_expression(&mut self, it: &CallExpression<'a>) {
         let from = self.cur();
+        if let Expression::Identifier(r) = peel(&it.callee) {
+            self.not_a_value.insert(key(r.span));
+        }
         let target = match peel(&it.callee) {
             Expression::Identifier(r) => {
                 let t = self.resolve(r);
@@ -341,7 +388,7 @@ impl<'a> Visit<'a> for Edges<'_> {
         match target {
             Some(to) => self.g.calls.push((from, to)),
             None => {
-                self.unfollowed();
+                self.unfollowed(it.span);
                 self.note_ext(peel(&it.callee), it.span);
             }
         }
@@ -349,9 +396,43 @@ impl<'a> Visit<'a> for Edges<'_> {
         walk::walk_call_expression(self, it);
     }
     fn visit_new_expression(&mut self, it: &NewExpression<'a>) {
-        self.unfollowed();
+        if let Expression::Identifier(r) = peel(&it.callee) {
+            self.not_a_value.insert(key(r.span));
+        }
+        self.unfollowed(it.span);
         self.arguments(&it.arguments, key(it.span));
         walk::walk_new_expression(self, it);
+    }
+    fn visit_static_member_expression(&mut self, it: &StaticMemberExpression<'a>) {
+        if let Expression::Identifier(r) = peel(&it.object) {
+            self.not_a_value.insert(key(r.span));
+        }
+        walk::walk_static_member_expression(self, it);
+    }
+    fn visit_computed_member_expression(&mut self, it: &ComputedMemberExpression<'a>) {
+        if let Expression::Identifier(r) = peel(&it.object) {
+            self.not_a_value.insert(key(r.span));
+        }
+        walk::walk_computed_member_expression(self, it);
+    }
+    fn visit_export_specifier(&mut self, it: &ExportSpecifier<'a>) {
+        self.export_depth += 1;
+        walk::walk_export_specifier(self, it);
+        self.export_depth -= 1;
+    }
+    fn visit_assignment_expression(&mut self, it: &AssignmentExpression<'a>) {
+        let exporting = match &it.left {
+            AssignmentTarget::StaticMemberExpression(m) => member_is_exports(m),
+            _ => false,
+        };
+        if exporting {
+            self.visit_assignment_target(&it.left);
+            self.export_depth += 1;
+            self.visit_expression(&it.right);
+            self.export_depth -= 1;
+        } else {
+            walk::walk_assignment_expression(self, it);
+        }
     }
     fn visit_export_declaration(&mut self, it: &ExportDeclaration<'a>) {
         match &it.declaration {
@@ -379,12 +460,29 @@ impl<'a> Visit<'a> for Edges<'_> {
                 self.g.escaped.insert(id);
             }
         }
+        // `export default f` and `export default { f }` export; they do not run `f`. A
+        // function written inline is still walked, so what it does is still seen.
+        self.export_depth += 1;
         walk::walk_export_default_declaration(self, it);
+        self.export_depth -= 1;
     }
     fn visit_identifier_reference(&mut self, it: &IdentifierReference<'a>) {
-        if !self.consumed.contains(&key(it.span)) {
-            if let Some(f) = self.resolve(it) {
-                self.g.escaped.insert(f);
+        if self.consumed.contains(&key(it.span)) {
+            return;
+        }
+        let from = self.cur();
+        let named_as_value = !self.not_a_value.contains(&key(it.span)) && self.export_depth == 0;
+        if let Some(f) = self.resolve(it) {
+            self.g.escaped.insert(f);
+            if named_as_value && !self.g.references.contains(&(from, f)) {
+                self.g.references.push((from, f));
+            }
+        } else if named_as_value {
+            if let Some(sym) = self.symbol_of(it) {
+                let decl_start = self.scoping.symbol_span(sym).start;
+                if self.seen_ext.insert((from, decl_start)) {
+                    self.g.ext_refs.push(RawExtRef { from, decl_start });
+                }
             }
         }
     }
@@ -419,6 +517,51 @@ mod tests {
 
     fn pair(a: &str, b: &str) -> (String, String) {
         (a.to_string(), b.to_string())
+    }
+
+    #[test]
+    fn a_function_named_as_a_value_is_a_reference_edge() {
+        let g = graph("function f(){} const x = f; const o = { k: f };");
+        assert_eq!(g.references, vec![(0, 1)], "once per (namer, named)");
+        assert!(g.escaped.contains(&1));
+    }
+
+    #[test]
+    fn exporting_a_function_is_not_a_reference() {
+        for src in [
+            "function f(){} export { f };",
+            "function f(){} export default f;",
+            "function f(){} module.exports = f;",
+            "function f(){} module.exports = { f };",
+            "function f(){} exports.f = f;",
+            "function f(){} module.exports.f = f;",
+        ] {
+            let g = graph(src);
+            assert!(g.references.is_empty(), "{src}: {:?}", g.references);
+            assert!(g.escaped.contains(&1), "{src}");
+        }
+    }
+
+    #[test]
+    fn a_reference_makes_the_function_reachable_and_carries_effects_up() {
+        let g = graph("function f(){} const x = f;");
+        let lanes = g.lanes("immediate", &BTreeMap::new());
+        assert_eq!(lanes[1], BTreeSet::from(["immediate"]));
+        let mut direct: Vec<BTreeSet<u8>> = vec![BTreeSet::new(); 2];
+        direct[1].insert(7);
+        assert!(g.roll_up(&direct)[0].contains(&7));
+    }
+
+    #[test]
+    fn a_reference_inside_a_function_is_from_that_function() {
+        let g = graph("function f(){} function h(){ return f; }");
+        assert_eq!(g.references, vec![(2, 1)]);
+    }
+
+    #[test]
+    fn an_imported_name_used_as_a_value_is_an_ext_ref_but_not_when_called_or_dotted() {
+        let g = graph("import a from 'm'; import b from 'm'; import c from 'm'; const x = a; b(); c.k;");
+        assert_eq!(g.ext_refs.len(), 1, "{:?}", g.ext_refs);
     }
 
     #[test]

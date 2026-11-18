@@ -83,7 +83,7 @@ role = "source"
 id = "node.os.info"
 kind = "function"
 module = "os"
-exports = ["arch", "cpus", "freemem", "hostname", "networkInterfaces", "platform", "release", "totalmem", "type", "userInfo"]
+exports = ["arch", "cpus", "freemem", "hostname", "networkInterfaces", "platform", "release", "totalmem", "type", "userInfo", "tmpdir", "homedir", "uptime", "loadavg", "version", "machine", "availableParallelism", "endianness"]
 category = "system_info"
 
 [[effect]]
@@ -259,3 +259,41 @@ exports = ["Worker"]
 category = "dynamic_load"
 path_arg = 0
 role = "sink"
+
+# Reading file metadata (existence, size, type, real path). No file content comes back.
+[[effect]]
+id = "node.fs.stat"
+kind = "function"
+module = "fs"
+exports = ["access", "accessSync", "exists", "existsSync", "lstat", "lstatSync", "opendir", "opendirSync", "readlink", "readlinkSync", "realpath", "realpathSync", "stat", "statSync"]
+category = "fs_read"
+path_arg = 0
+
+[[effect]]
+id = "node.fs_promises.stat"
+kind = "function"
+module = "fs/promises"
+exports = ["access", "lstat", "opendir", "readlink", "realpath", "stat"]
+category = "fs_read"
+path_arg = 0
+
+# Calls known to have no effect outside the program. Each use is still recorded as a call.
+[[known]]
+id = "node.path.pure"
+module = "path"
+exports = ["basename", "dirname", "extname", "format", "isAbsolute", "join", "normalize", "parse", "relative", "resolve", "toNamespacedPath"]
+
+[[known]]
+id = "node.url.pure"
+module = "url"
+exports = ["fileURLToPath", "pathToFileURL", "domainToASCII", "domainToUnicode"]
+
+[[known]]
+id = "node.util.pure"
+module = "util"
+exports = ["format", "inherits", "inspect", "isDeepStrictEqual", "stripVTControlCharacters"]
+
+[[known]]
+id = "node.crypto.pure"
+module = "crypto"
+exports = ["createHash", "createHmac", "randomBytes", "randomInt", "randomUUID", "timingSafeEqual"]
