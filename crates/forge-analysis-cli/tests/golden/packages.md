@@ -4,7 +4,7 @@
 - Schema: 1
 - Mode: static only (no code was run)
 - Snapshot: `d44f12d7976ed85c78472e2e037262cf742ebbc1ff3a7abd01cb3dfe62cd0884`
-- Catalog: `d07904da6193581916ce5290866f86a843b47e51d0ae0122818017134cefef70`
+- Catalog: `661ff253d0997c290715b16d7de935041072e290e1efd30a82fa0c75eed0949b`
 
 <a id="index"></a>
 
@@ -191,17 +191,17 @@ Every function with its lanes, effects, callers and the facts inside it.
 
 - top level at line 1
   - runs: immediate
-  - calls to something other than a function in this file: 2 (0 followed across files, 2 matched to a fact, 0 not traced to any code)
+  - calls to something other than a function in this file: 2 (0 followed through an import or a prop, 2 matched to a fact, 0 not traced to any code)
   - calls into packages we did not analyse: `ink` ×1
   - facts: `fact:0e8974d2e99a81f2`, `fact:da328684252dd3ea`, `fact:aec0e42933347a43`, `fact:3e38faf0f57d911d`, `fact:aea167d1093d7fd1`
 - `view` at line 4
   - runs: immediate
-  - calls to something other than a function in this file: 1 (0 followed across files, 1 matched to a fact, 0 not traced to any code)
+  - calls to something other than a function in this file: 1 (0 followed through an import or a prop, 1 matched to a fact, 0 not traced to any code)
   - calls into packages we did not analyse: `react` ×1
   - facts: `fact:ddc7df3b7874275e`
 - `state` at line 5
   - runs: none (not reached from an entry)
-  - calls to something other than a function in this file: 1 (0 followed across files, 1 matched to a fact, 0 not traced to any code)
+  - calls to something other than a function in this file: 1 (0 followed through an import or a prop, 1 matched to a fact, 0 not traced to any code)
   - calls into packages we did not analyse: `react` ×1
   - facts: `fact:09cbef54f86a6978`
 

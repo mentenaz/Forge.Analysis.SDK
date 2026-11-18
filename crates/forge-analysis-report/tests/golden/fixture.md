@@ -37,7 +37,7 @@ What was analysed, whether the picture is complete, and one count for everything
 | declared entry points that match no analysed file | 0 | [Entry points](#entry-points) |
 | files or folders not read as code | 5 | [Not analysed](#not-analysed) |
 | dependencies whose own code and install scripts were not analysed | 1 | [Dependencies](#dependencies) |
-| calls whose target we could not see (no function followed, no fact) | 0 | [Function index](#function-index) |
+| calls whose target we could not see (no function followed, no fact) | 3 | [Function index](#function-index) |
 
 - Files analysed: 2
 - Files not analysed: 2
@@ -228,13 +228,25 @@ Another 3 skipped items were counted but not listed, because the intake record l
 
 Every function with its lanes, effects, callers and the facts inside it.
 
+### Calls we could not trace, by what they call (3)
+
+Nothing in the analysis says what these run. The label is made from names only; `(..)` stands for a computed receiver. Every call is also listed, with its line, under its function below.
+
+- `console.log` ×2 in 2 function(s) across 1 file(s)
+- `(..).then` ×1 in 1 function(s) across 1 file(s)
+
 ### `a.js` (2)
 
 - top level at line 1
   - runs: immediate
+  - calls to something other than a function in this file: 2 (0 followed through an import or a prop, 0 matched to a fact, 2 not traced to any code)
+  - not traced: `console.log` at line 2
+  - not traced: `(..).then` at line 2
   - facts: `fact:06589c8cb711bcba`, `fact:f1890ba685587673`, `fact:eb1d7990b2535690`
 - `helper` at line 4
   - runs: deferred
+  - calls to something other than a function in this file: 1 (0 followed through an import or a prop, 0 matched to a fact, 1 not traced to any code)
+  - not traced: `console.log` at line 5
   - facts: `fact:09823b8c596fb089`, `fact:d5303add7d613da5`, `fact:cf3143cf54501e93`, `fact:173633518a7cb701`
 
 ### `b.js` (1)

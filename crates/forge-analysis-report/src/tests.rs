@@ -37,6 +37,7 @@ fn summary(file: &str, id: u32, name: Option<&str>, line: u32, lanes: Vec<Lane>)
         lanes,
         unfollowed_calls: 0,
         unfollowed_sites: vec![],
+        unfollowed_callees: vec![],
         escapes: false,
     }
 }
@@ -78,7 +79,16 @@ fn fixture() -> Fixture {
         fact(FactKind::Call, "a.js", 7, 700, "helper", Some(1)),
         flow,
     ];
-    let sums_a = vec![summary("a.js", 0, None, 1, vec![Lane::Immediate]), summary("a.js", 1, Some("helper"), 4, vec![Lane::Deferred])];
+    let mut sums_a = vec![summary("a.js", 0, None, 1, vec![Lane::Immediate]), summary("a.js", 1, Some("helper"), 4, vec![Lane::Deferred])];
+    // Calls we could not trace: two to `console.log` (one in each function), one `(..).then`.
+    let site = |s: u32| ByteRange { start_byte: s, end_byte: s + 8 };
+    let callee = |c: &str, line: u32| UnfollowedCallee { callee: Quoted::new(c), start_line: line };
+    sums_a[0].unfollowed_calls = 2;
+    sums_a[0].unfollowed_sites = vec![site(20), site(30)];
+    sums_a[0].unfollowed_callees = vec![callee("console.log", 2), callee("(..).then", 2)];
+    sums_a[1].unfollowed_calls = 1;
+    sums_a[1].unfollowed_sites = vec![site(450)];
+    sums_a[1].unfollowed_callees = vec![callee("console.log", 5)];
     let facts_b = vec![effect("b.js", 1, 10, Effect::FsRead, Some(0))];
     let sums_b = vec![summary("b.js", 0, None, 1, vec![])];
 
@@ -350,6 +360,7 @@ fn coverage_always_lists_every_line_and_the_status_follows_it() {
     assert_eq!(c(SectionId::NotAnalysed), 5);
     assert_eq!(c(SectionId::EntryPoints), 0);
     assert_eq!(c(SectionId::Dependencies), 1, "only the registry one; a local path is ours");
+    assert_eq!(c(SectionId::Functions), 3, "the calls we could not trace");
     assert_eq!(r.overview.completeness, Completeness::Incomplete);
 }
 
@@ -361,6 +372,11 @@ fn nothing_unseen_means_complete() {
     fx.linked.unlinked.clear();
     fx.na.clear();
     fx.unrecorded = 0;
+    for s in fx.sums_a.iter_mut() {
+        s.unfollowed_calls = 0;
+        s.unfollowed_sites.clear();
+        s.unfollowed_callees.clear();
+    }
     let r = fx.run();
     assert!(r.overview.coverage.iter().all(|c| c.count == 0));
     assert_eq!(r.overview.completeness, Completeness::Complete);
@@ -650,4 +666,22 @@ fn the_overview_counts_functions_no_entry_reaches_and_does_not_change_the_status
     assert_eq!(r.overview.unreached_functions, unreached);
     assert!(r.overview.coverage.iter().all(|c| !c.label.contains("reach")), "a note, not a coverage line");
     assert!(crate::markdown::to_markdown(&r).contains("not reached from any entry point") == (unreached > 0));
+}
+
+#[test]
+fn every_call_we_could_not_trace_is_named_once_per_function_and_once_per_group() {
+    let r = fixture().run();
+    let in_functions: u32 = r.functions.functions.iter().map(|f| f.untraced_calls.len() as u32).sum();
+    let in_groups: u32 = r.functions.untraced_by_callee.iter().map(|g| g.count).sum();
+    let line = r.overview.coverage.iter().find(|c| c.section == SectionId::Functions).unwrap().count;
+    assert_eq!((in_functions, in_groups), (line, line));
+    assert!(line >= 3, "the fixture has three untraced calls");
+    for f in &r.functions.functions {
+        assert_eq!(f.untraced_calls.len() as u32, f.calls_not_traced);
+    }
+    let first = &r.functions.untraced_by_callee[0];
+    assert_eq!((first.callee.text(), first.count, first.sites.len()), ("console.log", 2, 2), "most common first");
+    let md = to_markdown(&r);
+    assert!(md.contains("Calls we could not trace, by what they call"));
+    assert!(md.contains("not traced: `console.log` at line 2"));
 }

@@ -77,6 +77,38 @@ pub struct ExtRef {
     pub name: ExportName,
 }
 
+/// The component a JSX element names, as the linker needs it.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum PropTag {
+    /// A function in the same file.
+    Local(u32),
+    /// An imported name: the export `name` of module `spec`.
+    Ext { spec: String, name: ExportName },
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum PropValue {
+    Fn(u32),
+    Opaque,
+}
+
+/// `<Tag prop={value} />`; prop `*` is a spread.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct PropUse {
+    pub tag: PropTag,
+    pub prop: String,
+    pub value: PropValue,
+}
+
+/// A call, inside `from`, to the prop `prop` of the component function `comp` (same file).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct PropCall {
+    pub from: u32,
+    pub comp: u32,
+    pub prop: String,
+    pub site: (u32, u32),
+}
+
 /// The call graph inside one file, in the shape the linker needs.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct LocalEdges {
@@ -93,6 +125,8 @@ pub struct LinkInfo {
     pub imports: Vec<ImportEdge>,
     pub ext_calls: Vec<ExtCall>,
     pub ext_refs: Vec<ExtRef>,
+    pub prop_uses: Vec<PropUse>,
+    pub prop_calls: Vec<PropCall>,
     pub edges: LocalEdges,
     /// Per function: the effects it performs directly.
     pub direct: Vec<BTreeSet<Effect>>,
@@ -436,6 +470,7 @@ pub fn link_seeded(
                                 ExportName::Default => "default".to_string(),
                                 ExportName::Named(n) => n.clone(),
                             }),
+                            via_prop: false,
                         });
                     }
                 }
@@ -445,6 +480,66 @@ pub fn link_seeded(
                         ExportName::Named(n) => n.clone(),
                     };
                     unlinked.push((r, fi, c.from, c.spec.clone(), Some(name)));
+                }
+            }
+        }
+    }
+
+    // Function props. `<Screen onBack={() => ..} />` hands a function to `Screen`; a call to
+    // `onBack` inside `Screen` runs it. Every function handed to that prop anywhere in the
+    // project is a target. The call counts as followed only when every use of that prop hands
+    // over a function we can name and nothing is spread into the component; otherwise the
+    // edges are still made (so reachability sees them) and the call stays untraced.
+    type Handed = (Vec<(usize, u32)>, bool);
+    let mut handed: BTreeMap<(usize, String), Handed> = BTreeMap::new();
+    let mut spread: BTreeSet<usize> = BTreeSet::new();
+    for (fi, f) in files.iter().enumerate() {
+        for u in &f.info.prop_uses {
+            let comp = match &u.tag {
+                PropTag::Local(c) => node(fi, *c),
+                PropTag::Ext { spec, name } => {
+                    let Res::File(j) = rs.resolve(&paths[fi], spec) else { continue };
+                    let mut seen = BTreeSet::new();
+                    match find_export(files, &paths, &rs, j, name, &mut seen) {
+                        Ok((tf, tfn)) => node(tf, tfn),
+                        Err(_) => None,
+                    }
+                }
+            };
+            let Some(comp) = comp else { continue };
+            if u.prop == "*" {
+                spread.insert(comp);
+                continue;
+            }
+            let e = handed.entry((comp, u.prop.clone())).or_default();
+            match u.value {
+                PropValue::Fn(t) if node(fi, t).is_some() => e.0.push((fi, t)),
+                _ => e.1 = true,
+            }
+        }
+    }
+    for (fi, f) in files.iter().enumerate() {
+        for c in &f.info.prop_calls {
+            let (Some(comp), Some(x)) = (node(fi, c.comp), node(fi, c.from)) else { continue };
+            let Some((targets, opaque)) = handed.get(&(comp, c.prop.clone())) else { continue };
+            let mut targets = targets.clone();
+            targets.sort_unstable();
+            targets.dedup();
+            let whole = !targets.is_empty() && !*opaque && !spread.contains(&comp);
+            for (tf, tfn) in targets {
+                let Some(y) = node(tf, tfn) else { continue };
+                add(&mut out, x, Out { to: y, lane: None, callback: false });
+                if whole {
+                    links_made += 1;
+                    followed.push(FollowedCall {
+                        from: FnRef { file: fi as u32, func: FnId(c.from) },
+                        to: FnRef { file: tf as u32, func: FnId(tfn) },
+                        start_byte: c.site.0,
+                        end_byte: c.site.1,
+                        spec: Quoted::new(""),
+                        name: Quoted::new(&c.prop),
+                        via_prop: true,
+                    });
                 }
             }
         }

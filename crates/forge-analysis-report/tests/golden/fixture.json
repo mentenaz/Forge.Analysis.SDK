@@ -133,7 +133,7 @@
       {
         "section": "functions",
         "label": "calls whose target we could not see (no function followed, no fact)",
-        "count": 0
+        "count": 3
       }
     ],
     "fact_counts": [
@@ -810,10 +810,34 @@
         "direct_effects": [],
         "transitive_effects": [],
         "unresolved": [],
-        "unfollowed_calls": 0,
+        "unfollowed_calls": 2,
         "calls_followed_across_files": 0,
         "calls_matched_to_a_fact": 0,
-        "calls_not_traced": 0,
+        "calls_not_traced": 2,
+        "untraced_calls": [
+          {
+            "callee": {
+              "text": "console.log",
+              "truncated": false,
+              "original_len": 11,
+              "sha256": "3b549ed051f07d14ca03241c68ed10f3e8647f5d0e18d315e47534f2ba5c1e3b"
+            },
+            "line": 2,
+            "start_byte": 20,
+            "end_byte": 28
+          },
+          {
+            "callee": {
+              "text": "(..).then",
+              "truncated": false,
+              "original_len": 9,
+              "sha256": "3397a2abdad2e6554789e2418e4708a38ec497b4b32f5c45d4acd8928c237a0c"
+            },
+            "line": 2,
+            "start_byte": 30,
+            "end_byte": 38
+          }
+        ],
         "calls_into_packages": [],
         "calls": [],
         "callbacks": [],
@@ -860,10 +884,23 @@
         "direct_effects": [],
         "transitive_effects": [],
         "unresolved": [],
-        "unfollowed_calls": 0,
+        "unfollowed_calls": 1,
         "calls_followed_across_files": 0,
         "calls_matched_to_a_fact": 0,
-        "calls_not_traced": 0,
+        "calls_not_traced": 1,
+        "untraced_calls": [
+          {
+            "callee": {
+              "text": "console.log",
+              "truncated": false,
+              "original_len": 11,
+              "sha256": "3b549ed051f07d14ca03241c68ed10f3e8647f5d0e18d315e47534f2ba5c1e3b"
+            },
+            "line": 5,
+            "start_byte": 450,
+            "end_byte": 458
+          }
+        ],
         "calls_into_packages": [],
         "calls": [],
         "callbacks": [],
@@ -908,6 +945,7 @@
         "calls_followed_across_files": 0,
         "calls_matched_to_a_fact": 0,
         "calls_not_traced": 0,
+        "untraced_calls": [],
         "calls_into_packages": [],
         "calls": [],
         "callbacks": [],
@@ -916,6 +954,83 @@
         "followed_called_from": [],
         "facts": [
           "fact:03a802737548469f"
+        ]
+      }
+    ],
+    "untraced_by_callee": [
+      {
+        "callee": {
+          "text": "console.log",
+          "truncated": false,
+          "original_len": 11,
+          "sha256": "3b549ed051f07d14ca03241c68ed10f3e8647f5d0e18d315e47534f2ba5c1e3b"
+        },
+        "count": 2,
+        "sites": [
+          {
+            "in_fn": {
+              "file": {
+                "text": "a.js",
+                "truncated": false,
+                "original_len": 4,
+                "sha256": "dc5985b2a377c4ea735c99979da277be3bd24be88cf411c11b52b5c3f9570536"
+              },
+              "func": 0,
+              "name": null,
+              "line": 1
+            },
+            "line": 2,
+            "start_byte": 20,
+            "end_byte": 28
+          },
+          {
+            "in_fn": {
+              "file": {
+                "text": "a.js",
+                "truncated": false,
+                "original_len": 4,
+                "sha256": "dc5985b2a377c4ea735c99979da277be3bd24be88cf411c11b52b5c3f9570536"
+              },
+              "func": 1,
+              "name": {
+                "text": "helper",
+                "truncated": false,
+                "original_len": 6,
+                "sha256": "e81d3b0e9d82feaaf5f6e55bdff24731d7eee08632ffa63801e6397290c5d20a"
+              },
+              "line": 4
+            },
+            "line": 5,
+            "start_byte": 450,
+            "end_byte": 458
+          }
+        ]
+      },
+      {
+        "callee": {
+          "text": "(..).then",
+          "truncated": false,
+          "original_len": 9,
+          "sha256": "3397a2abdad2e6554789e2418e4708a38ec497b4b32f5c45d4acd8928c237a0c"
+        },
+        "count": 1,
+        "sites": [
+          {
+            "in_fn": {
+              "file": {
+                "text": "a.js",
+                "truncated": false,
+                "original_len": 4,
+                "sha256": "dc5985b2a377c4ea735c99979da277be3bd24be88cf411c11b52b5c3f9570536"
+              },
+              "func": 0,
+              "name": null,
+              "line": 1
+            },
+            "line": 2,
+            "start_byte": 30,
+            "end_byte": 38
+          }
         ]
       }
     ],

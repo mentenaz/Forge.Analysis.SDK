@@ -4,11 +4,12 @@
 //! Pure: the caller supplies how to turn an Oxc span into a schema span and into text, so
 //! this file knows nothing about `Ctx`.
 
-use crate::imports::callgraph::Graph;
+use crate::imports::callgraph::{Graph, RawPropTag, RawPropValue};
 use crate::imports::exports::Extracted;
-use crate::imports::link::{ExportName, ExtCall, ExtRef, LinkInfo, LocalEdges};
+use crate::imports::link::{ExportName, ExtCall, ExtRef, LinkInfo, LocalEdges, PropCall, PropTag, PropUse, PropValue};
 use forge_analysis_schema::{
     ByteRange, Effect, EffectUse, FactKind, FnId, FunctionSummary, Lane, Quoted, Span, StaticFact,
+    UnfollowedCallee,
     UnresolvedReason,
 };
 use std::collections::{BTreeMap, BTreeSet};
@@ -94,6 +95,15 @@ pub fn summarize(
                 .iter()
                 .map(|&(s, e)| ByteRange { start_byte: s, end_byte: e })
                 .collect(),
+            unfollowed_callees: f
+                .unfollowed_callees
+                .iter()
+                .zip(&f.unfollowed_sites)
+                .map(|(label, &(s, e))| UnfollowedCallee {
+                    callee: Quoted::new(label),
+                    start_line: span_of(oxc_span::Span::new(s, e)).start_line,
+                })
+                .collect(),
             escapes: graph.escaped.contains(&f.id),
         })
         .collect()
@@ -157,6 +167,31 @@ pub fn link_info(
         };
         ext_refs.push(ExtRef { from: raw.from, spec, name });
     }
+    let mut prop_uses: Vec<PropUse> = Vec::new();
+    for raw in &graph.prop_uses {
+        let tag = match raw.tag {
+            RawPropTag::Local(c) => PropTag::Local(c),
+            RawPropTag::Ext { decl_start } => {
+                let Some((spec, bound)) = bind(decl_start) else { continue };
+                let name = match bound {
+                    Bound::Default => ExportName::Default,
+                    Bound::Named(n) => ExportName::Named(n),
+                    Bound::Namespace => continue,
+                };
+                PropTag::Ext { spec, name }
+            }
+        };
+        let value = match raw.value {
+            RawPropValue::Fn(f) => PropValue::Fn(f),
+            RawPropValue::Opaque => PropValue::Opaque,
+        };
+        prop_uses.push(PropUse { tag, prop: raw.prop.clone(), value });
+    }
+    let prop_calls: Vec<PropCall> = graph
+        .prop_calls
+        .iter()
+        .map(|c| PropCall { from: c.from, comp: c.comp, prop: c.prop.clone(), site: c.site })
+        .collect();
     let mut ext_calls = extracted.ext_calls;
     for raw in &graph.ext_calls {
         let Some((spec, bound)) = bind(raw.decl_start) else { continue };
@@ -169,7 +204,7 @@ pub fn link_info(
         };
         ext_calls.push(ExtCall { from: raw.from, site: raw.site, spec, name });
     }
-    LinkInfo { exports: extracted.exports, imports: extracted.imports, ext_calls, ext_refs, edges, direct }
+    LinkInfo { exports: extracted.exports, imports: extracted.imports, ext_calls, ext_refs, prop_uses, prop_calls, edges, direct }
 }
 
 #[cfg(test)]

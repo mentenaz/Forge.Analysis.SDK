@@ -2,7 +2,7 @@
   "header": {
     "schema": 1,
     "engine": "forge-analysis 0.0.1",
-    "catalog_sha256": "d07904da6193581916ce5290866f86a843b47e51d0ae0122818017134cefef70",
+    "catalog_sha256": "661ff253d0997c290715b16d7de935041072e290e1efd30a82fa0c75eed0949b",
     "snapshot_sha256": "9ce6978007195f638eeee5bbb73f818d77aa1370dbd1aa0b2d698984b2b370ce",
     "mode": "static_only"
   },
@@ -750,6 +750,7 @@
         "calls_followed_across_files": 0,
         "calls_matched_to_a_fact": 0,
         "calls_not_traced": 0,
+        "untraced_calls": [],
         "calls_into_packages": [],
         "calls": [],
         "callbacks": [],
@@ -789,6 +790,7 @@
         "calls_followed_across_files": 0,
         "calls_matched_to_a_fact": 1,
         "calls_not_traced": 0,
+        "untraced_calls": [],
         "calls_into_packages": [],
         "calls": [],
         "callbacks": [],
@@ -837,6 +839,7 @@
         "calls_followed_across_files": 0,
         "calls_matched_to_a_fact": 2,
         "calls_not_traced": 0,
+        "untraced_calls": [],
         "calls_into_packages": [],
         "calls": [],
         "callbacks": [],
@@ -887,6 +890,7 @@
         "calls_followed_across_files": 0,
         "calls_matched_to_a_fact": 2,
         "calls_not_traced": 0,
+        "untraced_calls": [],
         "calls_into_packages": [],
         "calls": [],
         "callbacks": [],
@@ -946,6 +950,7 @@
         "calls_followed_across_files": 0,
         "calls_matched_to_a_fact": 6,
         "calls_not_traced": 0,
+        "untraced_calls": [],
         "calls_into_packages": [],
         "calls": [],
         "callbacks": [],
@@ -964,6 +969,7 @@
         ]
       }
     ],
+    "untraced_by_callee": [],
     "unplaced_facts": []
   }
 }

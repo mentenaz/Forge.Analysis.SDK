@@ -181,7 +181,10 @@ struct Ctx<'s> {
     /// Start offsets of require calls the top-level pass already reported.
     handled: BTreeSet<u32>,
     scoping: Option<&'s Scoping>,
-       consumed: BTreeSet<(u32, u32)>,
+    consumed: BTreeSet<(u32, u32)>,
+    /// Declaration offsets of names that hold React's state setter or dispatcher
+    /// (`const [x, setX] = useState()`): calling one only updates React's own state.
+    setters: BTreeSet<u32>,
 }
 
 impl<'s> Ctx<'s> {
@@ -195,9 +198,8 @@ impl<'s> Ctx<'s> {
             handled: BTreeSet::new(),
             scoping: None,
             consumed: BTreeSet::new(),
+            setters: BTreeSet::new(),
         }
-
-
     }
 
     fn with_scoping(mut self, scoping: &'s Scoping) -> Self {

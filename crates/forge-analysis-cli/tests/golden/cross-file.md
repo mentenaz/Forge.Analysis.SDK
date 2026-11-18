@@ -4,7 +4,7 @@
 - Schema: 1
 - Mode: static only (no code was run)
 - Snapshot: `286395761548dfa7a3ee02e6d3ca3534abb33f5af2b50ba052982489a296c0d9`
-- Catalog: `d07904da6193581916ce5290866f86a843b47e51d0ae0122818017134cefef70`
+- Catalog: `661ff253d0997c290715b16d7de935041072e290e1efd30a82fa0c75eed0949b`
 
 <a id="index"></a>
 
@@ -227,13 +227,13 @@ Every function with its lanes, effects, callers and the facts inside it.
 - top level at line 1
   - runs: immediate
   - can reach: starts other programs
-  - calls to something other than a function in this file: 2 (1 followed across files, 1 matched to a fact, 0 not traced to any code)
+  - calls to something other than a function in this file: 2 (1 followed through an import or a prop, 1 matched to a fact, 0 not traced to any code)
   - followed call at line 5 to `run` in `runner.js` line 2 (through `./runner.js`, export `run`)
   - facts: `fact:9e3950ebcee45faf`, `fact:e5ba01ae63ea9ccd`, `fact:3aad1bf36a45fb26`, `fact:da767f241ea70a1d`, `fact:5fff27dfd029eb22`, `fact:b16b8df71b81b888`, `fact:0aaa5afc057b9479`
 - anonymous at line 6
   - runs: deferred
   - unresolved inside: Module our catalog does not cover
-  - calls to something other than a function in this file: 1 (0 followed across files, 1 matched to a fact, 0 not traced to any code)
+  - calls to something other than a function in this file: 1 (0 followed through an import or a prop, 1 matched to a fact, 0 not traced to any code)
   - facts: `fact:6406d7e97408dbf1`
 
 ### `orphan.js` (1)
@@ -241,7 +241,7 @@ Every function with its lanes, effects, callers and the facts inside it.
 - top level at line 1
   - runs: none (not reached from an entry)
   - can reach: deletes files
-  - calls to something other than a function in this file: 2 (0 followed across files, 2 matched to a fact, 0 not traced to any code)
+  - calls to something other than a function in this file: 2 (0 followed through an import or a prop, 2 matched to a fact, 0 not traced to any code)
   - facts: `fact:6f61be9e7537cc5e`, `fact:604213d2ac79fa54`, `fact:6f8704b8ffefc0bd`
 
 ### `runner.js` (2)
@@ -253,8 +253,8 @@ Every function with its lanes, effects, callers and the facts inside it.
   - runs: immediate; also used as a value, so it may run from elsewhere
   - can reach: starts other programs
   - unresolved inside: Computed property access
-  - calls to something other than a function in this file: 1 (0 followed across files, 1 matched to a fact, 0 not traced to any code)
-  - called through an import from: top level in `main.js`
+  - calls to something other than a function in this file: 1 (0 followed through an import or a prop, 1 matched to a fact, 0 not traced to any code)
+  - called through an import or a prop from: top level in `main.js`
   - facts: `fact:5d6d958f4743937b`, `fact:c90798328b471b56`, `fact:d87af0f9b1320a05`
 
 ### Facts not placed in any function (1)

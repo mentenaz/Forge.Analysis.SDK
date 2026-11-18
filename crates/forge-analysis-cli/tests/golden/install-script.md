@@ -4,7 +4,7 @@
 - Schema: 1
 - Mode: static only (no code was run)
 - Snapshot: `21640997110fe94a814caf659f927b541631e8a6969533c39f962f6461898070`
-- Catalog: `d07904da6193581916ce5290866f86a843b47e51d0ae0122818017134cefef70`
+- Catalog: `661ff253d0997c290715b16d7de935041072e290e1efd30a82fa0c75eed0949b`
 
 <a id="index"></a>
 
@@ -242,6 +242,13 @@ Not code we analyse (documents, images, data, unknown types). Listed so nothing 
 
 Every function with its lanes, effects, callers and the facts inside it.
 
+### Calls we could not trace, by what they call (3)
+
+Nothing in the analysis says what these run. The label is made from names only; `(..)` stands for a computed receiver. Every call is also listed, with its line, under its function below.
+
+- `(..).then` ×2 in 1 function(s) across 1 file(s)
+- `r.text` ×1 in 1 function(s) across 1 file(s)
+
 ### `lib.js` (2)
 
 - top level at line 1
@@ -254,28 +261,30 @@ Every function with its lanes, effects, callers and the facts inside it.
 - top level at line 1
   - runs: install
   - can reach: writes files, deletes files, makes network requests, runs code built at run time
-  - calls to something other than a function in this file: 6 (0 followed across files, 4 matched to a fact, 2 not traced to any code)
+  - calls to something other than a function in this file: 6 (0 followed through an import or a prop, 4 matched to a fact, 2 not traced to any code)
+  - not traced: `(..).then` at line 3, 3
   - facts: `fact:c84dfdaf5bf34872`, `fact:056fe7f3c71e6b50`, `fact:7f1a8d20d9216e55`, `fact:4cc140adbcc4fc13`, `fact:4b45608f3cf8d81e`, `fact:8e90923ec4d7ab03`, `fact:38c761f4499498f8`
 - anonymous at line 3
   - runs: install
-  - calls to something other than a function in this file: 1 (0 followed across files, 0 matched to a fact, 1 not traced to any code)
+  - calls to something other than a function in this file: 1 (0 followed through an import or a prop, 0 matched to a fact, 1 not traced to any code)
+  - not traced: `r.text` at line 3
 - anonymous at line 3
   - runs: install
   - can reach: runs code built at run time
   - unresolved inside: Code built at run time
-  - calls to something other than a function in this file: 1 (0 followed across files, 1 matched to a fact, 0 not traced to any code)
+  - calls to something other than a function in this file: 1 (0 followed through an import or a prop, 1 matched to a fact, 0 not traced to any code)
   - facts: `fact:4fb37decbb748c7f`, `fact:1d5d4970d0d178f7`, `fact:68df2048122e2fe3`, `fact:909a5c4ffb95808e`
 - anonymous at line 4
   - runs: recurring
   - can reach: writes files
-  - calls to something other than a function in this file: 1 (0 followed across files, 1 matched to a fact, 0 not traced to any code)
+  - calls to something other than a function in this file: 1 (0 followed through an import or a prop, 1 matched to a fact, 0 not traced to any code)
   - facts: `fact:0becde626b3a9a5a`, `fact:0ab78a27a5c9fe51`
 
 ### `test.js` (1)
 
 - top level at line 1
   - runs: immediate
-  - calls to something other than a function in this file: 1 (0 followed across files, 1 matched to a fact, 0 not traced to any code)
+  - calls to something other than a function in this file: 1 (0 followed through an import or a prop, 1 matched to a fact, 0 not traced to any code)
   - facts: `fact:0032d2c40c930d98`
 
 [Back to the index](#index)

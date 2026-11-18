@@ -2,7 +2,7 @@
   "header": {
     "schema": 1,
     "engine": "forge-analysis 0.0.1",
-    "catalog_sha256": "d07904da6193581916ce5290866f86a843b47e51d0ae0122818017134cefef70",
+    "catalog_sha256": "661ff253d0997c290715b16d7de935041072e290e1efd30a82fa0c75eed0949b",
     "snapshot_sha256": "cba6ce1d98dfe0b5012bf70cc0e5f73700b73588bc6c75ae16a5b38c530e52b5",
     "mode": "static_only"
   },
@@ -100,10 +100,10 @@
     "files_analysed": 2,
     "files_not_analysed": 0,
     "functions": 3,
-    "facts": 2,
+    "facts": 3,
     "links_made": 2,
     "unresolved_cleared_by_links": 1,
-    "completeness": "incomplete",
+    "completeness": "complete",
     "coverage": [
       {
         "section": "unresolved",
@@ -133,7 +133,7 @@
       {
         "section": "functions",
         "label": "calls whose target we could not see (no function followed, no fact)",
-        "count": 1
+        "count": 0
       }
     ],
     "fact_counts": [
@@ -147,7 +147,7 @@
       },
       {
         "kind": "call",
-        "count": 0
+        "count": 1
       },
       {
         "kind": "effect",
@@ -282,8 +282,9 @@
         "unresolved": [],
         "unfollowed_calls": 3,
         "calls_followed_across_files": 1,
-        "calls_matched_to_a_fact": 1,
-        "calls_not_traced": 1,
+        "calls_matched_to_a_fact": 2,
+        "calls_not_traced": 0,
+        "untraced_calls": [],
         "calls_into_packages": [],
         "calls": [],
         "callbacks": [],
@@ -318,6 +319,7 @@
               "original_len": 3,
               "sha256": "7e9e5ac30f2216fd0fd6f5faed316f2d5983361a4203c3330cfa46ef65bb4767"
             },
+            "via_prop": false,
             "line": 2,
             "start_byte": 47,
             "end_byte": 56
@@ -326,6 +328,7 @@
         "followed_called_from": [],
         "facts": [
           "fact:20fc86e92cbfc568",
+          "fact:69c0146d02a28261",
           "fact:85fc4adfeb497561"
         ]
       },
@@ -362,6 +365,7 @@
         "calls_followed_across_files": 0,
         "calls_matched_to_a_fact": 0,
         "calls_not_traced": 0,
+        "untraced_calls": [],
         "calls_into_packages": [],
         "calls": [],
         "callbacks": [],
@@ -408,6 +412,7 @@
         "calls_followed_across_files": 0,
         "calls_matched_to_a_fact": 0,
         "calls_not_traced": 0,
+        "untraced_calls": [],
         "calls_into_packages": [],
         "calls": [],
         "callbacks": [],
@@ -429,6 +434,7 @@
         "facts": []
       }
     ],
+    "untraced_by_callee": [],
     "unplaced_facts": []
   }
 }

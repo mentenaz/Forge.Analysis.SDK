@@ -14,6 +14,10 @@
 //!     function in this file (`unfollowed_calls` on the calling function);
 //!   * functions used as plain values (returned, stored, exported, assigned): `escaped`.
 //!
+//! Stored functions: a function expression that is not called, not an argument and not a
+//! variable's initialiser (a JSX prop, an object or array entry, a returned or assigned value)
+//! is a REFERENCE edge from the function around it, for the same reason as below.
+//!
 //! References: a local function named anywhere other than as a callee or call argument
 //! (`<App />`, `const x = f`, `return f`, `{ f }`) is a REFERENCE edge from the function that
 //! names it: it MAY run, so its effects and lanes count for the one that names it. This
@@ -25,7 +29,9 @@ use oxc_ast::ast::{
     Argument, ArrowFunctionExpression, AssignmentExpression, AssignmentTarget, BindingPattern,
     CallExpression, ComputedMemberExpression, Declaration, ExportDeclaration, ExportSpecifier,
     StaticMemberExpression, ExportDefaultDeclaration, ExportDefaultDeclarationKind, Expression,
-    Function, IdentifierReference, NewExpression, Program, VariableDeclarator,
+    Function, FunctionType, IdentifierReference, JSXAttributeItem, JSXAttributeName,
+    JSXAttributeValue, JSXElementName, JSXOpeningElement, NewExpression, ObjectPattern, Program,
+    PropertyKey, VariableDeclarator,
 };
 use oxc_ast_visit::{walk, Visit};
 use oxc_semantic::{ScopeFlags, Scoping, SymbolId};
@@ -41,6 +47,10 @@ pub struct FnNode {
     pub unfollowed_calls: u32,
     /// Byte range of each of those calls (`unfollowed_calls` entries).
     pub unfollowed_sites: Vec<(u32, u32)>,
+    /// What each of those calls calls, as a short label (`console.log`, `(..).then`),
+    /// one per site, same order. Built from names only, so calls that differ only in their
+    /// arguments or in a computed receiver group together.
+    pub unfollowed_callees: Vec<String>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -77,6 +87,43 @@ pub struct Graph {
     /// Names of non-local symbols used as values (candidates for imports), once per
     /// (function, declaration).
     pub ext_refs: Vec<RawExtRef>,
+    /// JSX props handed to a component, for the linker to match with `prop_calls`.
+    pub prop_uses: Vec<RawPropUse>,
+    pub prop_calls: Vec<RawPropCall>,
+}
+
+/// The component a JSX element names: a function in this file, or a name declared at
+/// `decl_start` that the linker may find to be an import.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum RawPropTag {
+    Local(u32),
+    Ext { decl_start: u32 },
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum RawPropValue {
+    /// A function written here (or named here) handed over as the prop.
+    Fn(u32),
+    /// Anything else: not a function we can name.
+    Opaque,
+}
+
+/// `<Tag prop={value} />`. A spread (`{...x}`) is prop `*` with an opaque value.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct RawPropUse {
+    pub tag: RawPropTag,
+    pub prop: String,
+    pub value: RawPropValue,
+}
+
+/// A call, inside function `from`, to the prop `prop` of component `comp` (a function whose
+/// first parameter is destructured, or named and used as `props.name(..)`).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct RawPropCall {
+    pub from: u32,
+    pub comp: u32,
+    pub prop: String,
+    pub site: (u32, u32),
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -112,9 +159,48 @@ fn peel<'e, 'a>(mut e: &'e Expression<'a>) -> &'e Expression<'a> {
     e
 }
 
+const LABEL_MAX: usize = 120;
+
+/// A short name for what a call calls, from names only: `f`, `a.b.c`, `this.x`, `(..).then`,
+/// `a[..]`, `(..)`. Anything built from a call, a literal or any other expression shows as
+/// `(..)`, so the label stays the same however the receiver was computed.
+pub fn callee_label(e: &Expression<'_>) -> String {
+    fn go(e: &Expression<'_>, depth: u32, out: &mut String) {
+        if depth > 32 || out.len() > LABEL_MAX {
+            out.push_str("..");
+            return;
+        }
+        match e {
+            Expression::ParenthesizedExpression(p) => go(&p.expression, depth + 1, out),
+            Expression::TSNonNullExpression(n) => go(&n.expression, depth + 1, out),
+            Expression::Identifier(i) => out.push_str(i.name.as_str()),
+            Expression::ThisExpression(_) => out.push_str("this"),
+            Expression::Super(_) => out.push_str("super"),
+            Expression::StaticMemberExpression(m) => {
+                go(&m.object, depth + 1, out);
+                out.push('.');
+                out.push_str(m.property.name.as_str());
+            }
+            Expression::PrivateFieldExpression(m) => {
+                go(&m.object, depth + 1, out);
+                out.push_str(".#");
+                out.push_str(m.field.name.as_str());
+            }
+            Expression::ComputedMemberExpression(m) => {
+                go(&m.object, depth + 1, out);
+                out.push_str("[..]");
+            }
+            _ => out.push_str("(..)"),
+        }
+    }
+    let mut out = String::new();
+    go(e, 0, &mut out);
+    out
+}
+
 pub fn build(program: &Program<'_>, scoping: &Scoping) -> Graph {
     let mut p1 = Table::default();
-    p1.fns.push(FnNode { id: 0, at: program.span, name: None, unfollowed_calls: 0, unfollowed_sites: Vec::new() });
+    p1.fns.push(FnNode { id: 0, at: program.span, name: None, unfollowed_calls: 0, unfollowed_sites: Vec::new(), unfollowed_callees: Vec::new() });
     p1.visit_program(program);
     let by_span: BTreeMap<Key, u32> = p1.fns.iter().skip(1).map(|f| (key(f.at), f.id)).collect();
     let mut p2 = Edges {
@@ -123,9 +209,12 @@ pub fn build(program: &Program<'_>, scoping: &Scoping) -> Graph {
         by_span,
         stack: vec![0],
         consumed: BTreeSet::new(),
+        accounted: BTreeSet::new(),
         not_a_value: BTreeSet::new(),
         export_depth: 0,
         seen_ext: BTreeSet::new(),
+        prop_syms: BTreeMap::new(),
+        props_syms: BTreeMap::new(),
         g: Graph { fns: p1.fns, ..Graph::default() },
     };
     p2.visit_program(program);
@@ -231,7 +320,7 @@ impl Table {
             self.sym_fn.insert(sym, id);
             name = Some(sp);
         }
-        self.fns.push(FnNode { id, at, name, unfollowed_calls: 0, unfollowed_sites: Vec::new() });
+        self.fns.push(FnNode { id, at, name, unfollowed_calls: 0, unfollowed_sites: Vec::new(), unfollowed_callees: Vec::new() });
     }
 }
 
@@ -241,6 +330,27 @@ impl<'a> Visit<'a> for Table {
             let init = peel(init);
             if matches!(init, Expression::ArrowFunctionExpression(_) | Expression::FunctionExpression(_)) {
                 self.decl_names.insert(key(init.span()), (b.symbol_id(), b.span));
+            }
+            // `const X = memo(() => ..)` / `forwardRef(..)` / `useCallback(.., deps)`: the
+            // variable names the function inside, by the wrapper's name only.
+            if let Expression::CallExpression(c) = init {
+                let wrapper = match peel(&c.callee) {
+                    Expression::Identifier(i) => Some(i.name.as_str()),
+                    Expression::StaticMemberExpression(m) => Some(m.property.name.as_str()),
+                    _ => None,
+                };
+                if matches!(wrapper, Some("memo" | "forwardRef" | "useCallback")) {
+                    if let Some(first) = c.arguments.first() {
+                        let sp = match first {
+                            Argument::ArrowFunctionExpression(f) => Some(f.span),
+                            Argument::FunctionExpression(f) => Some(f.span),
+                            _ => None,
+                        };
+                        if let Some(sp) = sp {
+                            self.decl_names.insert(key(sp), (b.symbol_id(), b.span));
+                        }
+                    }
+                }
             }
         }
         walk::walk_variable_declarator(self, it);
@@ -269,11 +379,18 @@ struct Edges<'s> {
     by_span: BTreeMap<Key, u32>,
     stack: Vec<u32>,
     consumed: BTreeSet<Key>,
+    /// Function expressions whose use is already an edge or a name: a callee, an argument, or
+    /// a variable's initialiser. Any other function expression is stored somewhere.
+    accounted: BTreeSet<Key>,
     /// Identifiers that are a callee or the object of a member access, not a value.
     not_a_value: BTreeSet<Key>,
     /// Above zero while walking something that only exports (no edge is made).
     export_depth: u32,
     seen_ext: BTreeSet<(u32, u32)>,
+    /// A destructured prop: symbol -> (component function, prop name).
+    prop_syms: BTreeMap<SymbolId, (u32, String)>,
+    /// A first parameter used whole (`props`): symbol -> component function.
+    props_syms: BTreeMap<SymbolId, u32>,
     g: Graph,
 }
 
@@ -315,6 +432,24 @@ impl Edges<'_> {
             _ => {}
         }
     }
+    /// A function expression written where it is neither called, passed to a call, nor bound
+    /// to a variable is stored: in a JSX prop, an object or array, a returned value or a
+    /// property. Whoever receives it may run it, so the function around it may run it too.
+    /// This is an over-approximation about reachability only; exports do not count.
+    fn stored(&mut self, at: Span) {
+        if self.accounted.contains(&key(at)) || self.export_depth > 0 {
+            return;
+        }
+        if let Some(&id) = self.by_span.get(&key(at)) {
+            let from = self.cur();
+            if from != id {
+                self.g.escaped.insert(id);
+                if !self.g.references.contains(&(from, id)) {
+                    self.g.references.push((from, id));
+                }
+            }
+        }
+    }
     fn inline_fn(&self, e: &Expression<'_>) -> Option<u32> {
         match peel(e) {
             Expression::ArrowFunctionExpression(f) => self.by_span.get(&key(f.span)).copied(),
@@ -333,8 +468,14 @@ impl Edges<'_> {
                     }
                     t
                 }
-                Argument::ArrowFunctionExpression(f) => self.by_span.get(&key(f.span)).copied(),
-                Argument::FunctionExpression(f) => self.by_span.get(&key(f.span)).copied(),
+                Argument::ArrowFunctionExpression(f) => {
+                    self.accounted.insert(key(f.span));
+                    self.by_span.get(&key(f.span)).copied()
+                }
+                Argument::FunctionExpression(f) => {
+                    self.accounted.insert(key(f.span));
+                    self.by_span.get(&key(f.span)).copied()
+                }
                 _ => None,
             };
             if let Some(to) = to {
@@ -342,10 +483,77 @@ impl Edges<'_> {
             }
         }
     }
-    fn unfollowed(&mut self, site: Span) {
+    /// Remember which names in a function's parameters are props, so a call to one can be
+    /// matched with the functions handed over as that prop.
+    fn note_params(&mut self, params: &oxc_ast::ast::FormalParameters<'_>, at: Span) {
+        let Some(&id) = self.by_span.get(&key(at)) else { return };
+        let Some(first) = params.items.first() else { return };
+        match &first.pattern {
+            BindingPattern::ObjectPattern(p) => self.note_object_pattern(p, id),
+            BindingPattern::BindingIdentifier(b) => {
+                self.props_syms.insert(b.symbol_id(), id);
+            }
+            _ => {}
+        }
+    }
+    fn note_object_pattern(&mut self, p: &ObjectPattern<'_>, id: u32) {
+        for prop in &p.properties {
+            if prop.computed {
+                continue;
+            }
+            let name = match &prop.key {
+                PropertyKey::StaticIdentifier(k) => k.name.to_string(),
+                PropertyKey::StringLiteral(l) => match l.value.as_str() { Some(v) => v.to_string(), None => continue },
+                _ => continue,
+            };
+            let target = match &prop.value {
+                BindingPattern::AssignmentPattern(a) => &a.left,
+                other => other,
+            };
+            if let BindingPattern::BindingIdentifier(b) = target {
+                self.prop_syms.insert(b.symbol_id(), (id, name));
+            }
+        }
+    }
+    /// `onBack(..)` or `props.onBack(..)` where the name is a prop of the enclosing component.
+    fn note_prop_call(&mut self, callee: &Expression<'_>, site: Span) {
+        let from = self.cur();
+        let found = match peel(callee) {
+            Expression::Identifier(r) => {
+                self.symbol_of(r).and_then(|s| self.prop_syms.get(&s)).cloned()
+            }
+            Expression::StaticMemberExpression(m) => match peel(&m.object) {
+                Expression::Identifier(r) => self
+                    .symbol_of(r)
+                    .and_then(|s| self.props_syms.get(&s))
+                    .map(|&c| (c, m.property.name.to_string())),
+                _ => None,
+            },
+            _ => None,
+        };
+        if let Some((comp, prop)) = found {
+            self.g.prop_calls.push(RawPropCall { from, comp, prop, site: (site.start, site.end) });
+        }
+    }
+    fn prop_value(&self, v: &Option<JSXAttributeValue<'_>>) -> RawPropValue {
+        let Some(JSXAttributeValue::ExpressionContainer(c)) = v else { return RawPropValue::Opaque };
+        let Some(e) = c.expression.as_expression() else { return RawPropValue::Opaque };
+        match peel(e) {
+            Expression::ArrowFunctionExpression(f) => {
+                self.by_span.get(&key(f.span)).map_or(RawPropValue::Opaque, |&i| RawPropValue::Fn(i))
+            }
+            Expression::FunctionExpression(f) => {
+                self.by_span.get(&key(f.span)).map_or(RawPropValue::Opaque, |&i| RawPropValue::Fn(i))
+            }
+            Expression::Identifier(r) => self.resolve(r).map_or(RawPropValue::Opaque, RawPropValue::Fn),
+            _ => RawPropValue::Opaque,
+        }
+    }
+    fn unfollowed(&mut self, site: Span, callee: &Expression<'_>) {
         let c = self.cur() as usize;
         self.g.fns[c].unfollowed_calls += 1;
         self.g.fns[c].unfollowed_sites.push((site.start, site.end));
+        self.g.fns[c].unfollowed_callees.push(callee_label(callee));
     }
     fn enter(&mut self, at: Span) {
         if let Some(&id) = self.by_span.get(&key(at)) {
@@ -360,13 +568,33 @@ impl Edges<'_> {
 }
 
 impl<'a> Visit<'a> for Edges<'_> {
+    fn visit_variable_declarator(&mut self, it: &VariableDeclarator<'a>) {
+        if let Some(init) = &it.init {
+            if matches!(it.id, BindingPattern::BindingIdentifier(_)) {
+                if let Some(e) = match peel(init) {
+                    Expression::ArrowFunctionExpression(f) => Some(f.span),
+                    Expression::FunctionExpression(f) => Some(f.span),
+                    _ => None,
+                } {
+                    self.accounted.insert(key(e));
+                }
+            }
+        }
+        walk::walk_variable_declarator(self, it);
+    }
     fn visit_function(&mut self, it: &Function<'a>, flags: ScopeFlags) {
+        if it.r#type == FunctionType::FunctionExpression {
+            self.stored(it.span);
+        }
         self.enter(it.span);
+        self.note_params(&it.params, it.span);
         walk::walk_function(self, it, flags);
         self.leave(it.span);
     }
     fn visit_arrow_function_expression(&mut self, it: &ArrowFunctionExpression<'a>) {
+        self.stored(it.span);
         self.enter(it.span);
+        self.note_params(&it.params, it.span);
         walk::walk_arrow_function_expression(self, it);
         self.leave(it.span);
     }
@@ -383,13 +611,26 @@ impl<'a> Visit<'a> for Edges<'_> {
                 }
                 t
             }
-            other => self.inline_fn(other),
+            other => {
+                let t = self.inline_fn(other);
+                match other {
+                    Expression::ArrowFunctionExpression(f) => {
+                        self.accounted.insert(key(f.span));
+                    }
+                    Expression::FunctionExpression(f) => {
+                        self.accounted.insert(key(f.span));
+                    }
+                    _ => {}
+                }
+                t
+            }
         };
         match target {
             Some(to) => self.g.calls.push((from, to)),
             None => {
-                self.unfollowed(it.span);
+                self.unfollowed(it.span, &it.callee);
                 self.note_ext(peel(&it.callee), it.span);
+                self.note_prop_call(&it.callee, it.span);
             }
         }
         self.arguments(&it.arguments, key(it.span));
@@ -399,7 +640,7 @@ impl<'a> Visit<'a> for Edges<'_> {
         if let Expression::Identifier(r) = peel(&it.callee) {
             self.not_a_value.insert(key(r.span));
         }
-        self.unfollowed(it.span);
+        self.unfollowed(it.span, &it.callee);
         self.arguments(&it.arguments, key(it.span));
         walk::walk_new_expression(self, it);
     }
@@ -414,6 +655,28 @@ impl<'a> Visit<'a> for Edges<'_> {
             self.not_a_value.insert(key(r.span));
         }
         walk::walk_computed_member_expression(self, it);
+    }
+    fn visit_jsx_opening_element(&mut self, it: &JSXOpeningElement<'a>) {
+        if let JSXElementName::IdentifierReference(r) = &it.name {
+            let tag = match (self.resolve(r), self.symbol_of(r)) {
+                (Some(f), _) => Some(RawPropTag::Local(f)),
+                (None, Some(sym)) => Some(RawPropTag::Ext { decl_start: self.scoping.symbol_span(sym).start }),
+                _ => None,
+            };
+            if let Some(tag) = tag {
+                for a in &it.attributes {
+                    let (prop, value) = match a {
+                        JSXAttributeItem::Attribute(at) => match &at.name {
+                            JSXAttributeName::Identifier(n) => (n.name.to_string(), self.prop_value(&at.value)),
+                            _ => ("*".to_string(), RawPropValue::Opaque),
+                        },
+                        JSXAttributeItem::SpreadAttribute(_) => ("*".to_string(), RawPropValue::Opaque),
+                    };
+                    self.g.prop_uses.push(RawPropUse { tag, prop, value });
+                }
+            }
+        }
+        walk::walk_jsx_opening_element(self, it);
     }
     fn visit_export_specifier(&mut self, it: &ExportSpecifier<'a>) {
         self.export_depth += 1;
@@ -520,10 +783,73 @@ mod tests {
     }
 
     #[test]
+    fn untraced_calls_are_labelled_from_names_only() {
+        let g = graph("console.log(1); this.a.b(); x[k](); f(g()).then(h); (async () => 1)();");
+        let labels: Vec<&str> = g.fns[0].unfollowed_callees.iter().map(|s| s.as_str()).collect();
+        assert_eq!(
+            labels.iter().filter(|l| **l == "console.log" || **l == "this.a.b" || **l == "x[..]" || **l == "(..).then").count(),
+            4,
+            "{labels:?}"
+        );
+        assert_eq!(g.fns[0].unfollowed_callees.len() as u32, g.fns[0].unfollowed_calls);
+    }
+
+    #[test]
+    fn a_function_wrapped_in_use_callback_or_memo_is_named_by_its_variable() {
+        let g = graph("const f = useCallback(() => 1, []); const M = memo(function(){}); f(); M();");
+        assert_eq!(g.calls.len(), 2, "{:?}", g.calls);
+        assert_eq!(g.fns[0].unfollowed_calls, 2, "useCallback and memo themselves are untraced calls");
+    }
+
+    #[test]
     fn a_function_named_as_a_value_is_a_reference_edge() {
         let g = graph("function f(){} const x = f; const o = { k: f };");
         assert_eq!(g.references, vec![(0, 1)], "once per (namer, named)");
         assert!(g.escaped.contains(&1));
+    }
+
+    #[test]
+    fn a_function_stored_in_a_jsx_prop_object_or_array_may_run_from_the_function_around_it() {
+        for src in [
+            "function h(){ return <X onBack={() => 1} />; }",
+            "const t = { a: () => 1 };",
+            "const t = [function(){}];",
+            "function h(){ return () => 1; }",
+            "const o = {}; o.k = () => 1;",
+            "const o = { m() {} };",
+        ] {
+            let st = if src.contains("<X") { SourceType::jsx() } else { SourceType::mjs() };
+            let alloc = Allocator::default();
+            let ret = Parser::new(&alloc, src, st).parse();
+            assert!(ret.diagnostics.is_empty(), "{src}: {:?}", ret.diagnostics);
+            let sem = SemanticBuilder::new().build(&ret.program);
+            let g = build(&ret.program, sem.semantic.scoping());
+            let stored = g.fns.len() as u32 - 1;
+            assert!(
+                g.references.iter().any(|&(_, to)| to == stored),
+                "{src}: {:?} in {} fns",
+                g.references,
+                g.fns.len()
+            );
+            assert!(g.escaped.contains(&stored), "{src}");
+        }
+    }
+
+    #[test]
+    fn called_passed_bound_or_exported_function_expressions_are_not_stored() {
+        for src in [
+            "(function(){})();",
+            "(() => 1)();",
+            "foo(() => 1);",
+            "new Foo(function(){});",
+            "const f = () => 1;",
+            "export default () => 1;",
+            "module.exports = { run: () => 1 };",
+            "export const f = function(){};",
+        ] {
+            let g = graph(src);
+            assert!(g.references.is_empty(), "{src}: {:?}", g.references);
+        }
     }
 
     #[test]
@@ -629,6 +955,7 @@ mod tests {
         let g = graph("import x from 'y'; x(); obj.m(); new Thing();");
         assert!(g.calls.is_empty());
         assert_eq!(g.fns[0].unfollowed_calls, 3);
+        assert_eq!(g.fns[0].unfollowed_callees.len(), 3);
     }
 
     #[test]

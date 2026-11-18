@@ -4,7 +4,7 @@
 - Schema: 1
 - Mode: static only (no code was run)
 - Snapshot: `cba6ce1d98dfe0b5012bf70cc0e5f73700b73588bc6c75ae16a5b38c530e52b5`
-- Catalog: `d07904da6193581916ce5290866f86a843b47e51d0ae0122818017134cefef70`
+- Catalog: `661ff253d0997c290715b16d7de935041072e290e1efd30a82fa0c75eed0949b`
 
 <a id="index"></a>
 
@@ -28,7 +28,7 @@
 
 What was analysed, whether the picture is complete, and one count for everything we could not see.
 
-**Status: incomplete.** Some of the code could not be seen. Each line below says how much, and links to the section that lists every item.
+**Status: complete.** Nothing was left unseen.
 
 | What we could not see | Count | Listed in |
 |---|---|---|
@@ -37,15 +37,15 @@ What was analysed, whether the picture is complete, and one count for everything
 | declared entry points that match no analysed file | 0 | [Entry points](#entry-points) |
 | files or folders not read as code | 0 | [Not analysed](#not-analysed) |
 | dependencies whose own code and install scripts were not analysed | 0 | [Dependencies](#dependencies) |
-| calls whose target we could not see (no function followed, no fact) | 1 | [Function index](#function-index) |
+| calls whose target we could not see (no function followed, no fact) | 0 | [Function index](#function-index) |
 
 - Files analysed: 2
 - Files not analysed: 0
 - Functions: 3
 - Cross-file links made: 2
 - Unresolved facts not listed as open because their call was followed to its source: 1
-- Facts found: 2
-- Facts by kind: 0 entry, 1 import, 0 call, 0 effect, 0 timer, 0 script, 0 dependency, 1 unresolved, 0 flow
+- Facts found: 3
+- Facts by kind: 0 entry, 1 import, 1 call, 0 effect, 0 timer, 0 script, 0 dependency, 1 unresolved, 0 flow
 
 [Back to the index](#index)
 
@@ -173,9 +173,9 @@ Every function with its lanes, effects, callers and the facts inside it.
 
 - top level at line 1
   - runs: immediate
-  - calls to something other than a function in this file: 3 (1 followed across files, 1 matched to a fact, 1 not traced to any code)
+  - calls to something other than a function in this file: 3 (1 followed through an import or a prop, 2 matched to a fact, 0 not traced to any code)
   - followed call at line 2 to `add` in `util.js` line 1 (through `./util`, export `add`)
-  - facts: `fact:20fc86e92cbfc568`, `fact:85fc4adfeb497561`
+  - facts: `fact:20fc86e92cbfc568`, `fact:69c0146d02a28261`, `fact:85fc4adfeb497561`
 
 ### `util.js` (2)
 
@@ -183,6 +183,6 @@ Every function with its lanes, effects, callers and the facts inside it.
   - runs: immediate
 - `add` at line 1
   - runs: immediate; also used as a value, so it may run from elsewhere
-  - called through an import from: top level in `index.js`
+  - called through an import or a prop from: top level in `index.js`
 
 [Back to the index](#index)

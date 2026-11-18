@@ -4,7 +4,7 @@
 - Schema: 1
 - Mode: static only (no code was run)
 - Snapshot: `9ce6978007195f638eeee5bbb73f818d77aa1370dbd1aa0b2d698984b2b370ce`
-- Catalog: `d07904da6193581916ce5290866f86a843b47e51d0ae0122818017134cefef70`
+- Catalog: `661ff253d0997c290715b16d7de935041072e290e1efd30a82fa0c75eed0949b`
 
 <a id="index"></a>
 
@@ -222,7 +222,7 @@ Every function with its lanes, effects, callers and the facts inside it.
 
 - top level at line 1
   - runs: none (not reached from an entry)
-  - calls to something other than a function in this file: 1 (0 followed across files, 1 matched to a fact, 0 not traced to any code)
+  - calls to something other than a function in this file: 1 (0 followed through an import or a prop, 1 matched to a fact, 0 not traced to any code)
   - facts: `fact:54b2f2f39b301dbf`
 
 ### `[x](y).js` (1)
@@ -230,7 +230,7 @@ Every function with its lanes, effects, callers and the facts inside it.
 - top level at line 1
   - runs: none (not reached from an entry)
   - can reach: starts other programs
-  - calls to something other than a function in this file: 2 (0 followed across files, 2 matched to a fact, 0 not traced to any code)
+  - calls to something other than a function in this file: 2 (0 followed through an import or a prop, 2 matched to a fact, 0 not traced to any code)
   - facts: `fact:e078c00e036c3ef6`, `fact:d41303d2534a00e2`, `fact:0dc788cce5405910`
 
 ### ````a`b``c```d.js```` (1)
@@ -238,7 +238,7 @@ Every function with its lanes, effects, callers and the facts inside it.
 - top level at line 1
   - runs: none (not reached from an entry)
   - can reach: deletes files
-  - calls to something other than a function in this file: 2 (0 followed across files, 2 matched to a fact, 0 not traced to any code)
+  - calls to something other than a function in this file: 2 (0 followed through an import or a prop, 2 matched to a fact, 0 not traced to any code)
   - facts: `fact:622a1b670134a722`, `fact:c72d9f3694dc5dad`, `fact:25fa64491e4b7574`
 
 ### `index.js` (1)
@@ -247,7 +247,7 @@ Every function with its lanes, effects, callers and the facts inside it.
   - runs: immediate
   - can reach: makes network requests, runs code built at run time
   - unresolved inside: Module chosen at run time
-  - calls to something other than a function in this file: 6 (0 followed across files, 6 matched to a fact, 0 not traced to any code)
+  - calls to something other than a function in this file: 6 (0 followed through an import or a prop, 6 matched to a fact, 0 not traced to any code)
   - facts: `fact:30b3e36a93fa7104`, `fact:2604a0f4518977d8`, `fact:0eb079624129b4ca`, `fact:191e204c3cc8349d`, `fact:111dd675953354fd`, `fact:20e3d297317298b7`, `fact:97b7e410f9bf1d04`, `fact:cf001330d4cf0693`
 
 [Back to the index](#index)

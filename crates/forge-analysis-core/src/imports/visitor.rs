@@ -240,6 +240,23 @@ impl Ctx<'_> {
     }
 }
 
+/// A module specifier that names one of the project's own files, not a package or built-in.
+fn is_local_spec(spec: &str) -> bool {
+    spec.starts_with("./") || spec.starts_with("../") || spec.starts_with('/') || spec == "." || spec == ".."
+}
+
+/// JavaScript's own built-in objects. A method called on one of them (`Promise.resolve()`,
+/// `JSON.parse()`, `Object.keys()`) is never a Node module's method that shares its name.
+/// Only trusted when the name is not bound locally.
+fn is_standard_global(name: &str) -> bool {
+    matches!(
+        name,
+        "Promise" | "Math" | "JSON" | "Object" | "Array" | "Number" | "String" | "Boolean"
+            | "Symbol" | "BigInt" | "Date" | "Reflect" | "Map" | "Set" | "WeakMap" | "WeakSet"
+            | "RegExp" | "Error" | "Intl" | "Atomics" | "ArrayBuffer" | "Uint8Array" | "console"
+    )
+}
+
 // ---- pass 1: bindings and aliases ----
 
 struct Collector<'s> {
@@ -289,6 +306,24 @@ impl Collector<'_> {
                 self.member_of(&kind, &module, name)
             }
             _ => None,
+        }
+    }
+
+    /// `const [x, setX] = useState(..)` / `useReducer(..)` from React: `setX` only updates React's
+    /// own state. Recognised through the import, never by the name `setX`.
+    fn note_state_setter(&mut self, d: &VariableDeclarator<'_>) {
+        let (BindingPattern::ArrayPattern(ap), Some(init)) = (&d.id, &d.init) else { return };
+        let Expression::CallExpression(call) = unwrap_callee(init) else { return };
+        let Some((BindingKind::Named { imported }, module)) = self.alias_target(&call.callee) else { return };
+        if module != "react" || !(imported == "useState" || imported == "useReducer") {
+            return;
+        }
+        if let Some(Some(BindingPattern::BindingIdentifier(id))) = ap.elements.get(1) {
+            if !self.ctx.is_rewritten(id) {
+                if let Some(scoping) = self.ctx.scoping {
+                    self.ctx.setters.insert(scoping.symbol_span(id.symbol_id()).start);
+                }
+            }
         }
     }
 
@@ -382,6 +417,7 @@ impl<'a> Visit<'a> for Collector<'_> {
 
     fn visit_variable_declarator(&mut self, it: &VariableDeclarator<'a>) {
         self.ctx.declarator(it);
+        self.note_state_setter(it);
         if let Some(init) = &it.init {
             // A declaration's initialiser is handled here (alias or not); it is not a stray use.
             self.ctx.consumed.insert(key(init.span()));
@@ -468,6 +504,27 @@ impl<'s> Matcher<'s> {
         } else {
             self.unmatched(call, module);
         }
+    }
+
+    /// A call fact for something the catalog knows does nothing outside the program.
+    fn emit_known(&mut self, at: OxcSpan, callee: OxcSpan) {
+        let callee_text = self.ctx.text(callee);
+        let f = StaticFact::new(FactKind::Call, self.ctx.span(at), Some(Quoted::new(callee_text)));
+        self.ctx.facts.push(f);
+    }
+
+    /// `Math.max(..)`, `JSON.parse(..)`: a member of a built-in object that is not bound
+    /// anywhere in the file, and that the catalog lists as pure.
+    fn known_builtin_member(&mut self, call: &CallExpression<'_>, id: &IdentifierReference<'_>, name: &str) -> bool {
+        if !self.is_global(id) {
+            return false;
+        }
+        let module = format!("global.{}", self.ctx.text(id.span));
+        if self.catalog.find_known(&module, name).is_some() {
+            self.emit_known(call.span, call.callee.span());
+            return true;
+        }
+        false
     }
 
     /// A method call on something we cannot trace, whose name matches a catalogued API.
@@ -645,6 +702,10 @@ impl<'s> Matcher<'s> {
     /// `eval(...)`, `Function(...)`: the unshadowed global, or a local we cannot trust.
     fn global_call(&mut self, call: &CallExpression<'_>, id: &IdentifierReference<'_>) {
         let name = self.ctx.text(id.span);
+        if self.tracked_global(name).is_none() && self.is_global(id) && self.catalog.find_known("global", name).is_some() {
+            self.emit_known(call.span, call.callee.span());
+            return;
+        }
         let Some(entry) = self.tracked_global(name) else { return };
         if self.is_global(id) {
             self.emit_effect(call, entry);
@@ -719,6 +780,12 @@ impl<'s> Matcher<'s> {
                     BindingKind::Namespace | BindingKind::Default => {
                         self.resolve(call, &b.module, name)
                     }
+                    // `api.run()` where `api` is a name imported from one of our own files:
+                    // the linker cannot follow a method of an imported value, but it is not
+                    // a module the catalog fails to cover either. The call stays in the list
+                    // of calls we could not trace, named, and the file's functions that are
+                    // stored in objects may run from its top level.
+                    BindingKind::Named { .. } if is_local_spec(&b.module) => {}
                     BindingKind::Named { .. } | BindingKind::Opaque => {
                         self.unmatched(call, &b.module)
                     }
@@ -730,7 +797,12 @@ impl<'s> Matcher<'s> {
                     BindingKind::GlobalAlias { .. } => {}
                 },
                 None => {
-                    if !self.global_object_call(call, id, name) {
+                    if self.known_builtin_member(call, id, name) {
+                        return;
+                    }
+                    if !self.global_object_call(call, id, name)
+                        && !(self.is_global(id) && is_standard_global(self.ctx.text(id.span)))
+                    {
                         self.maybe_unknown(call, name);
                     }
                 }
@@ -745,7 +817,21 @@ impl<'s> Matcher<'s> {
         }
     }
 
+    /// True for a name declared as the setter of `useState` / `useReducer`.
+    fn is_state_setter(&self, id: &IdentifierReference<'_>) -> bool {
+        let Some(scoping) = self.ctx.scoping else { return false };
+        let Some(rid) = id.reference_id.get() else { return false };
+        let Some(sym) = scoping.get_reference(rid).symbol_id() else { return false };
+        self.ctx.setters.contains(&scoping.symbol_span(sym).start)
+    }
+
     fn match_call(&mut self, call: &CallExpression<'_>) {
+        if let Expression::Identifier(id) = unwrap_callee(&call.callee) {
+            if self.is_state_setter(id) {
+                self.emit_known(call.span, call.callee.span());
+                return;
+            }
+        }
         match unwrap_callee(&call.callee) {
             Expression::Identifier(id) => match self.import_binding(id) {
                 Some(b) => match &b.kind {
@@ -810,6 +896,8 @@ impl<'s> Matcher<'s> {
                         } else {
                             self.flag_at(it.span, UnresolvedReason::AmbiguousBinding);
                         }
+                    } else if self.is_global(id) && self.catalog.find_known("global", name).is_some() {
+                        self.emit_known(it.span, it.callee.span());
                     }
                 }
             },
@@ -1110,6 +1198,72 @@ mod tests {
         let f = run("a.js", r#"const fs = require("fs"); function f(fs) { fs.readFile("x"); }"#);
         assert!(effect(&f).is_none());
         assert_eq!(reasons(&f), vec![UnresolvedReason::UnknownReceiver]);
+    }
+
+    #[test]
+    fn a_state_setter_from_react_is_a_known_call() {
+        let f = run("a.js", r#"import { useState, useReducer } from "react";
+function C() { const [a, setA] = useState(0); const [, setB] = useState(1); const [s, dispatch] = useReducer(r, 0); setA(1); setB(2); dispatch({}); }"#);
+        assert_eq!(count(&f, FactKind::Call), 3, "{:?}", reasons(&f));
+    }
+
+    #[test]
+    fn a_state_setter_through_the_react_namespace_is_known() {
+        let f = run("a.js", r#"import React from "react"; function C() { const [a, setA] = React.useState(0); setA(1); }"#);
+        assert_eq!(count(&f, FactKind::Call), 1);
+    }
+
+    #[test]
+    fn a_setter_looking_name_is_not_trusted_without_react() {
+        let f = run("a.js", r#"import { useState } from "./mine.js"; function C() { const [a, setA] = useState(0); setA(1); }
+function D(setB) { setB(1); } function E() { const [a, setC] = other(); setC(1); }"#);
+        assert_eq!(count(&f, FactKind::Call), 0);
+    }
+
+    #[test]
+    fn a_reassigned_setter_is_not_trusted() {
+        let f = run("a.js", r#"import { useState } from "react"; function C() { let [a, setA] = useState(0); setA = evil; setA(1); }"#);
+        assert_eq!(count(&f, FactKind::Call), 0);
+    }
+
+    #[test]
+    fn built_in_globals_are_known_calls_when_not_shadowed() {
+        let f = run("a.js", "String(1); Math.max(1,2); JSON.parse(x); new Error('e'); console.log(1); clearInterval(h); Object.keys(o); Promise.resolve(1);");
+        assert!(reasons(&f).is_empty(), "{:?}", reasons(&f));
+        assert_eq!(count(&f, FactKind::Call), 8);
+        assert_eq!(count(&f, FactKind::Effect), 0);
+    }
+
+    #[test]
+    fn a_shadowed_built_in_is_not_trusted() {
+        let f = run("a.js", "function f(Math, String) { Math.max(1); String(2); } const JSON = x; JSON.parse(1);");
+        assert_eq!(count(&f, FactKind::Call), 0);
+    }
+
+    #[test]
+    fn a_built_in_member_the_catalog_does_not_list_is_not_a_known_call() {
+        let f = run("a.js", "Math.nope(1); JSON.nope(2);");
+        assert_eq!(count(&f, FactKind::Call), 0);
+    }
+
+    #[test]
+    fn a_method_on_a_standard_global_is_not_an_unknown_receiver() {
+        let f = run("a.js", "Promise.resolve().then(() => 1); JSON.parse(x); Object.keys(o);");
+        assert!(reasons(&f).is_empty(), "{:?}", reasons(&f));
+    }
+
+    #[test]
+    fn a_shadowed_standard_global_is_still_an_unknown_receiver() {
+        let f = run("a.js", "function f(Promise) { Promise.resolve(1); }");
+        assert_eq!(reasons(&f), vec![UnresolvedReason::UnknownReceiver]);
+    }
+
+    #[test]
+    fn a_method_of_a_name_imported_from_our_own_file_is_not_an_uncovered_module() {
+        let f = run("a.js", r#"import { TABS } from "./tabs.js"; TABS.map(t => t);"#);
+        assert!(reasons(&f).is_empty(), "{:?}", reasons(&f));
+        let g = run("a.js", r#"import { TABS } from "left-pad"; TABS.map(t => t);"#);
+        assert_eq!(reasons(&g), vec![UnresolvedReason::UncoveredModule]);
     }
 
     #[test]
@@ -1927,6 +2081,108 @@ mod tests {
             .unwrap()
             .transitive_effects
             .clone()
+    }
+
+    fn prop_follows(l: &forge_analysis_schema::Linked) -> Vec<(u32, u32, u32, u32)> {
+        l.followed_calls
+            .iter()
+            .filter(|c| c.via_prop)
+            .map(|c| (c.from.file, c.from.func.0, c.to.file, c.to.func.0))
+            .collect()
+    }
+
+    #[test]
+    fn a_function_handed_to_a_prop_is_followed_to_the_call_of_that_prop() {
+        let l = project(
+            &[(
+                "a.jsx",
+                r#"import fs from "fs";
+function Screen({ onDone }) { onDone(); return null; }
+export function App() { return <Screen onDone={() => fs.unlinkSync("x")} />; }
+App();"#,
+            )],
+            &[],
+        );
+        assert_eq!(prop_follows(&l).len(), 1, "{:?}", l.followed_calls);
+        let screen = l.fns.iter().find(|f| f.at.func.0 == 1).unwrap();
+        assert!(screen.transitive_effects.contains(&Effect::FsDelete), "{:?}", screen.transitive_effects);
+    }
+
+    #[test]
+    fn a_prop_called_as_props_dot_name_is_followed() {
+        let l = project(
+            &[(
+                "a.jsx",
+                r#"function Screen(props) { props.onBack(); return null; }
+function App() { return <Screen onBack={() => 1} />; }
+App();"#,
+            )],
+            &[],
+        );
+        assert_eq!(prop_follows(&l).len(), 1, "{:?}", l.followed_calls);
+    }
+
+    #[test]
+    fn a_prop_follows_across_files_through_the_import() {
+        let l = project(
+            &[
+                (
+                    "a.jsx",
+                    r#"import { Screen } from "./s.jsx";
+import fs from "fs";
+export function App() { return <Screen onDone={() => fs.unlinkSync("x")} />; }
+App();"#,
+                ),
+                ("s.jsx", r#"export function Screen({ onDone }) { onDone(); return null; }"#),
+            ],
+            &[0],
+        );
+        let f = prop_follows(&l);
+        assert_eq!(f.len(), 1, "{:?}", l.followed_calls);
+        assert_eq!((f[0].0, f[0].2), (1, 0), "from s.jsx into a.jsx");
+        let screen = l.fns.iter().find(|x| x.at.file == 1 && x.at.func.0 == 1).unwrap();
+        assert!(screen.transitive_effects.contains(&Effect::FsDelete));
+        assert!(screen.reachable_from_entry);
+    }
+
+    #[test]
+    fn a_prop_with_one_use_we_cannot_name_is_not_called_followed_but_still_reaches() {
+        let l = project(
+            &[(
+                "a.jsx",
+                r#"import fs from "fs";
+function Screen({ onDone }) { onDone(); return null; }
+function App(p) { return <><Screen onDone={() => fs.unlinkSync("x")} /><Screen onDone={p.other} /></>; }
+App();"#,
+            )],
+            &[],
+        );
+        assert!(prop_follows(&l).is_empty(), "{:?}", l.followed_calls);
+        let screen = l.fns.iter().find(|f| f.at.func.0 == 1).unwrap();
+        assert!(screen.transitive_effects.contains(&Effect::FsDelete));
+    }
+
+    #[test]
+    fn a_spread_into_the_component_stops_the_claim() {
+        let l = project(
+            &[(
+                "a.jsx",
+                r#"function Screen({ onDone }) { onDone(); return null; }
+function App(p) { return <Screen onDone={() => 1} {...p} />; }
+App();"#,
+            )],
+            &[],
+        );
+        assert!(prop_follows(&l).is_empty(), "{:?}", l.followed_calls);
+    }
+
+    #[test]
+    fn a_prop_nobody_hands_a_function_to_is_not_followed() {
+        let l = project(
+            &[("a.jsx", r#"function Screen({ onDone }) { onDone(); return null; } Screen({});"#)],
+            &[],
+        );
+        assert!(prop_follows(&l).is_empty());
     }
 
     #[test]

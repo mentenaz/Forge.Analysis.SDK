@@ -515,9 +515,19 @@ pub struct FunctionSummary {
     pub unfollowed_calls: u32,
     /// Where each of those calls is, in the file (`unfollowed_calls` entries, source order).
     pub unfollowed_sites: Vec<ByteRange>,
+    /// What each of those calls calls, as a short label, and the line it is on (one per site,
+    /// same order). Lets the report name every call it could not trace.
+    pub unfollowed_callees: Vec<UnfollowedCallee>,
     /// Used as a plain value (stored, returned, exported): it may run from somewhere in this
     /// file's reach that we cannot see, so `reachable_from_entry` can understate it.
     pub escapes: bool,
+}
+
+/// What a call we did not follow calls, from the code, so quoted.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct UnfollowedCallee {
+    pub callee: Quoted,
+    pub start_line: u32,
 }
 
 /// A byte range in a file's text.
@@ -540,7 +550,9 @@ impl FunctionSummary {
         {
             errors.push(ValidationError::TransitiveMissingDirect);
         }
-        if self.unfollowed_sites.len() != self.unfollowed_calls as usize {
+        if self.unfollowed_sites.len() != self.unfollowed_calls as usize
+            || self.unfollowed_callees.len() != self.unfollowed_calls as usize
+        {
             errors.push(ValidationError::UnfollowedSitesMismatch);
         }
         errors
@@ -602,7 +614,11 @@ pub struct FollowedCall {
     /// The import specifier, as written. From the code, so quoted.
     pub spec: Quoted,
     /// The export that was called (`default` for the default export). From the code, so quoted.
+    /// For a call through a prop: the prop's name.
     pub name: Quoted,
+    /// True when the call was followed through a function handed over as a JSX prop
+    /// (`<Screen onBack={..} />` and then `onBack()` inside `Screen`); `spec` is then empty.
+    pub via_prop: bool,
 }
 
 /// What a function can reach across the whole project.
@@ -1254,6 +1270,11 @@ mod tests {
                 ByteRange { start_byte: 3, end_byte: 4 },
                 ByteRange { start_byte: 5, end_byte: 6 },
             ],
+            unfollowed_callees: vec![
+                UnfollowedCallee { callee: Quoted::new("a"), start_line: 1 },
+                UnfollowedCallee { callee: Quoted::new("b.c"), start_line: 1 },
+                UnfollowedCallee { callee: Quoted::new("(..).d"), start_line: 2 },
+            ],
             escapes: false,
         }
     }
@@ -1289,6 +1310,13 @@ mod tests {
         u.unresolved = Some(UnresolvedReason::UncoveredModule);
         u.module = Some(Quoted::new("react"));
         assert!(u.validate().is_empty());
+    }
+
+    #[test]
+    fn every_untraced_call_needs_its_callee_label() {
+        let mut s = summary();
+        s.unfollowed_callees.pop();
+        assert_eq!(s.validate(), vec![ValidationError::UnfollowedSitesMismatch]);
     }
 
     #[test]

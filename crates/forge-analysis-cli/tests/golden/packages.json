@@ -2,7 +2,7 @@
   "header": {
     "schema": 1,
     "engine": "forge-analysis 0.0.1",
-    "catalog_sha256": "d07904da6193581916ce5290866f86a843b47e51d0ae0122818017134cefef70",
+    "catalog_sha256": "661ff253d0997c290715b16d7de935041072e290e1efd30a82fa0c75eed0949b",
     "snapshot_sha256": "d44f12d7976ed85c78472e2e037262cf742ebbc1ff3a7abd01cb3dfe62cd0884",
     "mode": "static_only"
   },
@@ -464,6 +464,7 @@
         "calls_followed_across_files": 0,
         "calls_matched_to_a_fact": 2,
         "calls_not_traced": 0,
+        "untraced_calls": [],
         "calls_into_packages": [
           {
             "spec": {
@@ -528,6 +529,7 @@
         "calls_followed_across_files": 0,
         "calls_matched_to_a_fact": 1,
         "calls_not_traced": 0,
+        "untraced_calls": [],
         "calls_into_packages": [
           {
             "spec": {
@@ -586,6 +588,7 @@
         "calls_followed_across_files": 0,
         "calls_matched_to_a_fact": 1,
         "calls_not_traced": 0,
+        "untraced_calls": [],
         "calls_into_packages": [
           {
             "spec": {
@@ -607,6 +610,7 @@
         ]
       }
     ],
+    "untraced_by_callee": [],
     "unplaced_facts": []
   }
 }

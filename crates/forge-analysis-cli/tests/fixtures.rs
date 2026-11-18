@@ -200,7 +200,7 @@ fn a_very_long_name_is_cut_and_says_how_long_it_was() {
 /// `console.log(...)` (nothing says what it runs). The first two are accounted for and the
 /// third is counted on the coverage line, so the project is Incomplete for that one reason only.
 #[test]
-fn clean_accounts_for_each_call_and_counts_the_one_it_cannot_trace() {
+fn clean_accounts_for_each_call_and_traces_every_one() {
     let r = report("clean");
     assert_eq!(r.entry_points.basis, EntryBasis::Declared);
     assert_eq!(r.overview.files_analysed, 2);
@@ -218,8 +218,8 @@ fn clean_accounts_for_each_call_and_counts_the_one_it_cannot_trace() {
     assert_eq!(top.unfollowed_calls, 3);
     assert_eq!(
         (top.calls_followed_across_files, top.calls_matched_to_a_fact, top.calls_not_traced),
-        (1, 1, 1),
-        "add is followed, require sits on an import fact, console.log is not traced"
+        (1, 2, 0),
+        "add is followed; require sits on an import fact and console.log on a known-call fact"
     );
     assert_eq!(top.followed_calls.len(), 1);
     assert_eq!(top.followed_calls[0].to.file.as_quoted().text(), "util.js");
@@ -231,8 +231,8 @@ fn clean_accounts_for_each_call_and_counts_the_one_it_cannot_trace() {
     assert_eq!(r.fact_ids().len() as u32, r.overview.facts, "the cleared fact is still listed, in its function");
     let c = |s: SectionId| r.overview.coverage.iter().find(|c| c.section == s).unwrap().count;
     assert_eq!((c(SectionId::Unresolved), c(SectionId::Unlinked), c(SectionId::NotAnalysed), c(SectionId::EntryPoints), c(SectionId::Dependencies)), (0, 0, 0, 0, 0));
-    assert_eq!(c(SectionId::Functions), 1, "the one call we cannot trace");
-    assert_eq!(r.overview.completeness, Completeness::Incomplete);
+    assert_eq!(c(SectionId::Functions), 0, "every call is followed or sits on a fact");
+    assert_eq!(r.overview.completeness, Completeness::Complete, "nothing was left unseen");
 }
 
 /// Calls into external packages are grouped by package under Unlinked imports and are not open

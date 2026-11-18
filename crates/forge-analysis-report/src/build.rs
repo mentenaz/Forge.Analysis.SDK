@@ -470,6 +470,7 @@ pub fn build(input: &ReportInput<'_>) -> Result<Report, BuildError> {
             to: cx.fn_loc(c.to.file, c.to.func),
             spec: c.spec.clone(),
             name: c.name.clone(),
+            via_prop: c.via_prop,
             line: call_lines.get(&(c.from.file, c.from.func, c.start_byte, c.end_byte)).copied(),
             start_byte: c.start_byte,
             end_byte: c.end_byte,
@@ -492,11 +493,13 @@ pub fn build(input: &ReportInput<'_>) -> Result<Report, BuildError> {
         }
     }
     let mut not_traced_total = 0u32;
+    let mut untraced_groups: BTreeMap<(String, String), UntracedGroup> = BTreeMap::new();
     let mut function_items: Vec<FunctionItem> = Vec::new();
     for (r, s) in &cx.summaries {
         let l = cx.linked_fns.get(r);
         let (mut by_link, mut by_fact, mut untraced) = (0u32, 0u32, 0u32);
-        for site in &s.unfollowed_sites {
+        let mut untraced_calls: Vec<UntracedCall> = Vec::new();
+        for (idx, site) in s.unfollowed_sites.iter().enumerate() {
             let k = (r.file, r.func, site.start_byte, site.end_byte);
             if followed_sites.contains(&k) {
                 by_link += 1;
@@ -504,6 +507,27 @@ pub fn build(input: &ReportInput<'_>) -> Result<Report, BuildError> {
                 by_fact += 1;
             } else {
                 untraced += 1;
+                // `validate` guarantees one label per site; a missing one is still counted.
+                let (callee, line) = match s.unfollowed_callees.get(idx) {
+                    Some(c) => (c.callee.clone(), c.start_line),
+                    None => (Quoted::new("(unknown)"), s.at.start_line),
+                };
+                untraced_calls.push(UntracedCall {
+                    callee: callee.clone(),
+                    line,
+                    start_byte: site.start_byte,
+                    end_byte: site.end_byte,
+                });
+                let g = untraced_groups
+                    .entry(quoted_key(&callee))
+                    .or_insert_with(|| UntracedGroup { callee, count: 0, sites: Vec::new() });
+                g.count += 1;
+                g.sites.push(UntracedSite {
+                    in_fn: cx.fn_loc(r.file, r.func),
+                    line,
+                    start_byte: site.start_byte,
+                    end_byte: site.end_byte,
+                });
             }
         }
         not_traced_total += untraced;
@@ -529,6 +553,7 @@ pub fn build(input: &ReportInput<'_>) -> Result<Report, BuildError> {
             calls_followed_across_files: by_link,
             calls_matched_to_a_fact: by_fact,
             calls_not_traced: untraced,
+            untraced_calls,
             calls_into_packages: pkg_counts
                 .remove(r)
                 .map(|m| m.into_values().map(|(spec, count)| PackageCount { spec, count }).collect())
@@ -542,7 +567,12 @@ pub fn build(input: &ReportInput<'_>) -> Result<Report, BuildError> {
         });
     }
     unplaced.sort();
-    let functions = FunctionsSection { functions: function_items, unplaced_facts: unplaced };
+    let mut untraced_by_callee: Vec<UntracedGroup> = untraced_groups.into_values().collect();
+    for g in &mut untraced_by_callee {
+        g.sites.sort_by_key(|x| (x.in_fn.file.as_quoted().text().to_string(), x.in_fn.func, x.start_byte, x.end_byte));
+    }
+    untraced_by_callee.sort_by(|a, c| c.count.cmp(&a.count).then_with(|| quoted_key(&a.callee).cmp(&quoted_key(&c.callee))));
+    let functions = FunctionsSection { functions: function_items, untraced_by_callee, unplaced_facts: unplaced };
 
     // ---- counts, coverage, index ----
     let count = |n: usize| n as u32;

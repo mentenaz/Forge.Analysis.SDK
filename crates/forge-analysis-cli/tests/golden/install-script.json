@@ -2,7 +2,7 @@
   "header": {
     "schema": 1,
     "engine": "forge-analysis 0.0.1",
-    "catalog_sha256": "d07904da6193581916ce5290866f86a843b47e51d0ae0122818017134cefef70",
+    "catalog_sha256": "661ff253d0997c290715b16d7de935041072e290e1efd30a82fa0c75eed0949b",
     "snapshot_sha256": "21640997110fe94a814caf659f927b541631e8a6969533c39f962f6461898070",
     "mode": "static_only"
   },
@@ -930,6 +930,7 @@
         "calls_followed_across_files": 0,
         "calls_matched_to_a_fact": 0,
         "calls_not_traced": 0,
+        "untraced_calls": [],
         "calls_into_packages": [],
         "calls": [],
         "callbacks": [],
@@ -969,6 +970,7 @@
         "calls_followed_across_files": 0,
         "calls_matched_to_a_fact": 0,
         "calls_not_traced": 0,
+        "untraced_calls": [],
         "calls_into_packages": [],
         "calls": [],
         "callbacks": [],
@@ -1024,6 +1026,30 @@
         "calls_followed_across_files": 0,
         "calls_matched_to_a_fact": 4,
         "calls_not_traced": 2,
+        "untraced_calls": [
+          {
+            "callee": {
+              "text": "(..).then",
+              "truncated": false,
+              "original_len": 9,
+              "sha256": "3397a2abdad2e6554789e2418e4708a38ec497b4b32f5c45d4acd8928c237a0c"
+            },
+            "line": 3,
+            "start_byte": 72,
+            "end_byte": 150
+          },
+          {
+            "callee": {
+              "text": "(..).then",
+              "truncated": false,
+              "original_len": 9,
+              "sha256": "3397a2abdad2e6554789e2418e4708a38ec497b4b32f5c45d4acd8928c237a0c"
+            },
+            "line": 3,
+            "start_byte": 72,
+            "end_byte": 129
+          }
+        ],
         "calls_into_packages": [],
         "calls": [],
         "callbacks": [
@@ -1077,6 +1103,19 @@
         "calls_followed_across_files": 0,
         "calls_matched_to_a_fact": 0,
         "calls_not_traced": 1,
+        "untraced_calls": [
+          {
+            "callee": {
+              "text": "r.text",
+              "truncated": false,
+              "original_len": 6,
+              "sha256": "79436b3f77f7226dff73766931cae06fcf9612be824bf3dee1f0fa796af1d146"
+            },
+            "line": 3,
+            "start_byte": 120,
+            "end_byte": 128
+          }
+        ],
         "calls_into_packages": [],
         "calls": [],
         "callbacks": [],
@@ -1129,6 +1168,7 @@
         "calls_followed_across_files": 0,
         "calls_matched_to_a_fact": 1,
         "calls_not_traced": 0,
+        "untraced_calls": [],
         "calls_into_packages": [],
         "calls": [],
         "callbacks": [],
@@ -1184,6 +1224,7 @@
         "calls_followed_across_files": 0,
         "calls_matched_to_a_fact": 1,
         "calls_not_traced": 0,
+        "untraced_calls": [],
         "calls_into_packages": [],
         "calls": [],
         "callbacks": [],
@@ -1230,6 +1271,7 @@
         "calls_followed_across_files": 0,
         "calls_matched_to_a_fact": 1,
         "calls_not_traced": 0,
+        "untraced_calls": [],
         "calls_into_packages": [],
         "calls": [],
         "callbacks": [],
@@ -1238,6 +1280,78 @@
         "followed_called_from": [],
         "facts": [
           "fact:0032d2c40c930d98"
+        ]
+      }
+    ],
+    "untraced_by_callee": [
+      {
+        "callee": {
+          "text": "(..).then",
+          "truncated": false,
+          "original_len": 9,
+          "sha256": "3397a2abdad2e6554789e2418e4708a38ec497b4b32f5c45d4acd8928c237a0c"
+        },
+        "count": 2,
+        "sites": [
+          {
+            "in_fn": {
+              "file": {
+                "text": "setup.js",
+                "truncated": false,
+                "original_len": 8,
+                "sha256": "a38349e26cd88bc390da3dd2ce99890c25f651f5af8edd9e95a77577032ce9c1"
+              },
+              "func": 0,
+              "name": null,
+              "line": 1
+            },
+            "line": 3,
+            "start_byte": 72,
+            "end_byte": 129
+          },
+          {
+            "in_fn": {
+              "file": {
+                "text": "setup.js",
+                "truncated": false,
+                "original_len": 8,
+                "sha256": "a38349e26cd88bc390da3dd2ce99890c25f651f5af8edd9e95a77577032ce9c1"
+              },
+              "func": 0,
+              "name": null,
+              "line": 1
+            },
+            "line": 3,
+            "start_byte": 72,
+            "end_byte": 150
+          }
+        ]
+      },
+      {
+        "callee": {
+          "text": "r.text",
+          "truncated": false,
+          "original_len": 6,
+          "sha256": "79436b3f77f7226dff73766931cae06fcf9612be824bf3dee1f0fa796af1d146"
+        },
+        "count": 1,
+        "sites": [
+          {
+            "in_fn": {
+              "file": {
+                "text": "setup.js",
+                "truncated": false,
+                "original_len": 8,
+                "sha256": "a38349e26cd88bc390da3dd2ce99890c25f651f5af8edd9e95a77577032ce9c1"
+              },
+              "func": 1,
+              "name": null,
+              "line": 3
+            },
+            "line": 3,
+            "start_byte": 120,
+            "end_byte": 128
+          }
         ]
       }
     ],

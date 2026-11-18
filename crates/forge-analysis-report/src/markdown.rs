@@ -635,6 +635,23 @@ fn functions(w: &mut W, r: &Report) {
             files.push(&f.file);
         }
     }
+    if !r.functions.untraced_by_callee.is_empty() {
+        let total: usize = r.functions.untraced_by_callee.iter().map(|g| g.count as usize).sum();
+        w.group(
+            "Calls we could not trace, by what they call",
+            "Nothing in the analysis says what these run. The label is made from names only; `(..)` stands for a computed receiver. Every call is also listed, with its line, under its function below.",
+            total,
+            |w| {
+                for g in &r.functions.untraced_by_callee {
+                    let mut fns: Vec<(String, u32)> = g.sites.iter().map(|s| (q(s.in_fn.file.as_quoted()), s.in_fn.func.0)).collect();
+                    fns.sort();
+                    fns.dedup();
+                    let files: std::collections::BTreeSet<&String> = fns.iter().map(|(f, _)| f).collect();
+                    w.item(&format!("{} ×{} in {} function(s) across {} file(s)", q(&g.callee), g.count, fns.len(), files.len()));
+                }
+            },
+        );
+    }
     for file in files {
         let fns: Vec<&FunctionItem> = r.functions.functions.iter().filter(|f| &f.file == file).collect();
         w.group(&q(file.as_quoted()), "", fns.len(), |w| {
@@ -657,27 +674,46 @@ fn functions(w: &mut W, r: &Report) {
                 }
                 if f.unfollowed_calls > 0 {
                     w.line(&format!(
-                        "  - calls to something other than a function in this file: {} ({} followed across files, {} matched to a fact, {} not traced to any code)",
+                        "  - calls to something other than a function in this file: {} ({} followed through an import or a prop, {} matched to a fact, {} not traced to any code)",
                         f.unfollowed_calls, f.calls_followed_across_files, f.calls_matched_to_a_fact, f.calls_not_traced
                     ));
                 }
+                if !f.untraced_calls.is_empty() {
+                    let mut by_label: Vec<(String, Vec<u32>)> = Vec::new();
+                    for u in &f.untraced_calls {
+                        let l = q(&u.callee);
+                        match by_label.iter_mut().find(|(k, _)| *k == l) {
+                            Some((_, lines)) => lines.push(u.line),
+                            None => by_label.push((l, vec![u.line])),
+                        }
+                    }
+                    for (label, lines) in by_label {
+                        let ls: Vec<String> = lines.iter().map(|l| l.to_string()).collect();
+                        w.line(&format!("  - not traced: {} at line {}", label, ls.join(", ")));
+                    }
+                }
                 for c in &f.followed_calls {
-                    let target = match &c.to.name {
-                        Some(n) => q(n),
-                        None => "top level".to_string(),
+                    let target = match (&c.to.name, c.to.func) {
+                        (Some(n), _) => q(n),
+                        (None, FnId(0)) => "top level".to_string(),
+                        (None, _) => "an anonymous function".to_string(),
                     };
                     let site = match c.line {
                         Some(l) => format!("line {l}"),
                         None => format!("bytes {}-{}", c.start_byte, c.end_byte),
                     };
+                    let how = if c.via_prop {
+                        format!("through the function handed over as prop {}", q(&c.name))
+                    } else {
+                        format!("through {}, export {}", q(&c.spec), q(&c.name))
+                    };
                     w.line(&format!(
-                        "  - followed call at {} to {} in {}{} (through {}, export {})",
+                        "  - followed call at {} to {} in {}{} ({})",
                         site,
                         target,
                         q(c.to.file.as_quoted()),
                         c.to.line.map(|l| format!(" line {l}")).unwrap_or_default(),
-                        q(&c.spec),
-                        q(&c.name),
+                        how,
                     ));
                 }
                 if !f.calls_into_packages.is_empty() {
@@ -696,7 +732,7 @@ fn functions(w: &mut W, r: &Report) {
                             format!("{} in {}", n, q(c.file.as_quoted()))
                         })
                         .collect();
-                    w.line(&format!("  - called through an import from: {}", from.join(", ")));
+                    w.line(&format!("  - called through an import or a prop from: {}", from.join(", ")));
                 }
                 if !f.facts.is_empty() {
                     let ids: Vec<String> = f.facts.iter().map(|i| code(i.as_str())).collect();

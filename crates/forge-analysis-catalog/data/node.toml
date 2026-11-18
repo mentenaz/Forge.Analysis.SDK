@@ -297,3 +297,62 @@ exports = ["format", "inherits", "inspect", "isDeepStrictEqual", "stripVTControl
 id = "node.crypto.pure"
 module = "crypto"
 exports = ["createHash", "createHmac", "randomBytes", "randomInt", "randomUUID", "timingSafeEqual"]
+
+# JavaScript's own built-ins. A bare name is module "global"; a member of a built-in object is
+# module "global.<Object>". Only trusted when the name is not bound anywhere in the file.
+# None of these touch files, network, processes or environment.
+[[known]]
+id = "js.global.pure"
+module = "global"
+exports = ["String", "Number", "Boolean", "BigInt", "Symbol", "Date", "Array", "Object", "Map", "Set", "WeakMap", "WeakSet", "RegExp", "Error", "TypeError", "RangeError", "SyntaxError", "ReferenceError", "EvalError", "URIError", "AggregateError", "Promise", "parseInt", "parseFloat", "isNaN", "isFinite", "encodeURIComponent", "decodeURIComponent", "encodeURI", "decodeURI", "clearTimeout", "clearInterval", "clearImmediate", "structuredClone"]
+
+[[known]]
+id = "js.global.math"
+module = "global.Math"
+exports = ["abs", "acos", "acosh", "asin", "asinh", "atan", "atan2", "atanh", "cbrt", "ceil", "clz32", "cos", "cosh", "exp", "expm1", "floor", "fround", "hypot", "imul", "log", "log10", "log1p", "log2", "max", "min", "pow", "random", "round", "sign", "sin", "sinh", "sqrt", "tan", "tanh", "trunc"]
+
+[[known]]
+id = "js.global.json"
+module = "global.JSON"
+exports = ["parse", "stringify"]
+
+[[known]]
+id = "js.global.object"
+module = "global.Object"
+exports = ["assign", "create", "defineProperties", "defineProperty", "entries", "freeze", "fromEntries", "getOwnPropertyDescriptor", "getOwnPropertyDescriptors", "getOwnPropertyNames", "getOwnPropertySymbols", "getPrototypeOf", "groupBy", "hasOwn", "is", "isExtensible", "isFrozen", "isSealed", "keys", "preventExtensions", "seal", "setPrototypeOf", "values"]
+
+[[known]]
+id = "js.global.array"
+module = "global.Array"
+exports = ["from", "isArray", "of"]
+
+[[known]]
+id = "js.global.number"
+module = "global.Number"
+exports = ["isFinite", "isInteger", "isNaN", "isSafeInteger", "parseFloat", "parseInt"]
+
+[[known]]
+id = "js.global.string"
+module = "global.String"
+exports = ["fromCharCode", "fromCodePoint", "raw"]
+
+[[known]]
+id = "js.global.date"
+module = "global.Date"
+exports = ["now", "parse", "UTC"]
+
+[[known]]
+id = "js.global.promise"
+module = "global.Promise"
+exports = ["all", "allSettled", "any", "race", "reject", "resolve", "withResolvers"]
+
+[[known]]
+id = "js.global.symbol"
+module = "global.Symbol"
+exports = ["for", "keyFor"]
+
+# Writes to the program's own stdout/stderr; no file, network, process or environment effect.
+[[known]]
+id = "js.global.console"
+module = "global.console"
+exports = ["assert", "clear", "count", "countReset", "debug", "dir", "error", "group", "groupCollapsed", "groupEnd", "info", "log", "table", "time", "timeEnd", "timeLog", "trace", "warn"]

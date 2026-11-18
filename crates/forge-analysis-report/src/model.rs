@@ -378,6 +378,9 @@ pub struct CrossCall {
     pub spec: Quoted,
     /// The export that was called (`default` for the default export).
     pub name: Quoted,
+    /// True when the call was followed through a JSX prop: `name` is then the prop and `spec`
+    /// is empty.
+    pub via_prop: bool,
     /// Line of the call, when a fact at the call says so; the byte range is always there.
     pub line: Option<u32>,
     pub start_byte: u32,
@@ -404,6 +407,9 @@ pub struct FunctionItem {
     pub calls_matched_to_a_fact: u32,
     /// Of those calls: nothing in the analysis says what they run. Counted, not hidden.
     pub calls_not_traced: u32,
+    /// Every one of those not-traced calls, named: what it calls, and where. Exactly
+    /// `calls_not_traced` entries, in source order.
+    pub untraced_calls: Vec<UntracedCall>,
     /// Calls this function makes into external packages (also facts in `facts`).
     pub calls_into_packages: Vec<PackageCount>,
     pub calls: Vec<FnId>,
@@ -417,9 +423,38 @@ pub struct FunctionItem {
     pub facts: Vec<FactId>,
 }
 
+/// A call whose target the analysis could not see. `callee` is a short label made from names
+/// only (`console.log`, `(..).then`), so calls that differ only in arguments group together.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct UntracedCall {
+    pub callee: Quoted,
+    pub line: u32,
+    pub start_byte: u32,
+    pub end_byte: u32,
+}
+
+/// Every untraced call with the same callee label, across the project.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct UntracedGroup {
+    pub callee: Quoted,
+    pub count: u32,
+    pub sites: Vec<UntracedSite>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct UntracedSite {
+    pub in_fn: FnLoc,
+    pub line: u32,
+    pub start_byte: u32,
+    pub end_byte: u32,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct FunctionsSection {
     pub functions: Vec<FunctionItem>,
+    /// The same untraced calls as in each function's `untraced_calls`, grouped by what they
+    /// call, most common first. Their total is the coverage line's count.
+    pub untraced_by_callee: Vec<UntracedGroup>,
     /// Facts the analysis did not place in any function. Listed, never dropped.
     pub unplaced_facts: Vec<FactId>,
 }
