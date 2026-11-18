@@ -14,9 +14,9 @@ forge-analysis-schema = { path = "crates/forge-analysis-schema" }
 forge-analysis-catalog = { path = "crates/forge-analysis-catalog" }
 serde_json = "1"
 toml = "0.8"
-oxc_allocator   = "0.159.0"
-oxc_parser    = "0.159.0"
-oxc_span      = "0.159.0"
+oxc_allocator = "=0.159.0"
+oxc_parser = "=0.159.0"
+oxc_span = "=0.159.0"
 oxc_ast = "=0.159.0"
 oxc_semantic = "=0.159.0"
 oxc_ast_visit = "=0.159.0"

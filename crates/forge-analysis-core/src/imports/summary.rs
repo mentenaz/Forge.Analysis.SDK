@@ -4,7 +4,9 @@
 //! Pure: the caller supplies how to turn an Oxc span into a schema span and into text, so
 //! this file knows nothing about `Ctx`.
 
-use super::callgraph::Graph;
+use crate::imports::callgraph::Graph;
+use crate::imports::exports::Extracted;
+use crate::imports::link::{ExportName, ExtCall, LinkInfo, LocalEdges};
 use forge_analysis_schema::{
     Effect, EffectUse, FactKind, FnId, FunctionSummary, Lane, Quoted, Span, StaticFact,
     UnresolvedReason,
@@ -87,10 +89,71 @@ pub fn summarize(
         .collect()
 }
 
+/// How a local name is bound to a module.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Bound {
+    /// `import x from "m"`
+    Default,
+    /// `import { a as x } from "m"`, `const { a: x } = require("m")`
+    Named(String),
+    /// `import * as x from "m"`, `const x = require("m")`
+    Namespace,
+}
+
+/// Everything the project linker needs from one file. `bind` maps the declaration offset of a
+/// local name to the module it was imported from and how.
+pub fn link_info(
+    graph: &Graph,
+    facts: &[StaticFact],
+    extracted: Extracted,
+    bind: &dyn Fn(u32) -> Option<(String, Bound)>,
+    text_of: &dyn Fn(oxc_span::Span) -> String,
+) -> LinkInfo {
+    let mut timer_lane: BTreeMap<(u32, u32), Lane> = BTreeMap::new();
+    let mut direct: Vec<BTreeSet<Effect>> = vec![BTreeSet::new(); graph.fns.len()];
+    for f in facts {
+        match f.kind() {
+            FactKind::Timer => {
+                if let Some(t) = f.timing {
+                    timer_lane.insert((f.at().start_byte, f.at().end_byte), t.lane);
+                }
+            }
+            FactKind::Effect => {
+                if let Some(e) = f.effect {
+                    let at = oxc_span::Span::new(f.at().start_byte, f.at().end_byte);
+                    direct[graph.owner(at) as usize].insert(e);
+                }
+            }
+            _ => {}
+        }
+    }
+    let edges = LocalEdges {
+        calls: graph.calls.clone(),
+        callbacks: graph
+            .callbacks
+            .iter()
+            .map(|c| (c.from, c.to, timer_lane.get(&c.call).copied()))
+            .collect(),
+    };
+    let mut ext_calls = extracted.ext_calls;
+    for raw in &graph.ext_calls {
+        let Some((spec, bound)) = bind(raw.decl_start) else { continue };
+        let name = match (&raw.member, bound) {
+            (None, Bound::Default) | (None, Bound::Namespace) => ExportName::Default,
+            (None, Bound::Named(n)) => ExportName::Named(n),
+            (Some(m), Bound::Namespace) => ExportName::Named(text_of(*m)),
+            // `d.f()` on a default or named import: we do not know the shape of `d`.
+            (Some(_), _) => continue,
+        };
+        ext_calls.push(ExtCall { from: raw.from, spec, name });
+    }
+    LinkInfo { exports: extracted.exports, imports: extracted.imports, ext_calls, edges, direct }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
-    use super::super::callgraph;
+    use crate::imports::callgraph;
     use forge_analysis_schema::{Delay, RelPath, Timing};
     use oxc_allocator::Allocator;
     use oxc_parser::Parser;

@@ -427,6 +427,78 @@ impl FunctionSummary {
     }
 }
 
+/// A function in the project: which file (index into `Linked::files`) and which function in it.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize)]
+pub struct FnRef {
+    pub file: u32,
+    pub func: FnId,
+}
+
+/// Why a cross-file link was not made. Every one of these is a line on the coverage report.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum UnlinkedReason {
+    /// A package, not a file in the analysed folder. Its code was not analysed.
+    ExternalPackage,
+    /// A relative path that matches no file.
+    MissingFile,
+    /// A path that climbs out of the analysed folder.
+    OutsideRoot,
+    /// The file exists but is not JavaScript or TypeScript we analyse (JSON, native, ...).
+    NotAnalysed,
+    /// The file is analysed and exports no such name, and its exports are fully known.
+    NoSuchExport,
+    /// The name is exported but not as a function we can identify, or the file's exports are
+    /// built in ways we cannot follow (spread, computed keys, `Object.assign(module.exports, ..)`).
+    OpaqueExport,
+    /// Re-exports that lead back to themselves.
+    ReexportCycle,
+}
+
+/// One cross-file link we could not make.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct Unlinked {
+    pub from: FnRef,
+    /// The import specifier, as written. From the code, so quoted.
+    pub spec: Quoted,
+    /// The imported name, when a specific one was being called.
+    pub name: Option<Quoted>,
+    pub reason: UnlinkedReason,
+}
+
+/// What a function can reach across the whole project.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct LinkedFn {
+    pub at: FnRef,
+    pub transitive_effects: Vec<Effect>,
+    pub lanes: Vec<Lane>,
+    pub reachable_from_entry: bool,
+}
+
+/// Where the project's entry points came from.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum EntryBasis {
+    /// Named by the caller (for example from `package.json`).
+    Declared,
+    /// None were named, so every file nothing else imports is a root, plus one file for each
+    /// import cycle nothing outside reaches.
+    Roots,
+}
+
+/// The whole-project view: the per-file summaries joined across files.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct Linked {
+    pub files: Vec<RelPath>,
+    pub entry_basis: EntryBasis,
+    pub entries: Vec<u32>,
+    /// Every function of every file, by file then function.
+    pub fns: Vec<LinkedFn>,
+    pub unlinked: Vec<Unlinked>,
+    /// How many cross-file links were made (imports followed plus calls followed).
+    pub links_made: u32,
+}
+
 /// One thing the parser found. The fields that make up the ID are private, so an ID
 /// can't go stale if someone changes the kind or location afterwards.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
@@ -968,5 +1040,35 @@ mod tests {
     fn facts_start_outside_any_function_until_placed() {
         let f = StaticFact::new(FactKind::Call, span(0, 1), None);
         assert_eq!(f.within, None);
+    }
+
+    // ---- Linked ----
+
+    #[test]
+    fn unlinked_reasons_serialize_in_snake_case() {
+        assert_eq!(serde_json::to_string(&UnlinkedReason::ExternalPackage).unwrap(), "\"external_package\"");
+        assert_eq!(serde_json::to_string(&UnlinkedReason::OutsideRoot).unwrap(), "\"outside_root\"");
+    }
+
+    #[test]
+    fn an_unlinked_entry_quotes_the_specifier() {
+        let u = Unlinked {
+            from: FnRef { file: 2, func: FnId(0) },
+            spec: Quoted::new("./x\u{202e}"),
+            name: None,
+            reason: UnlinkedReason::MissingFile,
+        };
+        let v = serde_json::to_value(&u).unwrap();
+        assert_eq!(v["from"]["file"], 2);
+        assert_eq!(v["from"]["func"], 0);
+        assert_eq!(v["reason"], "missing_file");
+        assert!(!v["spec"]["text"].as_str().unwrap().contains('\u{202e}'));
+    }
+
+    #[test]
+    fn fn_refs_order_by_file_then_function() {
+        let a = FnRef { file: 0, func: FnId(5) };
+        let b = FnRef { file: 1, func: FnId(0) };
+        assert!(a < b);
     }
 }

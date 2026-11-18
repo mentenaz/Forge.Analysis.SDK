@@ -41,9 +41,22 @@ pub struct CallbackEdge {
     pub call: (u32, u32),
 }
 
+/// A call whose callee is a local name that is not a function in this file (an import, a
+/// parameter, a variable), or a member of one (`ns.f()`). The glue decides what it refers to.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct RawExtCall {
+    pub from: u32,
+    /// Byte offset of the declaration of the called name (or of the object, for `ns.f()`).
+    pub decl_start: u32,
+    /// The member name, for `ns.f()`.
+    pub member: Option<Span>,
+}
+
 #[derive(Debug, Default)]
 pub struct Graph {
     pub fns: Vec<FnNode>,
+    pub sym_fn: BTreeMap<SymbolId, u32>,
+    pub ext_calls: Vec<RawExtCall>,
     pub calls: Vec<(u32, u32)>,
     pub callbacks: Vec<CallbackEdge>,
     pub escaped: BTreeSet<u32>,
@@ -77,10 +90,16 @@ pub fn build(program: &Program<'_>, scoping: &Scoping) -> Graph {
         g: Graph { fns: p1.fns, ..Graph::default() },
     };
     p2.visit_program(program);
+    p2.g.sym_fn = p2.sym_fn;
     p2.g
 }
 
 impl Graph {
+    /// The function whose own span is exactly `at`.
+    pub fn id_of(&self, at: Span) -> Option<u32> {
+        self.fns.iter().skip(1).find(|f| f.at == at).map(|f| f.id)
+    }
+
     /// The innermost function containing `at`. On equal size the later (inner) one wins, so a
     /// file that is one single function is not mistaken for its own top level.
     pub fn owner(&self, at: Span) -> u32 {
@@ -222,6 +241,34 @@ impl Edges<'_> {
         let sym = self.scoping.get_reference(rid).symbol_id()?;
         self.sym_fn.get(&sym).copied()
     }
+    fn symbol_of(&self, r: &IdentifierReference<'_>) -> Option<SymbolId> {
+        let rid = r.reference_id.get()?;
+        self.scoping.get_reference(rid).symbol_id()
+    }
+    fn note_ext(&mut self, callee: &Expression<'_>) {
+        let from = self.cur();
+        match callee {
+            Expression::Identifier(r) => {
+                if let Some(sym) = self.symbol_of(r) {
+                    let decl_start = self.scoping.symbol_span(sym).start;
+                    self.g.ext_calls.push(RawExtCall { from, decl_start, member: None });
+                }
+            }
+            Expression::StaticMemberExpression(m) => {
+                if let Expression::Identifier(r) = peel(&m.object) {
+                    if let Some(sym) = self.symbol_of(r) {
+                        let decl_start = self.scoping.symbol_span(sym).start;
+                        self.g.ext_calls.push(RawExtCall {
+                            from,
+                            decl_start,
+                            member: Some(m.property.span),
+                        });
+                    }
+                }
+            }
+            _ => {}
+        }
+    }
     fn inline_fn(&self, e: &Expression<'_>) -> Option<u32> {
         match peel(e) {
             Expression::ArrowFunctionExpression(f) => self.by_span.get(&key(f.span)).copied(),
@@ -290,7 +337,10 @@ impl<'a> Visit<'a> for Edges<'_> {
         };
         match target {
             Some(to) => self.g.calls.push((from, to)),
-            None => self.unfollowed(),
+            None => {
+                self.unfollowed();
+                self.note_ext(peel(&it.callee));
+            }
         }
         self.arguments(&it.arguments, key(it.span));
         walk::walk_call_expression(self, it);
@@ -455,6 +505,24 @@ mod tests {
     fn a_function_used_as_a_value_escapes() {
         let g = graph("function h(){} const x = h; export { h };");
         assert!(g.escaped.contains(&1));
+    }
+
+    #[test]
+    fn calls_to_unknown_names_are_recorded_for_linking() {
+        let src = "import { a } from 'm'; import * as ns from 'n'; a(); ns.f(); local();";
+        let g = graph(src);
+        assert_eq!(g.ext_calls.len(), 2, "unresolved globals like local() are not recorded");
+        assert!(g.ext_calls[0].member.is_none());
+        let m = g.ext_calls[1].member.unwrap();
+        assert_eq!(&src[m.start as usize..m.end as usize], "f");
+    }
+
+    #[test]
+    fn id_of_finds_a_function_by_its_span() {
+        let src = "function a(){}";
+        let g = graph(src);
+        assert_eq!(g.id_of(g.fns[1].at), Some(1));
+        assert_eq!(g.id_of(Span::new(0, 1)), None);
     }
 
     #[test]

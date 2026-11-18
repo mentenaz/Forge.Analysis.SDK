@@ -8,9 +8,11 @@
 
 use super::{normalize_module, Binding, BindingKind, Ctx, FileImports, Require};
 use super::callgraph;
+use super::exports;
+use super::link::LinkInfo;
 use super::flow::{self, FlowHit, Site};
 use super::handles::{self, Handles};
-use super::summary;
+use super::summary::{self, Bound};
 use forge_analysis_catalog::{Catalog, Entry, Role};
 use forge_analysis_schema::{
     Delay, Effect, FactKind, FunctionSummary, Lane, Quoted, RelPath, StaticFact, Timing,
@@ -60,6 +62,9 @@ pub struct Analysis {
     /// One per function in the file, in source order; the first is the file's top level.
     /// Empty when the file did not parse (it has one `ParseFailed` fact and nothing else).
     pub summaries: Vec<FunctionSummary>,
+    /// What the project linker needs from this file: exports, the modules it loads, calls to
+    /// imported names, its local call graph and the effects it performs directly.
+    pub link: LinkInfo,
 }
 
 /// Returns None if the file name is not a JS/TS source type.
@@ -76,7 +81,7 @@ pub fn analyze_file_full(file: &RelPath, source: &str, catalog: &Catalog) -> Opt
     if !ret.diagnostics.is_empty() {
         let mut ctx = Ctx::new(file, source);
         ctx.parse_failed();
-        return Some(Analysis { file: ctx.finish(), flows: Vec::new(), summaries: Vec::new() });
+        return Some(Analysis { file: ctx.finish(), flows: Vec::new(), summaries: Vec::new(), link: LinkInfo::default() });
     }
 
     let sem = SemanticBuilder::new().build(&ret.program);
@@ -106,11 +111,26 @@ pub fn analyze_file_full(file: &RelPath, source: &str, catalog: &Catalog) -> Opt
         let ctx = &matcher.ctx;
         summary::summarize(&graph, &mut facts, &|s| ctx.span(s), &|s| ctx.text(s).to_string())
     };
+    let extracted = exports::extract(&ret.program, sem.semantic.scoping(), &graph, source);
+    let link = {
+        let ctx = &matcher.ctx;
+        let bind = |decl: u32| {
+            let b = ctx.table.lookup_by_decl(decl)?;
+            let how = match &b.kind {
+                BindingKind::Default => Bound::Default,
+                BindingKind::Named { imported } => Bound::Named(imported.clone()),
+                BindingKind::Namespace => Bound::Namespace,
+                _ => return None,
+            };
+            Some((b.module.clone(), how))
+        };
+        summary::link_info(&graph, &facts, extracted, &bind, &|s| ctx.text(s).to_string())
+    };
     matcher.ctx.facts = facts;
 
     let mut out = matcher.ctx.finish();
     out.facts.sort_by_key(|f| (f.at().start_byte, f.at().end_byte));
-    Some(Analysis { file: out, flows, summaries })
+    Some(Analysis { file: out, flows, summaries, link })
 }
 
 /// The identifier at the root of `a`, `a.b`, `a.b.c`. None for anything else.
@@ -1760,5 +1780,111 @@ mod tests {
         let base = run("a.js", r#"const fs = require("fs"); fs.unlinkSync("x");"#);
         let more = run("a.js", r#"const fs = require("fs"); fs.unlinkSync("x"); function z(){}"#);
         assert_eq!(base.facts.len(), more.facts.len());
+    }
+
+    // ---- linking across files ----
+
+    fn project(
+        files: &[(&str, &str)],
+        entries: &[usize],
+    ) -> forge_analysis_schema::Linked {
+        use crate::imports::link::{link, LinkFile};
+        let cat = Catalog::node_defaults();
+        let rels: Vec<RelPath> = files.iter().map(|(p, _)| RelPath::new(p).unwrap()).collect();
+        let analyses: Vec<Analysis> = files
+            .iter()
+            .zip(&rels)
+            .map(|((_, src), rel)| analyze_file_full(rel, src, &cat).unwrap())
+            .collect();
+        let lf: Vec<LinkFile<'_>> = rels
+            .iter()
+            .zip(&analyses)
+            .map(|(path, a)| LinkFile { path, info: &a.link })
+            .collect();
+        let all: std::collections::BTreeSet<String> =
+            files.iter().map(|(p, _)| p.to_string()).collect();
+        link(&lf, &all, entries)
+    }
+
+    fn top_effects(l: &forge_analysis_schema::Linked, file: u32) -> Vec<Effect> {
+        l.fns
+            .iter()
+            .find(|f| f.at.file == file && f.at.func == forge_analysis_schema::FnId(0))
+            .unwrap()
+            .transitive_effects
+            .clone()
+    }
+
+    #[test]
+    fn a_delete_in_an_imported_helper_reaches_the_importer() {
+        let l = project(
+            &[
+                ("a.js", r#"import { wipe } from "./b.js"; wipe("x");"#),
+                ("b.js", r#"import fs from "fs"; export function wipe(p){ fs.unlinkSync(p); }"#),
+            ],
+            &[],
+        );
+        assert_eq!(top_effects(&l, 0), vec![Effect::FsDelete]);
+        assert!(l.unlinked.is_empty(), "{:?}", l.unlinked);
+    }
+
+    #[test]
+    fn commonjs_files_link_the_same_way() {
+        let l = project(
+            &[
+                ("a.js", r#"const { wipe } = require("./b"); wipe("x");"#),
+                ("b.js", r#"const fs = require("fs"); exports.wipe = function(p){ fs.unlinkSync(p); };"#),
+            ],
+            &[],
+        );
+        assert_eq!(top_effects(&l, 0), vec![Effect::FsDelete]);
+        assert!(l.unlinked.is_empty(), "{:?}", l.unlinked);
+    }
+
+    #[test]
+    fn a_file_loaded_from_a_timer_runs_deferred() {
+        let l = project(
+            &[
+                ("a.js", r#"setTimeout(() => { require("./b"); }, 5000);"#),
+                ("b.js", r#"require("fs").unlinkSync("x");"#),
+            ],
+            &[],
+        );
+        let b = l.fns.iter().find(|f| f.at.file == 1).unwrap();
+        assert_eq!(b.lanes, vec![Lane::Deferred]);
+        assert_eq!(top_effects(&l, 0), vec![Effect::FsDelete]);
+    }
+
+    #[test]
+    fn packages_are_listed_as_unlinked_and_node_modules_are_not() {
+        let l = project(&[("a.js", r#"import fs from "fs"; import _ from "lodash";"#)], &[]);
+        assert_eq!(l.unlinked.len(), 1);
+        assert_eq!(l.unlinked[0].reason, forge_analysis_schema::UnlinkedReason::ExternalPackage);
+        assert_eq!(l.unlinked[0].spec.text(), "lodash");
+    }
+
+    #[test]
+    fn a_file_that_does_not_parse_can_still_be_linked_to() {
+        let l = project(&[("a.js", r#"import "./b.js";"#), ("b.js", "function (")], &[]);
+        assert_eq!(l.fns.len(), 2);
+        assert!(l.fns.iter().all(|f| f.reachable_from_entry));
+    }
+
+    #[test]
+    fn linking_does_not_change_per_file_facts() {
+        let a = analyze_file_full(
+            &RelPath::new("a.js").unwrap(),
+            r#"import { f } from "./b.js"; f();"#,
+            &Catalog::node_defaults(),
+        )
+        .unwrap();
+        let b = analyze_file_full(
+            &RelPath::new("a.js").unwrap(),
+            r#"import { f } from "./b.js"; f();"#,
+            &Catalog::node_defaults(),
+        )
+        .unwrap();
+        assert_eq!(a.file.facts.len(), b.file.facts.len());
+        assert_eq!(a.link, b.link, "same input, same link info");
     }
 }

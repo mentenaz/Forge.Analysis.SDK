@@ -22,6 +22,9 @@ pub use flow::FlowHit;
 pub use visitor::{analyze_file, analyze_file_full, Analysis};
 mod callgraph;
 mod summary;
+mod exports;
+mod link;
+pub use link::{link as link_files, ExportName, ExportTarget, Exports, ExtCall, ImportEdge, ImportKind, LinkFile, LinkInfo, LocalEdges};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum BindingKind {
