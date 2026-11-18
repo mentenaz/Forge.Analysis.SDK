@@ -10,7 +10,7 @@
 //! and for everything else it says why not (`UnlinkedReason`), never dropping it.
 
 use forge_analysis_schema::{
-    Effect, EntryBasis, EntryIssue, FnId, FnRef, Lane, Linked, LinkedFn, Quoted, RelPath,
+    Effect, EntryBasis, EntryIssue, FnId, FnRef, FollowedCall, Lane, Linked, LinkedFn, Quoted, RelPath,
     Unlinked, UnlinkedReason,
 };
 use std::collections::{BTreeMap, BTreeSet, VecDeque};
@@ -60,6 +60,8 @@ pub struct ImportEdge {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ExtCall {
     pub from: u32,
+    /// Byte range of the call expression in its file.
+    pub site: (u32, u32),
     pub spec: String,
     pub name: ExportName,
 }
@@ -349,6 +351,7 @@ pub fn link_seeded(
     let mut out: Vec<Vec<Out>> = vec![Vec::new(); total];
     let mut unlinked: Vec<(UnlinkedReason, usize, u32, String, Option<String>)> = Vec::new();
     let mut links_made = 0u32;
+    let mut followed: Vec<FollowedCall> = Vec::new();
     let mut file_edges: Vec<BTreeSet<usize>> = vec![BTreeSet::new(); files.len()];
     let mut seen_edge: BTreeSet<(usize, usize, bool)> = BTreeSet::new();
     let mut add = |out: &mut Vec<Vec<Out>>, a: usize, o: Out| {
@@ -395,6 +398,17 @@ pub fn link_seeded(
                     if let (Some(x), Some(y)) = (node(fi, c.from), node(tf, tfn)) {
                         add(&mut out, x, Out { to: y, lane: None, callback: false });
                         links_made += 1;
+                        followed.push(FollowedCall {
+                            from: FnRef { file: fi as u32, func: FnId(c.from) },
+                            to: FnRef { file: tf as u32, func: FnId(tfn) },
+                            start_byte: c.site.0,
+                            end_byte: c.site.1,
+                            spec: Quoted::new(&c.spec),
+                            name: Quoted::new(&match &c.name {
+                                ExportName::Default => "default".to_string(),
+                                ExportName::Named(n) => n.clone(),
+                            }),
+                        });
                     }
                 }
                 Err(r) => {
@@ -517,6 +531,7 @@ pub fn link_seeded(
         entry_issues: Vec::new(),
         fns,
         unlinked,
+        followed_calls: followed,
         links_made,
     }
 }
@@ -792,6 +807,24 @@ pub(crate) mod tests {
                 UnlinkedReason::NotAnalysed,
             ]
         );
+    }
+
+    #[test]
+    fn a_followed_call_records_where_the_call_is_and_what_it_ran() {
+        let a = "const { add } = require('./b');\nadd(1, 2);\nconst x = 1;";
+        let l = project(&[("a.js", a), ("b.js", "exports.add = function add(x, y) { return x + y; };")], &[], &[]);
+        assert_eq!(l.followed_calls.len(), 1, "{:?}", l.followed_calls);
+        let c = &l.followed_calls[0];
+        assert_eq!((c.from.file, c.to.file), (0, 1));
+        assert_eq!(&a[c.start_byte as usize..c.end_byte as usize], "add(1, 2)");
+        assert_eq!((c.spec.text(), c.name.text()), ("./b", "add"));
+    }
+
+    #[test]
+    fn a_call_that_cannot_be_followed_is_not_recorded_as_followed() {
+        let l = project(&[("a.js", "const { nope } = require('./b'); nope();"), ("b.js", "exports.other = 1;")], &[], &[]);
+        assert!(l.followed_calls.is_empty(), "{:?}", l.followed_calls);
+        assert!(l.unlinked.iter().any(|u| u.reason == UnlinkedReason::NoSuchExport), "{:?}", l.unlinked);
     }
 
     #[test]

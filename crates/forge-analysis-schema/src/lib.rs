@@ -553,6 +553,22 @@ pub struct Unlinked {
     pub reason: UnlinkedReason,
 }
 
+/// A call in one file that was followed to the function it runs in another (or the same) file.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct FollowedCall {
+    /// The function that makes the call.
+    pub from: FnRef,
+    /// The function the call runs.
+    pub to: FnRef,
+    /// Byte range of the call expression in the calling file (`from.file`).
+    pub start_byte: u32,
+    pub end_byte: u32,
+    /// The import specifier, as written. From the code, so quoted.
+    pub spec: Quoted,
+    /// The export that was called (`default` for the default export). From the code, so quoted.
+    pub name: Quoted,
+}
+
 /// What a function can reach across the whole project.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct LinkedFn {
@@ -586,6 +602,8 @@ pub struct Linked {
     /// Every function of every file, by file then function.
     pub fns: Vec<LinkedFn>,
     pub unlinked: Vec<Unlinked>,
+    /// Every call that was followed to its target by name, with where the call is.
+    pub followed_calls: Vec<FollowedCall>,
     /// How many cross-file links were made (imports followed plus calls followed).
     pub links_made: u32,
 }

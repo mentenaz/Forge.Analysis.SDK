@@ -176,6 +176,7 @@ fn not_analysed_text(k: NotAnalysedKind) -> (&'static str, &'static str) {
         Container => ("Container definitions", "Dockerfiles and compose files: build steps and what runs in the container."),
         CiWorkflow => ("CI and workflow files", "Pipelines that run on a server when the code changes."),
         NativeBinary => ("Native binaries and WebAssembly", "Compiled code: not read."),
+        InvalidUtf8 => ("Read with replaced bytes", "Not valid UTF-8. Analysed after replacing the bad bytes, so some names and strings may differ from the file."),
         OtherFile => ("Other files", "Not code we analyse (documents, images, data, unknown types). Listed so nothing is hidden."),
         TooLarge => ("Skipped: too large", "Over the size limit for one file."),
         Symlink => ("Skipped: links", "Links are never followed."),
@@ -255,6 +256,11 @@ fn url_text(u: &UrlValue) -> String {
     s
 }
 
+/// For text that sits inside raw HTML (`<summary>`), where Markdown is not read but tags are.
+fn html_escape(s: &str) -> String {
+    s.replace('&', "&amp;").replace('<', "&lt;").replace('>', "&gt;")
+}
+
 fn size_text(n: Option<u64>) -> String {
     match n {
         Some(b) => format!("{b} bytes"),
@@ -296,7 +302,7 @@ impl W {
     fn group(&mut self, title: &str, note: &str, count: usize, body: impl FnOnce(&mut W)) {
         if count > COLLAPSE_AT {
             let _ = writeln!(self.out, "<details>");
-            let _ = writeln!(self.out, "<summary>{title} ({count})</summary>");
+            let _ = writeln!(self.out, "<summary>{} ({count})</summary>", html_escape(title));
             self.blank();
         } else {
             let _ = writeln!(self.out, "### {title} ({count})");
@@ -476,12 +482,13 @@ fn flows(w: &mut W, r: &Report) {
     w.heading(&SectionId::Flows);
     if r.flows.is_empty() {
         w.none();
+    } else {
+        w.group("Flows", "Each line: where the data is used, where it came from, and the expression it came from.", r.flows.len(), |w| {
+            for f in &r.flows {
+                w.item(&format!("{} ← {}: {}", at_line(&f.at, &f.place), loc(&f.origin), oq(&f.detail)));
+            }
+        });
     }
-    w.group("Flows", "Each line: where the data is used, where it came from, and the expression it came from.", r.flows.len(), |w| {
-        for f in &r.flows {
-            w.item(&format!("{} ← {}: {}", at_line(&f.at, &f.place), loc(&f.origin), oq(&f.detail)));
-        }
-    });
     w.back();
 }
 
@@ -489,15 +496,16 @@ fn scripts(w: &mut W, r: &Report) {
     w.heading(&SectionId::Scripts);
     if r.scripts.is_empty() {
         w.none();
-    }
-    w.group("Scripts", "", r.scripts.len(), |w| {
-        for s in &r.scripts {
-            w.item(&format!("{} ({}) at {}: {}", q(&s.name), trigger_text(s.trigger), loc(&s.at), oq(&s.command)));
-            for u in &s.unfollowed {
-                w.line(&format!("  - not followed: {}", q(u)));
+    } else {
+        w.group("Scripts", "", r.scripts.len(), |w| {
+            for s in &r.scripts {
+                w.item(&format!("{} ({}) at {}: {}", q(&s.name), trigger_text(s.trigger), loc(&s.at), oq(&s.command)));
+                for u in &s.unfollowed {
+                    w.line(&format!("  - not followed: {}", q(u)));
+                }
             }
-        }
-    });
+        });
+    }
     w.back();
 }
 
@@ -590,7 +598,7 @@ fn functions(w: &mut W, r: &Report) {
     }
     for file in files {
         let fns: Vec<&FunctionItem> = r.functions.functions.iter().filter(|f| &f.file == file).collect();
-        w.group(file.as_quoted().text(), "", fns.len(), |w| {
+        w.group(&q(file.as_quoted()), "", fns.len(), |w| {
             for f in &fns {
                 let name = match (&f.name, f.func) {
                     (Some(n), _) => q(n),
@@ -609,7 +617,37 @@ fn functions(w: &mut W, r: &Report) {
                     w.line(&format!("  - unresolved inside: {}", u.join(", ")));
                 }
                 if f.unfollowed_calls > 0 {
-                    w.line(&format!("  - calls not followed: {}", f.unfollowed_calls));
+                    w.line(&format!("  - calls not followed to a function in this file: {}", f.unfollowed_calls));
+                }
+                for c in &f.followed_calls {
+                    let target = match &c.to.name {
+                        Some(n) => q(n),
+                        None => "top level".to_string(),
+                    };
+                    w.line(&format!(
+                        "  - followed call to {} in {}{} (through {}, export {}, bytes {}-{})",
+                        target,
+                        q(c.to.file.as_quoted()),
+                        c.to.line.map(|l| format!(":{l}")).unwrap_or_default(),
+                        q(&c.spec),
+                        q(&c.name),
+                        c.start_byte,
+                        c.end_byte
+                    ));
+                }
+                if !f.followed_called_from.is_empty() {
+                    let from: Vec<String> = f
+                        .followed_called_from
+                        .iter()
+                        .map(|c| {
+                            let n = match &c.name {
+                                Some(n) => q(n),
+                                None => "top level".to_string(),
+                            };
+                            format!("{} in {}", n, q(c.file.as_quoted()))
+                        })
+                        .collect();
+                    w.line(&format!("  - called through an import from: {}", from.join(", ")));
                 }
                 if !f.facts.is_empty() {
                     let ids: Vec<String> = f.facts.iter().map(|i| code(i.as_str())).collect();

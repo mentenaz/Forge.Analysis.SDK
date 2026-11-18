@@ -46,6 +46,8 @@ pub struct CallbackEdge {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct RawExtCall {
     pub from: u32,
+    /// Byte range of the call expression.
+    pub site: (u32, u32),
     /// Byte offset of the declaration of the called name (or of the object, for `ns.f()`).
     pub decl_start: u32,
     /// The member name, for `ns.f()`.
@@ -245,13 +247,13 @@ impl Edges<'_> {
         let rid = r.reference_id.get()?;
         self.scoping.get_reference(rid).symbol_id()
     }
-    fn note_ext(&mut self, callee: &Expression<'_>) {
+    fn note_ext(&mut self, callee: &Expression<'_>, site: Span) {
         let from = self.cur();
         match callee {
             Expression::Identifier(r) => {
                 if let Some(sym) = self.symbol_of(r) {
                     let decl_start = self.scoping.symbol_span(sym).start;
-                    self.g.ext_calls.push(RawExtCall { from, decl_start, member: None });
+                    self.g.ext_calls.push(RawExtCall { from, site: (site.start, site.end), decl_start, member: None });
                 }
             }
             Expression::StaticMemberExpression(m) => {
@@ -260,6 +262,7 @@ impl Edges<'_> {
                         let decl_start = self.scoping.symbol_span(sym).start;
                         self.g.ext_calls.push(RawExtCall {
                             from,
+                            site: (site.start, site.end),
                             decl_start,
                             member: Some(m.property.span),
                         });
@@ -339,7 +342,7 @@ impl<'a> Visit<'a> for Edges<'_> {
             Some(to) => self.g.calls.push((from, to)),
             None => {
                 self.unfollowed();
-                self.note_ext(peel(&it.callee));
+                self.note_ext(peel(&it.callee), it.span);
             }
         }
         self.arguments(&it.arguments, key(it.span));

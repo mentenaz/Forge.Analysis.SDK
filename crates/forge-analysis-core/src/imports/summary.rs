@@ -145,7 +145,7 @@ pub fn link_info(
             // `d.f()` on a default or named import: we do not know the shape of `d`.
             (Some(_), _) => continue,
         };
-        ext_calls.push(ExtCall { from: raw.from, spec, name });
+        ext_calls.push(ExtCall { from: raw.from, site: raw.site, spec, name });
     }
     LinkInfo { exports: extracted.exports, imports: extracted.imports, ext_calls, edges, direct }
 }

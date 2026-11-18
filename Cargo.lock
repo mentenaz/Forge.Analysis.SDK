@@ -144,6 +144,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "forge-analysis-cli"
+version = "0.0.1"
+dependencies = [
+ "forge-analysis-catalog",
+ "forge-analysis-core",
+ "forge-analysis-intake",
+ "forge-analysis-report",
+ "forge-analysis-schema",
+ "serde_json",
+]
+
+[[package]]
 name = "forge-analysis-core"
 version = "0.0.1"
 dependencies = [

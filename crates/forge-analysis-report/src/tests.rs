@@ -108,6 +108,7 @@ fn fixture() -> Fixture {
         install_entries: vec![],
         entry_issues: vec![],
         fns: vec![linked_fn(0, 0, vec![Lane::Immediate]), linked_fn(0, 1, vec![Lane::Deferred]), linked_fn(1, 0, vec![])],
+        followed_calls: vec![],
         unlinked: vec![
             uf(0, 1, "lodash", UnlinkedReason::ExternalPackage),
             uf(0, 0, "lodash", UnlinkedReason::ExternalPackage),
@@ -589,4 +590,31 @@ fn golden_json() {
 #[test]
 fn golden_markdown() {
     golden("fixture.md", &to_markdown(&fixture().run()));
+}
+
+#[test]
+fn a_hostile_file_name_cannot_inject_into_the_function_index_heading_or_summary() {
+    for functions in [1u32, COLLAPSE_AT as u32 + 3] {
+        let name = "![img](http)<script>alert(1)</script>.js";
+        let mut fx = fixture();
+        fx.linked.files[1] = rp(name);
+        fx.facts_b.clear();
+        fx.sums_b = (0..functions).map(|i| summary(name, i, None, 1 + i, vec![])).collect();
+        fx.linked.fns.retain(|f| f.at.file != 1);
+        for i in 0..functions {
+            fx.linked.fns.push(linked_fn(1, i, vec![]));
+        }
+        fx.linked.unlinked.retain(|u| u.from.file != 1);
+        let md = to_markdown(&fx.run());
+        let lines: Vec<&str> = md.lines().filter(|l| l.contains("alert(1)")).collect();
+        assert!(!lines.is_empty());
+        for l in lines {
+            if l.starts_with("<summary>") {
+                assert!(!l.contains("<script>") && l.contains("&lt;script&gt;"), "{l}");
+            } else {
+                let before = &l[..l.find("<script>").unwrap()];
+                assert!(before.matches('`').count() % 2 == 1, "tag outside a code span: {l}");
+            }
+        }
+    }
 }

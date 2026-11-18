@@ -219,6 +219,23 @@ pub fn build(input: &ReportInput<'_>) -> Result<Report, BuildError> {
     let cx = Ctx { input, summaries, linked_fns };
     let facts = all_facts(input);
 
+    // A call through an import that the linker followed is not a place where "static analysis
+    // cannot say what happens": the per-file pass flags it only because it cannot see the other
+    // file. Only an exact match (same file, function and byte range) clears the flag.
+    let followed_sites: std::collections::BTreeSet<(u32, FnId, u32, u32)> = linked
+        .followed_calls
+        .iter()
+        .map(|c| (c.from.file, c.from.func, c.start_byte, c.end_byte))
+        .collect();
+    let is_followed = |file: &Option<u32>, f: &StaticFact| -> bool {
+        match (file, f.unresolved, f.within) {
+            (Some(i), Some(UnresolvedReason::UncoveredModule), Some(func)) => {
+                followed_sites.contains(&(*i, func, f.at().start_byte, f.at().end_byte))
+            }
+            _ => false,
+        }
+    };
+
     // ---- entry points ----
     let path_of = |i: &u32| linked.files[*i as usize].clone();
     let entry_points = EntryPoints {
@@ -290,7 +307,7 @@ pub fn build(input: &ReportInput<'_>) -> Result<Report, BuildError> {
             }
             _ => {}
         }
-        if let Some(reason) = f.unresolved {
+        if let Some(reason) = f.unresolved.filter(|_| !is_followed(file, f)) {
             if reason == UnresolvedReason::ShellCommand {
                 shell.push(*f);
             }
@@ -389,6 +406,33 @@ pub fn build(input: &ReportInput<'_>) -> Result<Report, BuildError> {
             }
         }
     }
+    let mut still_open: BTreeMap<FnRef, Vec<UnresolvedReason>> = BTreeMap::new();
+    for (file, f) in &facts {
+        if let (Some(i), Some(reason), Some(func)) = (file, f.unresolved, f.within) {
+            if !is_followed(file, f) {
+                still_open.entry(FnRef { file: *i, func }).or_default().push(reason);
+            }
+        }
+    }
+    let mut out_calls: BTreeMap<FnRef, Vec<CrossCall>> = BTreeMap::new();
+    let mut in_calls: BTreeMap<FnRef, Vec<FnLoc>> = BTreeMap::new();
+    for c in &linked.followed_calls {
+        out_calls.entry(c.from).or_default().push(CrossCall {
+            to: cx.fn_loc(c.to.file, c.to.func),
+            spec: c.spec.clone(),
+            name: c.name.clone(),
+            start_byte: c.start_byte,
+            end_byte: c.end_byte,
+        });
+        in_calls.entry(c.to).or_default().push(cx.fn_loc(c.from.file, c.from.func));
+    }
+    for v in out_calls.values_mut() {
+        v.sort_by_key(|c| (c.start_byte, c.end_byte));
+    }
+    for v in in_calls.values_mut() {
+        v.sort_by_key(|f| (f.file.as_quoted().text().to_string(), f.func));
+        v.dedup();
+    }
     let mut function_items: Vec<FunctionItem> = Vec::new();
     for (r, s) in &cx.summaries {
         let l = cx.linked_fns.get(r);
@@ -402,11 +446,20 @@ pub fn build(input: &ReportInput<'_>) -> Result<Report, BuildError> {
             escapes: s.escapes,
             direct_effects: s.direct_effects.clone(),
             transitive_effects: l.map(|l| l.transitive_effects.clone()).unwrap_or_else(|| s.transitive_effects.clone()),
-            unresolved: s.unresolved.clone(),
+            // The summary lists a reason once per function; drop one only when every fact that
+            // gave it was followed, so a reason with an open fact stays.
+            unresolved: s
+                .unresolved
+                .iter()
+                .copied()
+                .filter(|u| *u != UnresolvedReason::UncoveredModule || still_open.get(r).is_some_and(|o| o.contains(u)))
+                .collect(),
             unfollowed_calls: s.unfollowed_calls,
             calls: s.calls.clone(),
             callbacks: s.callbacks.clone(),
             called_from: s.called_from.clone(),
+            followed_calls: out_calls.remove(r).unwrap_or_default(),
+            followed_called_from: in_calls.remove(r).unwrap_or_default(),
             facts: placed.remove(r).unwrap_or_default(),
         });
     }

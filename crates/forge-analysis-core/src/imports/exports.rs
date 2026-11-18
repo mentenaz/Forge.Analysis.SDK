@@ -313,7 +313,7 @@ impl<'a> Visit<'a> for X<'_> {
             // require("m")()
             Expression::CallExpression(inner) => {
                 if let Some(spec) = self.require_spec(inner) {
-                    self.out.ext_calls.push(ExtCall { from, spec, name: ExportName::Default });
+                    self.out.ext_calls.push(ExtCall { from, site: (it.span.start, it.span.end), spec, name: ExportName::Default });
                 }
             }
             // require("m").f()
@@ -321,7 +321,7 @@ impl<'a> Visit<'a> for X<'_> {
                 if let Expression::CallExpression(inner) = peel(&m.object) {
                     if let Some(spec) = self.require_spec(inner) {
                         let n = self.text(m.property.span).to_string();
-                        self.out.ext_calls.push(ExtCall { from, spec, name: self.name_of(&n) });
+                        self.out.ext_calls.push(ExtCall { from, site: (it.span.start, it.span.end), spec, name: self.name_of(&n) });
                     }
                 }
             }
