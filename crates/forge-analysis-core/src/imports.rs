@@ -24,7 +24,7 @@ mod callgraph;
 mod summary;
 mod exports;
 mod link;
-pub use link::{link as link_files, ExportName, ExportTarget, Exports, ExtCall, ExtRef, ImportEdge, ImportKind, LinkFile, LinkInfo, LocalEdges};
+pub use link::{link as link_files, ExportName, ExportTarget, Exports, ExtCall, ExtRef, ImportEdge, ImportKind, LinkFile, LinkInfo, LocalEdges, PropCall, PropTag, PropUse, PropValue};
 mod json;
 mod package;
 

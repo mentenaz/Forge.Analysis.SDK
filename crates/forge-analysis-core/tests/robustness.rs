@@ -43,6 +43,9 @@ const JS_CORPUS: &[&str] = &[
     "var w = new Worker(new URL('./w.js', import.meta.url));\nconst vm = require('vm'); vm.runInNewContext(src);\n",
     "const a = 1;\u{202e}\u{0}\u{1b}[31m 'x\\u{1F600}y'; /re[gex]+/giu.test(s) ? 1 : 2\n",
     "setInterval(function tick(){ clearInterval(h) }, delay); let h = setTimeout(f, 0); function f(){ f() }\n",
+    "import { useState, useCallback, memo } from 'react';\nconst S = memo(({ onDone, ...r }) => { onDone(); r.x(); return null; });\nexport function App(p){ const [a, setA] = useState(0); const go = useCallback(() => setA(a + 1), [a]); return <S onDone={go} {...p} onX={() => String(Math.max(1, 2))} />; }\n",
+    "function C(props){ props.onBack?.(); props['onBack'](); const { onBack: b = () => 1 } = props; b(); return <C onBack={C} onBack={() => C} />; }\nconst o = { a: () => 1, b() {}, c: [function(){}] };\n",
+    "const [x, setX] = useState(); let [y, setY] = React.useReducer(r, 0); setY = evil; setX(1); setY(2); console.log(JSON.parse(x), Object.keys(y), new Error('e'), Promise.resolve().then(f));\n",
 ];
 
 const PKG_CORPUS: &[&str] = &[
@@ -331,3 +334,70 @@ fn long_chains_without_brackets_end_in_an_answer() {
 }
 
 
+
+/// Two files that hand functions to each other through JSX props, mutated and linked.
+const COMPONENT_FILES: &[(&str, &str)] = &[
+    ("s.jsx", "export function Screen({ onDone, onBack }) { onDone(); props.x(); onBack?.(); return null; }\nexport default function D(props) { props.onDone(); }\n"),
+    ("a.jsx", "import D, { Screen } from './s.jsx';\nimport * as N from './s.jsx';\nexport function App(){ return <><Screen onDone={() => 1} onBack={b} /><D onDone={function(){}} /><N.Screen onDone={() => 2} /></>; }\nfunction b(){}\nApp();\n"),
+];
+
+fn one_project(files: &[(String, String)]) -> Result<usize, String> {
+    use forge_analysis_core::imports::{link_files as link, LinkFile};
+    let cat = Catalog::node_defaults();
+    let rels: Vec<RelPath> = files.iter().map(|(p, _)| RelPath::new(p).unwrap()).collect();
+    let analyses: Vec<_> = files
+        .iter()
+        .zip(&rels)
+        .filter_map(|((_, src), rel)| analyze_file_full(rel, src, &cat).map(|a| (rel.clone(), src.clone(), a)))
+        .collect();
+    let lf: Vec<LinkFile<'_>> = analyses.iter().map(|(p, _, a)| LinkFile { path: p, info: &a.link }).collect();
+    let all: BTreeSet<String> = files.iter().map(|(p, _)| p.clone()).collect();
+    let l = link(&lf, &all, &[]);
+    for c in &l.followed_calls {
+        let (Some(from), Some(to)) = (analyses.get(c.from.file as usize), analyses.get(c.to.file as usize)) else {
+            return Err("a followed call names a file that is not in the project".into());
+        };
+        if from.2.summaries.get(c.from.func.0 as usize).is_none() || to.2.summaries.get(c.to.func.0 as usize).is_none() {
+            return Err(format!("a followed call names a function that does not exist: {:?}", c));
+        }
+        if c.start_byte > c.end_byte || c.end_byte as usize > from.1.len() {
+            return Err(format!("a followed call has a range outside its file: {:?}", c));
+        }
+        if c.via_prop && !c.spec.text().is_empty() {
+            return Err("a prop follow carries an import specifier".into());
+        }
+    }
+    let again = link(&lf, &all, &[]);
+    if again.followed_calls.len() != l.followed_calls.len() || again.links_made != l.links_made {
+        return Err("two links of the same project differ".into());
+    }
+    for f in &l.fns {
+        if f.reachable_from_entry != !f.lanes.is_empty() {
+            return Err("reachability and lanes disagree".into());
+        }
+    }
+    Ok(l.followed_calls.iter().filter(|c| c.via_prop).count())
+}
+
+#[test]
+fn the_unmutated_component_project_follows_its_props() {
+    let files: Vec<(String, String)> = COMPONENT_FILES.iter().map(|(p, s)| (p.to_string(), s.to_string())).collect();
+    let followed = one_project(&files).unwrap();
+    assert_eq!(followed, 3, "Screen's onDone and onBack and D's onDone are followed; N.Screen (a member tag) is not");
+}
+
+#[test]
+fn mutated_component_projects_link_without_crashing_or_breaking_an_invariant() {
+    let pool: Vec<&str> = COMPONENT_FILES.iter().map(|(_, s)| *s).chain(JS_CORPUS.iter().copied()).collect();
+    for seed in seeds() {
+        let mut rng = Rng(seed ^ 0x3C3C);
+        let files: Vec<(String, String)> = COMPONENT_FILES
+            .iter()
+            .map(|(p, s)| {
+                let src = if rng.below(4) == 0 { s.to_string() } else { mutate(&mut rng, s, &pool) };
+                (p.to_string(), src)
+            })
+            .collect();
+        guarded(seed, || one_project(&files).map(|_| ()));
+    }
+}
