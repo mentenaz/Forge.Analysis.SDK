@@ -11,7 +11,7 @@ use forge_analysis_schema::{Effect, Lane, ScriptTrigger, UnresolvedReason};
 use serde::Serialize;
 
 /// A brief never lists more reasons than this.
-pub const MAX_REASONS: usize = 8;
+pub const MAX_REASONS: usize = 9;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "snake_case")]
@@ -33,6 +33,10 @@ pub enum ReasonKind {
     InstallScript,
     /// Code on the install path that spawns processes, uses the network, changes files or loads code.
     InstallTimeEffect,
+    /// A command that a tool runs by itself without anyone asking: an editor task set to run on folder
+    /// open, an AI-agent hook, an MCP server, a dev container command, a git setting that runs a program,
+    /// a build SDK or a package manager script event.
+    AutomaticCommand,
     /// Files the tooling reads and acts on by itself (build and tool settings) that were not read.
     AutoRunNotAnalysed,
     /// Archives and packages whose contents were not opened, so anything inside is unseen.
@@ -75,6 +79,11 @@ pub fn brief(report: &Report) -> Brief {
         .scripts
         .iter()
         .filter(|s| matches!(s.trigger, ScriptTrigger::Install | ScriptTrigger::Prepare))
+        .count();
+    let automatic_commands = report
+        .scripts
+        .iter()
+        .filter(|s| matches!(s.trigger, ScriptTrigger::OnOpen | ScriptTrigger::OnGit | ScriptTrigger::OnBuild))
         .count();
     let install_effects: usize = report
         .effects
@@ -159,6 +168,7 @@ pub fn brief(report: &Report) -> Brief {
         (ReasonKind::DataReachesCode, flows),
         (ReasonKind::InstallScript, install_scripts),
         (ReasonKind::InstallTimeEffect, install_effects),
+        (ReasonKind::AutomaticCommand, automatic_commands),
         (ReasonKind::AutoRunNotAnalysed, auto_run),
         (ReasonKind::ArchiveNotOpened, archives),
         (ReasonKind::RunStopped, stopped),
@@ -174,7 +184,7 @@ pub fn brief(report: &Report) -> Brief {
     // A quick scan never says it is complete: it left code unread on purpose, and only the files
     // that run by themselves were looked at.
     let complete = !quick && stopped == 0 && skipped == 0 && unparsed == 0 && auto_run == 0 && archives == 0;
-    let review = flows > 0 || install_scripts > 0 || install_effects > 0;
+    let review = flows > 0 || install_scripts > 0 || install_effects > 0 || automatic_commands > 0;
     let verdict = if review {
         Verdict::Review
     } else if !complete {
@@ -373,8 +383,8 @@ mod tests {
             assert_eq!(b.verdict, Verdict::Incomplete, "{:?}", opts.scope);
             assert!(!b.complete);
             let r = b.reasons.iter().find(|r| r.kind == ReasonKind::AutoRunNotAnalysed).unwrap();
-            // Program.cs is not one of them.
-            assert_eq!(r.count, 5);
+            // Program.cs is not one of them, and `global.json` holds nothing automatic, so it was read.
+            assert_eq!(r.count, 4);
         }
     }
 
@@ -406,8 +416,54 @@ mod tests {
             file(".git/HEAD", "ref: x\n"),
         ];
         let b = brief(&analyze_files(files, &RunOptions::default()).unwrap());
+        // The config is read: `core.fsmonitor` runs a command on its own, so this is a review.
+        assert_eq!(b.verdict, Verdict::Review);
+        assert_eq!(b.reasons.iter().find(|r| r.kind == ReasonKind::AutomaticCommand).unwrap().count, 1);
+        // The hook is a shell script we cannot read yet; the inert sample and HEAD are not counted.
+        assert_eq!(b.reasons.iter().find(|r| r.kind == ReasonKind::AutoRunNotAnalysed).unwrap().count, 1);
+    }
+
+    #[test]
+    fn a_git_config_with_nothing_automatic_is_read_and_is_not_a_reason() {
+        let files = vec![file("index.js", "let a;\n"), file(".git/config", "[core]\n\tbare = false\n[remote \"origin\"]\n\turl = https://x.example/r.git\n")];
+        let b = brief(&analyze_files(files, &RunOptions::default()).unwrap());
+        assert_eq!(b.verdict, Verdict::NothingFound);
+        assert!(b.reasons.is_empty());
+    }
+
+    #[test]
+    fn commands_that_tools_run_by_themselves_are_a_review_reason_with_a_count() {
+        let files = vec![
+            file(".vscode/tasks.json", r#"{ // c
+  "tasks": [ { "label": "a", "command": "sh x.sh", "runOptions": { "runOn": "folderOpen" } },
+             { "label": "m", "command": "make" } ] }"#),
+            file(".claude/settings.json", r#"{"hooks":{"SessionStart":[{"hooks":[{"type":"command","command":"x"}]}]}}"#),
+            file(".mcp.json", r#"{"mcpServers":{"s":{"command":"npx","args":["p"]}}}"#),
+            file(".devcontainer/devcontainer.json", r#"{"postCreateCommand":"npm i"}"#),
+            file("global.json", r#"{"msbuild-sdks":{"X.Sdk":"1.0.0"}}"#),
+        ];
+        for opts in [RunOptions::default(), quick()] {
+            let b = brief(&analyze_files(files.clone(), &opts).unwrap());
+            assert_eq!(b.verdict, Verdict::Review, "{:?}", opts.scope);
+            // The folder-open task, the hook, the MCP server, the dev container command and the SDK.
+            assert_eq!(b.reasons.iter().find(|r| r.kind == ReasonKind::AutomaticCommand).unwrap().count, 5);
+        }
+    }
+
+    #[test]
+    fn a_manual_task_alone_is_listed_but_is_not_a_reason() {
+        let files = vec![file(".vscode/tasks.json", r#"{"tasks":[{"label":"m","command":"make"}]}"#)];
+        let b = brief(&analyze_files(files, &RunOptions::default()).unwrap());
+        assert!(b.reasons.iter().all(|r| r.kind != ReasonKind::AutomaticCommand));
+        assert_ne!(b.verdict, Verdict::Review);
+    }
+
+    #[test]
+    fn a_config_file_that_does_not_parse_makes_the_brief_incomplete() {
+        let files = vec![file("index.js", "let a;\n"), file(".vscode/tasks.json", "{ not json")];
+        let b = brief(&analyze_files(files, &RunOptions::default()).unwrap());
         assert_eq!(b.verdict, Verdict::Incomplete);
-        assert_eq!(b.reasons.iter().find(|r| r.kind == ReasonKind::AutoRunNotAnalysed).unwrap().count, 2);
+        assert!(!b.complete);
     }
 
     #[test]
@@ -424,7 +480,7 @@ mod tests {
     #[test]
     fn every_reason_kind_fits_in_a_brief() {
         // The list in `brief` has one entry per kind; a cap below that would drop reasons silently.
-        assert!(MAX_REASONS >= 8);
+        assert!(MAX_REASONS >= 9);
     }
 
     #[test]

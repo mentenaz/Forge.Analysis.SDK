@@ -1,9 +1,9 @@
 {
   "header": {
-    "schema": 4,
+    "schema": 5,
     "engine": "forge-analysis 0.0.1",
     "catalog_sha256": "661ff253d0997c290715b16d7de935041072e290e1efd30a82fa0c75eed0949b",
-    "snapshot_sha256": "a603d8f594de33ef4d447e3b18f1237ce6f84c3fbcb13fce231779890a537b90",
+    "snapshot_sha256": "169b7b12ea2e61f2b728068941ee97fdbf1f0e420d238205639e14c359aa4e32",
     "mode": "static_only",
     "scope": "quick"
   },
@@ -52,8 +52,8 @@
       "section": "scripts",
       "number": 6,
       "title": "Install scripts and shell commands",
-      "explanation": "Every package.json script, when it runs, and the commands inside it that we could not follow.",
-      "count": 0,
+      "explanation": "Every command a project file asks a tool or package manager to run (package.json scripts, editor tasks, agent hooks, git settings and more): when it runs, and the commands inside it that we could not follow.",
+      "count": 6,
       "anchor": "install-scripts-and-shell-commands"
     },
     {
@@ -69,7 +69,7 @@
       "number": 8,
       "title": "Unresolved",
       "explanation": "Places where static analysis cannot say what happens (computed code, dynamic loads, shell commands). Each one hides behaviour.",
-      "count": 0,
+      "count": 6,
       "anchor": "unresolved"
     },
     {
@@ -85,7 +85,7 @@
       "number": 10,
       "title": "Not analysed",
       "explanation": "Files and folders that were not read as code, by kind, and anything skipped by a limit.",
-      "count": 19,
+      "count": 15,
       "anchor": "not-analysed"
     },
     {
@@ -99,9 +99,9 @@
   ],
   "overview": {
     "files_analysed": 1,
-    "files_not_analysed": 19,
+    "files_not_analysed": 15,
     "functions": 1,
-    "facts": 3,
+    "facts": 15,
     "links_made": 0,
     "unresolved_cleared_by_links": 0,
     "completeness": "incomplete",
@@ -109,7 +109,7 @@
       {
         "section": "unresolved",
         "label": "places where static analysis cannot say what happens",
-        "count": 0
+        "count": 6
       },
       {
         "section": "unlinked",
@@ -124,7 +124,7 @@
       {
         "section": "not_analysed",
         "label": "files or folders not read as code",
-        "count": 19
+        "count": 15
       },
       {
         "section": "dependencies",
@@ -160,7 +160,7 @@
       },
       {
         "kind": "lifecycle_script",
-        "count": 0
+        "count": 6
       },
       {
         "kind": "dependency",
@@ -168,7 +168,7 @@
       },
       {
         "kind": "unresolved",
-        "count": 0
+        "count": 6
       },
       {
         "kind": "flow",
@@ -257,9 +257,376 @@
     }
   ],
   "flows": [],
-  "scripts": [],
+  "scripts": [
+    {
+      "id": "fact:51f1f855c3494224",
+      "at": {
+        "file": {
+          "text": "composer.json",
+          "truncated": false,
+          "original_len": 13,
+          "sha256": "d2ab9925cad7eac58e0ff4cc0d251a937ecf49e4b6bf57f8b95aab76648a9d34"
+        },
+        "start_line": 1,
+        "end_line": 1,
+        "start_byte": 31,
+        "end_byte": 40
+      },
+      "name": {
+        "text": "post-install-cmd",
+        "truncated": false,
+        "original_len": 16,
+        "sha256": "b4912862a748856483758affa67397a961514c1ca4b9f4583928cf581284571d"
+      },
+      "trigger": "install",
+      "command": {
+        "text": "sh x.sh",
+        "truncated": false,
+        "original_len": 7,
+        "sha256": "d7278e1a7afec3191d2ee3a7415eee0040a540af4951db4c3d4ade4254baf183"
+      },
+      "unfollowed": [
+        {
+          "text": "sh x.sh",
+          "truncated": false,
+          "original_len": 7,
+          "sha256": "d7278e1a7afec3191d2ee3a7415eee0040a540af4951db4c3d4ade4254baf183"
+        }
+      ]
+    },
+    {
+      "id": "fact:16cdb165148db5fb",
+      "at": {
+        "file": {
+          "text": ".claude/settings.json",
+          "truncated": false,
+          "original_len": 21,
+          "sha256": "f27ac6f39d89fe021c56900069198aa7d9968f2cd6645c00b11ffd1b78fcf546"
+        },
+        "start_line": 1,
+        "end_line": 1,
+        "start_byte": 64,
+        "end_byte": 73
+      },
+      "name": {
+        "text": "SessionStart",
+        "truncated": false,
+        "original_len": 12,
+        "sha256": "5b21195173ce964ca174314634e11499e9eead9c837a80047e67d433eebd2ec0"
+      },
+      "trigger": "on_open",
+      "command": {
+        "text": "sh x.sh",
+        "truncated": false,
+        "original_len": 7,
+        "sha256": "d7278e1a7afec3191d2ee3a7415eee0040a540af4951db4c3d4ade4254baf183"
+      },
+      "unfollowed": [
+        {
+          "text": "sh x.sh",
+          "truncated": false,
+          "original_len": 7,
+          "sha256": "d7278e1a7afec3191d2ee3a7415eee0040a540af4951db4c3d4ade4254baf183"
+        }
+      ]
+    },
+    {
+      "id": "fact:7b70dd9ab2773d0f",
+      "at": {
+        "file": {
+          "text": ".devcontainer/devcontainer.json",
+          "truncated": false,
+          "original_len": 31,
+          "sha256": "24ad71c8613ddcf6fd23818cb3bb477a1fb6d83af4550b0bad43099813088686"
+        },
+        "start_line": 1,
+        "end_line": 1,
+        "start_byte": 21,
+        "end_byte": 30
+      },
+      "name": {
+        "text": "initializeCommand",
+        "truncated": false,
+        "original_len": 17,
+        "sha256": "e974411ad1a81dc3246dc40a68dc8a211156ad64163e3c4431f597c0ae4da5b2"
+      },
+      "trigger": "on_open",
+      "command": {
+        "text": "sh x.sh",
+        "truncated": false,
+        "original_len": 7,
+        "sha256": "d7278e1a7afec3191d2ee3a7415eee0040a540af4951db4c3d4ade4254baf183"
+      },
+      "unfollowed": [
+        {
+          "text": "sh x.sh",
+          "truncated": false,
+          "original_len": 7,
+          "sha256": "d7278e1a7afec3191d2ee3a7415eee0040a540af4951db4c3d4ade4254baf183"
+        }
+      ]
+    },
+    {
+      "id": "fact:cf5ec2b980c080a5",
+      "at": {
+        "file": {
+          "text": ".mcp.json",
+          "truncated": false,
+          "original_len": 9,
+          "sha256": "d5d3368a61f8d02e085f7a4cb666ee471cf5383690a04b64c839c6ae2080ceb9"
+        },
+        "start_line": 1,
+        "end_line": 1,
+        "start_byte": 35,
+        "end_byte": 40
+      },
+      "name": {
+        "text": "helper",
+        "truncated": false,
+        "original_len": 6,
+        "sha256": "e81d3b0e9d82feaaf5f6e55bdff24731d7eee08632ffa63801e6397290c5d20a"
+      },
+      "trigger": "on_open",
+      "command": {
+        "text": "npx -y some-server",
+        "truncated": false,
+        "original_len": 18,
+        "sha256": "b3c7516fb7afaed9834565a52d437aa963aa40823477c12b911f9195d6e6ed2d"
+      },
+      "unfollowed": [
+        {
+          "text": "npx -y some-server",
+          "truncated": false,
+          "original_len": 18,
+          "sha256": "b3c7516fb7afaed9834565a52d437aa963aa40823477c12b911f9195d6e6ed2d"
+        }
+      ]
+    },
+    {
+      "id": "fact:f8a2dda6c11e266d",
+      "at": {
+        "file": {
+          "text": ".vscode/tasks.json",
+          "truncated": false,
+          "original_len": 18,
+          "sha256": "7d76d7533653c23b753fc7ce638cf64bdb5e419927d276af836d3a03fdf1745a"
+        },
+        "start_line": 5,
+        "end_line": 5,
+        "start_byte": 124,
+        "end_byte": 128
+      },
+      "name": {
+        "text": "x",
+        "truncated": false,
+        "original_len": 1,
+        "sha256": "2d711642b726b04401627ca9fbac32f5c8530fb1903cc4db02258717921a4881"
+      },
+      "trigger": "on_open",
+      "command": {
+        "text": "sh x.sh",
+        "truncated": false,
+        "original_len": 7,
+        "sha256": "d7278e1a7afec3191d2ee3a7415eee0040a540af4951db4c3d4ade4254baf183"
+      },
+      "unfollowed": [
+        {
+          "text": "sh x.sh",
+          "truncated": false,
+          "original_len": 7,
+          "sha256": "d7278e1a7afec3191d2ee3a7415eee0040a540af4951db4c3d4ade4254baf183"
+        }
+      ]
+    },
+    {
+      "id": "fact:8607a09ab25e2a8f",
+      "at": {
+        "file": {
+          "text": ".vscode/tasks.json",
+          "truncated": false,
+          "original_len": 18,
+          "sha256": "7d76d7533653c23b753fc7ce638cf64bdb5e419927d276af836d3a03fdf1745a"
+        },
+        "start_line": 6,
+        "end_line": 6,
+        "start_byte": 243,
+        "end_byte": 249
+      },
+      "name": {
+        "text": "build",
+        "truncated": false,
+        "original_len": 5,
+        "sha256": "44575cf5b28512d75644bf54a517dcef304ff809fd511747621b4d64f19aac66"
+      },
+      "trigger": "manual",
+      "command": {
+        "text": "make",
+        "truncated": false,
+        "original_len": 4,
+        "sha256": "d05aa2a15fb3c40efeeb03bec445393f00074484cf01c8fb2da90ca6695a5531"
+      },
+      "unfollowed": [
+        {
+          "text": "make",
+          "truncated": false,
+          "original_len": 4,
+          "sha256": "d05aa2a15fb3c40efeeb03bec445393f00074484cf01c8fb2da90ca6695a5531"
+        }
+      ]
+    }
+  ],
   "dependencies": [],
-  "unresolved": [],
+  "unresolved": [
+    {
+      "reason": "shell_command",
+      "items": [
+        {
+          "id": "fact:2d300dc037cf3911",
+          "at": {
+            "file": {
+              "text": ".claude/settings.json",
+              "truncated": false,
+              "original_len": 21,
+              "sha256": "f27ac6f39d89fe021c56900069198aa7d9968f2cd6645c00b11ffd1b78fcf546"
+            },
+            "start_line": 1,
+            "end_line": 1,
+            "start_byte": 64,
+            "end_byte": 73
+          },
+          "detail": {
+            "text": "sh x.sh",
+            "truncated": false,
+            "original_len": 7,
+            "sha256": "d7278e1a7afec3191d2ee3a7415eee0040a540af4951db4c3d4ade4254baf183"
+          },
+          "in_fn": null,
+          "lanes": [],
+          "reachable": null
+        },
+        {
+          "id": "fact:b98033ed3672f961",
+          "at": {
+            "file": {
+              "text": ".devcontainer/devcontainer.json",
+              "truncated": false,
+              "original_len": 31,
+              "sha256": "24ad71c8613ddcf6fd23818cb3bb477a1fb6d83af4550b0bad43099813088686"
+            },
+            "start_line": 1,
+            "end_line": 1,
+            "start_byte": 21,
+            "end_byte": 30
+          },
+          "detail": {
+            "text": "sh x.sh",
+            "truncated": false,
+            "original_len": 7,
+            "sha256": "d7278e1a7afec3191d2ee3a7415eee0040a540af4951db4c3d4ade4254baf183"
+          },
+          "in_fn": null,
+          "lanes": [],
+          "reachable": null
+        },
+        {
+          "id": "fact:7cef03f012d42a7e",
+          "at": {
+            "file": {
+              "text": ".mcp.json",
+              "truncated": false,
+              "original_len": 9,
+              "sha256": "d5d3368a61f8d02e085f7a4cb666ee471cf5383690a04b64c839c6ae2080ceb9"
+            },
+            "start_line": 1,
+            "end_line": 1,
+            "start_byte": 35,
+            "end_byte": 40
+          },
+          "detail": {
+            "text": "npx -y some-server",
+            "truncated": false,
+            "original_len": 18,
+            "sha256": "b3c7516fb7afaed9834565a52d437aa963aa40823477c12b911f9195d6e6ed2d"
+          },
+          "in_fn": null,
+          "lanes": [],
+          "reachable": null
+        },
+        {
+          "id": "fact:c7d0bdacec42bba3",
+          "at": {
+            "file": {
+              "text": ".vscode/tasks.json",
+              "truncated": false,
+              "original_len": 18,
+              "sha256": "7d76d7533653c23b753fc7ce638cf64bdb5e419927d276af836d3a03fdf1745a"
+            },
+            "start_line": 5,
+            "end_line": 5,
+            "start_byte": 124,
+            "end_byte": 128
+          },
+          "detail": {
+            "text": "sh x.sh",
+            "truncated": false,
+            "original_len": 7,
+            "sha256": "d7278e1a7afec3191d2ee3a7415eee0040a540af4951db4c3d4ade4254baf183"
+          },
+          "in_fn": null,
+          "lanes": [],
+          "reachable": null
+        },
+        {
+          "id": "fact:a03b3b330b58bd7f",
+          "at": {
+            "file": {
+              "text": ".vscode/tasks.json",
+              "truncated": false,
+              "original_len": 18,
+              "sha256": "7d76d7533653c23b753fc7ce638cf64bdb5e419927d276af836d3a03fdf1745a"
+            },
+            "start_line": 6,
+            "end_line": 6,
+            "start_byte": 243,
+            "end_byte": 249
+          },
+          "detail": {
+            "text": "make",
+            "truncated": false,
+            "original_len": 4,
+            "sha256": "d05aa2a15fb3c40efeeb03bec445393f00074484cf01c8fb2da90ca6695a5531"
+          },
+          "in_fn": null,
+          "lanes": [],
+          "reachable": null
+        },
+        {
+          "id": "fact:ba423a4c2f62cd29",
+          "at": {
+            "file": {
+              "text": "composer.json",
+              "truncated": false,
+              "original_len": 13,
+              "sha256": "d2ab9925cad7eac58e0ff4cc0d251a937ecf49e4b6bf57f8b95aab76648a9d34"
+            },
+            "start_line": 1,
+            "end_line": 1,
+            "start_byte": 31,
+            "end_byte": 40
+          },
+          "detail": {
+            "text": "sh x.sh",
+            "truncated": false,
+            "original_len": 7,
+            "sha256": "d7278e1a7afec3191d2ee3a7415eee0040a540af4951db4c3d4ade4254baf183"
+          },
+          "in_fn": null,
+          "lanes": [],
+          "reachable": null
+        }
+      ]
+    }
+  ],
   "unlinked": [],
   "package_calls": [],
   "not_analysed": {
@@ -275,26 +642,6 @@
               "sha256": "9a4f3e4537ebb7474452d131b0d969d89a51286f4269aac5ef268e712be17268"
             },
             "size": 28,
-            "kind": "auto_run_config"
-          },
-          {
-            "path": {
-              "text": ".claude/settings.json",
-              "truncated": false,
-              "original_len": 21,
-              "sha256": "f27ac6f39d89fe021c56900069198aa7d9968f2cd6645c00b11ffd1b78fcf546"
-            },
-            "size": 80,
-            "kind": "auto_run_config"
-          },
-          {
-            "path": {
-              "text": ".devcontainer/devcontainer.json",
-              "truncated": false,
-              "original_len": 31,
-              "sha256": "24ad71c8613ddcf6fd23818cb3bb477a1fb6d83af4550b0bad43099813088686"
-            },
-            "size": 32,
             "kind": "auto_run_config"
           },
           {
@@ -315,16 +662,6 @@
               "sha256": "d2bc4bbf14eadc292d84e0ef5f7a93115c23557f533809fc80b896934291529d"
             },
             "size": 18,
-            "kind": "auto_run_config"
-          },
-          {
-            "path": {
-              "text": ".vscode/tasks.json",
-              "truncated": false,
-              "original_len": 18,
-              "sha256": "7d76d7533653c23b753fc7ce638cf64bdb5e419927d276af836d3a03fdf1745a"
-            },
-            "size": 100,
             "kind": "auto_run_config"
           },
           {
@@ -365,16 +702,6 @@
               "sha256": "d0d98998092552a1d3259338c2c71e118a5b8343dd4703c0c7f552ada7f9cb42"
             },
             "size": 13,
-            "kind": "auto_run_config"
-          },
-          {
-            "path": {
-              "text": "composer.json",
-              "truncated": false,
-              "original_len": 13,
-              "sha256": "d2ab9925cad7eac58e0ff4cc0d251a937ecf49e4b6bf57f8b95aab76648a9d34"
-            },
-            "size": 43,
             "kind": "auto_run_config"
           },
           {

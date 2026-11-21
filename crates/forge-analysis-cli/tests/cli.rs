@@ -142,7 +142,7 @@ fn with_out_it_writes_both_reports_and_creates_the_folder() {
     assert!(out.contains("Report written to"));
     let json = std::fs::read_to_string(dest.join("report.json")).unwrap();
     let v: serde_json::Value = serde_json::from_str(&json).unwrap();
-    assert_eq!(v["header"]["schema"], 4);
+    assert_eq!(v["header"]["schema"], 5);
     assert_eq!(v["header"]["mode"], "static_only");
     assert_eq!(v["header"]["scope"], "full");
     assert!(v["header"]["engine"].as_str().unwrap().starts_with("forge-analysis "));

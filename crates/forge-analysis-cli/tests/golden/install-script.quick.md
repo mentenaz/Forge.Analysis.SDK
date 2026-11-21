@@ -1,7 +1,7 @@
 # Forge analysis report
 
 - Engine: `forge-analysis 0.0.1`
-- Schema: 4
+- Schema: 5
 - Mode: static only (no code was run)
 - Scope: quick (only files that run by themselves; everything else is counted as not examined)
 - Snapshot: `21640997110fe94a814caf659f927b541631e8a6969533c39f962f6461898070`
@@ -16,7 +16,7 @@
 3. [Execution timeline](#execution-timeline) (5) — When code runs: which functions run immediately, later, repeatedly, on events, at exit or at install, and every timer.
 4. [Effects](#effects) (4) — What the code does to the outside world: files, network, processes, environment and loading of code, each with its location.
 5. [Data flows](#data-flows) (1) — Data from the network or a file that can reach code execution or a command, from where it enters to where it is used.
-6. [Install scripts and shell commands](#install-scripts-and-shell-commands) (2) — Every package.json script, when it runs, and the commands inside it that we could not follow.
+6. [Install scripts and shell commands](#install-scripts-and-shell-commands) (2) — Every command a project file asks a tool or package manager to run (package.json scripts, editor tasks, agent hooks, git settings and more): when it runs, and the commands inside it that we could not follow.
 7. [Dependencies](#dependencies) (4) — Every declared dependency with where its code comes from: registry, git, URL, local path or bundled.
 8. [Unresolved](#unresolved) (3) — Places where static analysis cannot say what happens (computed code, dynamic loads, shell commands). Each one hides behaviour.
 9. [Unlinked imports](#unlinked-imports) (0) — Imports we could not follow to their source: packages, missing files and names that are not exported.
@@ -150,7 +150,7 @@ Each line: where the data is used, where it came from, and the expression it cam
 
 ## 6. Install scripts and shell commands
 
-Every package.json script, when it runs, and the commands inside it that we could not follow.
+Every command a project file asks a tool or package manager to run (package.json scripts, editor tasks, agent hooks, git settings and more): when it runs, and the commands inside it that we could not follow.
 
 ### Scripts (2)
 

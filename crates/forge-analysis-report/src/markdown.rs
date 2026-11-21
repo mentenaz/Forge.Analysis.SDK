@@ -199,6 +199,9 @@ fn trigger_text(t: ScriptTrigger) -> &'static str {
         ScriptTrigger::Prepare => "runs on a local or git install",
         ScriptTrigger::Hook => "runs around another command",
         ScriptTrigger::Manual => "runs only when someone asks",
+        ScriptTrigger::OnOpen => "runs when the folder is opened or a session starts",
+        ScriptTrigger::OnGit => "runs when git does a matching operation",
+        ScriptTrigger::OnBuild => "runs during a build or restore",
     }
 }
 

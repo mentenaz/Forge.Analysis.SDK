@@ -1,6 +1,6 @@
 {
   "header": {
-    "schema": 4,
+    "schema": 5,
     "engine": "forge-analysis 0.0.1",
     "catalog_sha256": "661ff253d0997c290715b16d7de935041072e290e1efd30a82fa0c75eed0949b",
     "snapshot_sha256": "8c9fb747ba5b2ffacf0abf5328b0a6b8728dca7a0d4c09bb9d5d29d48a5f62c7",
@@ -52,8 +52,8 @@
       "section": "scripts",
       "number": 6,
       "title": "Install scripts and shell commands",
-      "explanation": "Every package.json script, when it runs, and the commands inside it that we could not follow.",
-      "count": 0,
+      "explanation": "Every command a project file asks a tool or package manager to run (package.json scripts, editor tasks, agent hooks, git settings and more): when it runs, and the commands inside it that we could not follow.",
+      "count": 1,
       "anchor": "install-scripts-and-shell-commands"
     },
     {
@@ -85,7 +85,7 @@
       "number": 10,
       "title": "Not analysed",
       "explanation": "Files and folders that were not read as code, by kind, and anything skipped by a limit.",
-      "count": 7,
+      "count": 6,
       "anchor": "not-analysed"
     },
     {
@@ -99,9 +99,9 @@
   ],
   "overview": {
     "files_analysed": 0,
-    "files_not_analysed": 7,
+    "files_not_analysed": 6,
     "functions": 0,
-    "facts": 0,
+    "facts": 1,
     "links_made": 0,
     "unresolved_cleared_by_links": 0,
     "completeness": "incomplete",
@@ -124,7 +124,7 @@
       {
         "section": "not_analysed",
         "label": "files or folders not read as code",
-        "count": 7
+        "count": 6
       },
       {
         "section": "dependencies",
@@ -160,7 +160,7 @@
       },
       {
         "kind": "lifecycle_script",
-        "count": 0
+        "count": 1
       },
       {
         "kind": "dependency",
@@ -190,7 +190,37 @@
   },
   "effects": [],
   "flows": [],
-  "scripts": [],
+  "scripts": [
+    {
+      "id": "fact:e7042078d8bacb0d",
+      "at": {
+        "file": {
+          "text": "global.json",
+          "truncated": false,
+          "original_len": 11,
+          "sha256": "8df3cd354bc584349d04ad5675b33c042d8b99b741b8b95af394c55e0f5001bf"
+        },
+        "start_line": 1,
+        "end_line": 1,
+        "start_byte": 53,
+        "end_byte": 75
+      },
+      "name": {
+        "text": "msbuild-sdk",
+        "truncated": false,
+        "original_len": 11,
+        "sha256": "f11c0c2541bcbe0b914d9e86fe3bec9d9e70a885ebbe5f788ff9b4fe562c9dfe"
+      },
+      "trigger": "on_build",
+      "command": {
+        "text": "Example.Sdk/1.0.0",
+        "truncated": false,
+        "original_len": 17,
+        "sha256": "9acf8b7cc11d7ba7827a11cd2c62539bab4a47d8fccb3e2a63b60983d9ebb6a2"
+      },
+      "unfollowed": []
+    }
+  ],
   "dependencies": [],
   "unresolved": [],
   "unlinked": [],
@@ -228,16 +258,6 @@
               "sha256": "b54ee602750f150b3d4986e0334cc3ec901d47510560e26e792e8d294ab6f37a"
             },
             "size": 141,
-            "kind": "auto_run_config"
-          },
-          {
-            "path": {
-              "text": "global.json",
-              "truncated": false,
-              "original_len": 11,
-              "sha256": "8df3cd354bc584349d04ad5675b33c042d8b99b741b8b95af394c55e0f5001bf"
-            },
-            "size": 80,
             "kind": "auto_run_config"
           },
           {

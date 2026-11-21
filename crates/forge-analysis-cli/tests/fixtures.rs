@@ -294,11 +294,13 @@ fn quick_scan_of_the_dotnet_fixture_flags_the_files_msbuild_runs_by_itself() {
                 "Directory.Build.props",
                 "Directory.Build.targets",
                 "NuGet.Config",
-                "global.json",
                 "src/App/App.csproj",
                 "src/App/Directory.Build.rsp",
             ]
         );
+        // `global.json` names an MSBuild SDK, which runs during a build, so it is read and reported.
+        let sdk = r.scripts.iter().find(|s| s.name.text() == "msbuild-sdk").unwrap();
+        assert_eq!(sdk.trigger, ScriptTrigger::OnBuild);
         // Program.cs is not on the list: it stays an ordinary other file.
         let other = r.not_analysed.groups.iter().find(|g| g.kind == NotAnalysedKind::OtherFile).unwrap();
         assert_eq!(other.items.len(), 1);
@@ -320,16 +322,12 @@ fn quick_scan_flags_what_tools_run_by_themselves_in_every_ecosystem_and_reads_to
             paths,
             vec![
                 ".cargo/config.toml",
-                ".claude/settings.json",
-                ".devcontainer/devcontainer.json",
                 ".envrc",
                 ".husky/pre-commit",
-                ".vscode/tasks.json",
                 "Cargo.toml",
                 "Gemfile",
                 "Makefile",
                 "build.rs",
-                "composer.json",
                 "pom.xml",
                 "setup.py",
                 "venv/pyvenv.cfg",
@@ -340,6 +338,18 @@ fn quick_scan_flags_what_tools_run_by_themselves_in_every_ecosystem_and_reads_to
         let mut o: Vec<&str> = other.items.iter().map(|i| i.path.text()).collect();
         o.sort();
         assert_eq!(o, vec!["docs/notes.md", "tsconfig.json"]);
+    }
+    // The editor, agent, dev container and Composer files are read: their commands are facts, with
+    // the trigger that says when they run.
+    for r in [&quick, &full] {
+        let find = |name: &str| r.scripts.iter().find(|s| s.name.text() == name);
+        assert_eq!(find("x").unwrap().trigger, ScriptTrigger::OnOpen); // the folder-open task
+        assert_eq!(find("build").unwrap().trigger, ScriptTrigger::Manual); // the manual one
+        assert_eq!(find("SessionStart").unwrap().trigger, ScriptTrigger::OnOpen); // agent hook
+        assert_eq!(find("helper").unwrap().trigger, ScriptTrigger::OnOpen); // MCP server
+        assert_eq!(find("initializeCommand").unwrap().trigger, ScriptTrigger::OnOpen); // dev container
+        assert_eq!(find("post-install-cmd").unwrap().trigger, ScriptTrigger::Install); // Composer
+        assert!(find("x").unwrap().unfollowed.iter().any(|c| c.text() == "sh x.sh"));
     }
     // Archives are listed in their own group, in either scope.
     for r in [&quick, &full] {

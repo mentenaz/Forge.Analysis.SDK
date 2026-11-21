@@ -25,10 +25,12 @@ mod summary;
 mod exports;
 mod link;
 pub use link::{link as link_files, ExportName, ExportTarget, Exports, ExtCall, ExtRef, ImportEdge, ImportKind, LinkFile, LinkInfo, LocalEdges, PropCall, PropTag, PropUse, PropValue};
+mod config;
 mod json;
 mod package;
 
 pub use link::{link_project, link_seeded, EntryWant, FileIndex};
+pub use config::{analyze_config, is_config_manifest, ConfigAnalysis};
 pub use package::{analyze_package, classify_dependency, interpret_command, Action, PackageAnalysis};
 
 

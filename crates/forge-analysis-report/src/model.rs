@@ -95,7 +95,7 @@ impl SectionId {
                 "Data from the network or a file that can reach code execution or a command, from where it enters to where it is used."
             }
             SectionId::Scripts => {
-                "Every package.json script, when it runs, and the commands inside it that we could not follow."
+                "Every command a project file asks a tool or package manager to run (package.json scripts, editor tasks, agent hooks, git settings and more): when it runs, and the commands inside it that we could not follow."
             }
             SectionId::Dependencies => {
                 "Every declared dependency with where its code comes from: registry, git, URL, local path or bundled."

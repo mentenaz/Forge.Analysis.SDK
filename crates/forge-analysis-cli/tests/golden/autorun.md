@@ -1,10 +1,10 @@
 # Forge analysis report
 
 - Engine: `forge-analysis 0.0.1`
-- Schema: 4
+- Schema: 5
 - Mode: static only (no code was run)
 - Scope: full (every file we can read as code)
-- Snapshot: `a603d8f594de33ef4d447e3b18f1237ce6f84c3fbcb13fce231779890a537b90`
+- Snapshot: `169b7b12ea2e61f2b728068941ee97fdbf1f0e420d238205639e14c359aa4e32`
 - Catalog: `661ff253d0997c290715b16d7de935041072e290e1efd30a82fa0c75eed0949b`
 
 <a id="index"></a>
@@ -16,11 +16,11 @@
 3. [Execution timeline](#execution-timeline) (2) — When code runs: which functions run immediately, later, repeatedly, on events, at exit or at install, and every timer.
 4. [Effects](#effects) (1) — What the code does to the outside world: files, network, processes, environment and loading of code, each with its location.
 5. [Data flows](#data-flows) (0) — Data from the network or a file that can reach code execution or a command, from where it enters to where it is used.
-6. [Install scripts and shell commands](#install-scripts-and-shell-commands) (0) — Every package.json script, when it runs, and the commands inside it that we could not follow.
+6. [Install scripts and shell commands](#install-scripts-and-shell-commands) (6) — Every command a project file asks a tool or package manager to run (package.json scripts, editor tasks, agent hooks, git settings and more): when it runs, and the commands inside it that we could not follow.
 7. [Dependencies](#dependencies) (0) — Every declared dependency with where its code comes from: registry, git, URL, local path or bundled.
-8. [Unresolved](#unresolved) (0) — Places where static analysis cannot say what happens (computed code, dynamic loads, shell commands). Each one hides behaviour.
+8. [Unresolved](#unresolved) (6) — Places where static analysis cannot say what happens (computed code, dynamic loads, shell commands). Each one hides behaviour.
 9. [Unlinked imports](#unlinked-imports) (0) — Imports we could not follow to their source: packages, missing files and names that are not exported.
-10. [Not analysed](#not-analysed) (18) — Files and folders that were not read as code, by kind, and anything skipped by a limit.
+10. [Not analysed](#not-analysed) (14) — Files and folders that were not read as code, by kind, and anything skipped by a limit.
 11. [Function index](#function-index) (2) — Every function with its lanes, effects, callers and the facts inside it.
 
 <a id="overview"></a>
@@ -33,20 +33,20 @@ What was analysed, whether the picture is complete, and one count for everything
 
 | What we could not see | Count | Listed in |
 |---|---|---|
-| places where static analysis cannot say what happens | 0 | [Unresolved](#unresolved) |
+| places where static analysis cannot say what happens | 6 | [Unresolved](#unresolved) |
 | imports not followed to their source | 0 | [Unlinked imports](#unlinked-imports) |
 | declared entry points that match no analysed file | 0 | [Entry points](#entry-points) |
-| files or folders not read as code | 18 | [Not analysed](#not-analysed) |
+| files or folders not read as code | 14 | [Not analysed](#not-analysed) |
 | dependencies whose own code and install scripts were not analysed | 0 | [Dependencies](#dependencies) |
 | calls whose target we could not see (no function followed, no fact) | 0 | [Function index](#function-index) |
 
 - Files analysed: 2
-- Files not analysed: 18
+- Files not analysed: 14
 - Functions: 2
 - Cross-file links made: 0
 - Unresolved facts not listed as open because their call was followed to its source: 0
-- Facts found: 4
-- Facts by kind: 0 entry, 1 import, 2 call, 1 effect, 0 timer, 0 script, 0 dependency, 0 unresolved, 0 flow
+- Facts found: 16
+- Facts by kind: 0 entry, 1 import, 2 call, 1 effect, 0 timer, 6 script, 0 dependency, 6 unresolved, 0 flow
 
 [Back to the index](#index)
 
@@ -120,9 +120,22 @@ None found.
 
 ## 6. Install scripts and shell commands
 
-Every package.json script, when it runs, and the commands inside it that we could not follow.
+Every command a project file asks a tool or package manager to run (package.json scripts, editor tasks, agent hooks, git settings and more): when it runs, and the commands inside it that we could not follow.
 
-None found.
+### Scripts (6)
+
+- `post-install-cmd` (runs at install) at `composer.json:1`: `sh x.sh`
+  - not followed: `sh x.sh`
+- `SessionStart` (runs when the folder is opened or a session starts) at `.claude/settings.json:1`: `sh x.sh`
+  - not followed: `sh x.sh`
+- `initializeCommand` (runs when the folder is opened or a session starts) at `.devcontainer/devcontainer.json:1`: `sh x.sh`
+  - not followed: `sh x.sh`
+- `helper` (runs when the folder is opened or a session starts) at `.mcp.json:1`: `npx -y some-server`
+  - not followed: `npx -y some-server`
+- `x` (runs when the folder is opened or a session starts) at `.vscode/tasks.json:5`: `sh x.sh`
+  - not followed: `sh x.sh`
+- `build` (runs only when someone asks) at `.vscode/tasks.json:6`: `make`
+  - not followed: `make`
 
 [Back to the index](#index)
 
@@ -142,7 +155,16 @@ None found.
 
 Places where static analysis cannot say what happens (computed code, dynamic loads, shell commands). Each one hides behaviour.
 
-None found.
+### Shell command not followed (6)
+
+A command in a script that is not `node <file>` or `npm run <script>`, or one built at run time.
+
+- `.claude/settings.json:1`: `sh x.sh`
+- `.devcontainer/devcontainer.json:1`: `sh x.sh`
+- `.mcp.json:1`: `npx -y some-server`
+- `.vscode/tasks.json:5`: `sh x.sh`
+- `.vscode/tasks.json:6`: `make`
+- `composer.json:1`: `sh x.sh`
 
 [Back to the index](#index)
 
@@ -162,21 +184,17 @@ None found.
 
 Files and folders that were not read as code, by kind, and anything skipped by a limit.
 
-### Build and tool files that run by themselves (14)
+### Build and tool files that run by themselves (10)
 
 Files a tool, editor or package manager reads and acts on without being asked: build scripts, MSBuild `Directory.Build.*`, editor tasks, AI-agent hooks, git hooks, `setup.py`, `build.rs` and the like. They can run commands or change where packages come from. Not read yet, and most are harmless: this says they could act, not that they do. MSBuild also reads `Directory.Build.props` and `.targets` from parent folders, which are outside what was analysed.
 
 - `.cargo/config.toml` (28 bytes)
-- `.claude/settings.json` (80 bytes)
-- `.devcontainer/devcontainer.json` (32 bytes)
 - `.envrc` (11 bytes)
 - `.husky/pre-commit` (18 bytes)
-- `.vscode/tasks.json` (100 bytes)
 - `Cargo.toml` (21 bytes)
 - `Gemfile` (30 bytes)
 - `Makefile` (14 bytes)
 - `build.rs` (13 bytes)
-- `composer.json` (43 bytes)
 - `pom.xml` (11 bytes)
 - `setup.py` (27 bytes)
 - `venv/pyvenv.cfg` (19 bytes)

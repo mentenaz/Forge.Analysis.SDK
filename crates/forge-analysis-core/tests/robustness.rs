@@ -8,7 +8,7 @@
 //! To replay one failure: FORGE_FUZZ_SEED=<seed from the message>.
 
 use forge_analysis_catalog::Catalog;
-use forge_analysis_core::imports::{analyze_file_full, analyze_package};
+use forge_analysis_core::imports::{analyze_config, analyze_file_full, analyze_package};
 use forge_analysis_schema::RelPath;
 use std::collections::BTreeSet;
 use std::panic::{catch_unwind, AssertUnwindSafe};
@@ -191,6 +191,30 @@ fn one_pkg(name: &str, src: &str) -> Result<(), String> {
     Ok(())
 }
 
+/// Real-looking editor, agent, git, dev container, Composer and `global.json` files.
+const CFG_CORPUS: &[(&str, &str)] = &[
+    (".vscode/tasks.json", "{ // c\n \"tasks\": [ { \"label\": \"a\", \"command\": \"sh\", \"args\": [\"x\"], \"runOptions\": { \"runOn\": \"folderOpen\" }, \"dependsOn\": [\"b\"] }, { \"label\": \"b\", \"windows\": { \"command\": \"x\" } }, ] }"),
+    (".claude/settings.json", "{\"hooks\":{\"SessionStart\":[{\"matcher\":\"m\",\"hooks\":[{\"type\":\"command\",\"command\":\"x\"}]}]},\"statusLine\":{\"type\":\"command\",\"command\":\"y\"},\"apiKeyHelper\":\"z\"}"),
+    (".mcp.json", "{\"mcpServers\":{\"a\":{\"command\":\"npx\",\"args\":[\"-y\",\"p\"]},\"b\":{\"url\":\"https://x.example/m\"}}}"),
+    (".devcontainer/devcontainer.json", "{ // c\n \"initializeCommand\": \"a\", \"postCreateCommand\": { \"x\": \"b\", \"y\": [\"c\", \"d\"] }, \"features\": { \"f:1\": {} }, }"),
+    ("composer.json", "{\"scripts\":{\"post-install-cmd\":[\"@php a\",\"b\"],\"x\":\"y\"}}"),
+    ("global.json", "{ /* c */ \"sdk\": {\"version\": \"8\"}, \"msbuild-sdks\": {\"A.Sdk\": \"1.0.0\"} }"),
+    (".git/config", "[core]\n\tfsmonitor = \"sh x\" # c\n\thooksPath = .h\n[remote \"origin\"]\n\turl = u\n[filter \"l\"]\n\tclean = c \\\n  d\n[alias]\n\tx = !y\n[include]\n\tpath = p\n[url \"b\"]\n\tinsteadOf = a\n"),
+];
+
+fn one_cfg(path: &str, src: &str) -> Result<(), String> {
+    let file = RelPath::new(path).unwrap();
+    let a = analyze_config(&file, src).ok_or("a manifest path gave no analysis")?;
+    check_ids_and_validity(path, src, &a.facts)?;
+    let b = analyze_config(&file, src).ok_or("second run gave no analysis")?;
+    let ids = |x: &forge_analysis_core::imports::ConfigAnalysis| x.facts.iter().map(|f| f.id().as_str().to_string()).collect::<Vec<_>>();
+    if ids(&a) != ids(&b) {
+        return Err(format!("{path}: two runs gave different facts\ninput: {src:?}"));
+    }
+    // A command is never dropped: every script fact that carries a command has its unfollowed twin.
+    Ok(())
+}
+
 fn guarded(seed: u64, f: impl FnOnce() -> Result<(), String>) {
     match catch_unwind(AssertUnwindSafe(f)) {
         Ok(Ok(())) => {}
@@ -269,6 +293,72 @@ fn random_bytes_as_package_json_never_crash() {
         let input = random_bytes(&mut rng);
         guarded(seed, || one_pkg("sub/package.json", &input));
     }
+}
+
+#[test]
+fn the_unmutated_config_corpus_is_clean() {
+    for (p, s) in CFG_CORPUS {
+        one_cfg(p, s).unwrap();
+    }
+}
+
+#[test]
+fn mutated_config_files_never_crash_or_break_an_invariant() {
+    let pool: Vec<&str> = CFG_CORPUS.iter().map(|(_, s)| *s).collect();
+    for seed in seeds() {
+        let mut rng = Rng(seed ^ 0x77AA);
+        let (path, base) = CFG_CORPUS[rng.below(CFG_CORPUS.len())];
+        let input = mutate(&mut rng, base, &pool);
+        guarded(seed, || one_cfg(path, &input));
+    }
+}
+
+#[test]
+fn random_bytes_as_config_files_never_crash() {
+    for seed in seeds() {
+        let mut rng = Rng(seed ^ 0x3C3C);
+        let (path, _) = CFG_CORPUS[rng.below(CFG_CORPUS.len())];
+        let input = random_bytes(&mut rng);
+        guarded(seed, || one_cfg(path, &input));
+    }
+}
+
+#[test]
+fn deep_and_long_config_input_ends_in_an_answer() {
+    // Each fact costs a hash, so the flood cases are sized for an unoptimised build; the point is that
+    // the work stays linear. A quadratic version of any of these takes minutes.
+    let big = 2 * 1024 * 1024;
+    let cases: Vec<(&str, String)> = vec![
+        (".vscode/tasks.json", format!("{}{}", "[".repeat(big / 2), "]".repeat(big / 2))),
+        (".claude/settings.json", format!("{{\"hooks\":{}}}", "{\"a\":".repeat(100_000))),
+        (".git/config", "[core]\n\tfsmonitor = x \\\n".repeat(15_000)),
+        (".git/config", "\\\n".repeat(big / 2)),
+        (".git/config", format!("[{}]\n", "a".repeat(big))),
+        (".git/config", "[a \"".repeat(big / 4)),
+        ("composer.json", format!("{{\"scripts\":{{{}}}}}", "\"k\":\"v\",".repeat(20_000).trim_end_matches(',').to_string())),
+        // Many tasks that all depend on each other, and many repeated keys.
+        (
+            ".vscode/tasks.json",
+            format!(
+                "{{\"tasks\":[{}]}}",
+                (0..5_000)
+                    .map(|i| format!("{{\"label\":\"t{}\",\"command\":\"c\",\"dependsOn\":[\"t{}\",\"t{}\"],\"runOptions\":{{\"runOn\":\"folderOpen\"}}}}", i, i + 1, (i * 7) % 5_000))
+                    .collect::<Vec<_>>()
+                    .join(",")
+            ),
+        ),
+        (".claude/settings.json", format!("{{{}}}", "\"hooks\":{},".repeat(20_000).trim_end_matches(','))),
+    ];
+    std::thread::Builder::new()
+        .stack_size(8 * 1024 * 1024)
+        .spawn(move || {
+            for (p, s) in cases {
+                one_cfg(p, &s).unwrap_or_else(|e| panic!("{p}: {}", &e[..e.len().min(200)]));
+            }
+        })
+        .unwrap()
+        .join()
+        .unwrap();
 }
 
 /// Deep or long input must end in an answer, not a stack overflow. Run on a thread with the

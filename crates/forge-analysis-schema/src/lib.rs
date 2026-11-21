@@ -330,7 +330,8 @@ impl FactKind {
     }
 }
 
-/// When a `package.json` script runs.
+/// When a command declared in a project file runs: a `package.json` script, an editor task, an agent
+/// hook, a git setting, a build target.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize)]
 #[serde(rename_all = "snake_case")]
 pub enum ScriptTrigger {
@@ -345,6 +346,16 @@ pub enum ScriptTrigger {
     Hook,
     /// Runs only when someone asks for it (`npm run x`, `npm start`).
     Manual,
+    /// Runs when the folder is opened in a tool, or when an editor or AI-agent session starts or
+    /// acts: a `.vscode/tasks.json` task set to run on folder open, an agent hook, an MCP server
+    /// command, a dev container command.
+    OnOpen,
+    /// Runs when git does something that matches: a hook or a `.git/config` command (`core.fsmonitor`,
+    /// `core.sshCommand`, a filter or diff driver, a credential helper, `core.hooksPath`).
+    OnGit,
+    /// Runs as part of a build or restore: an MSBuild SDK named in `global.json`, a Composer
+    /// plugin or script event.
+    OnBuild,
 }
 
 /// A script in `package.json`: its name (from the code, so quoted) and when it runs.

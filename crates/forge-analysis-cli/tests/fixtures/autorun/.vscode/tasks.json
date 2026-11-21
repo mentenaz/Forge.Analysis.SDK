@@ -1,1 +1,8 @@
-{"version":"2.0.0","tasks":[{"label":"x","command":"sh x.sh","runOptions":{"runOn":"folderOpen"}}]}
+{
+  // Comments are normal in this file.
+  "version": "2.0.0",
+  "tasks": [
+    { "label": "x", "type": "shell", "command": "sh", "args": ["x.sh"], "runOptions": { "runOn": "folderOpen" } },
+    { "label": "build", "type": "shell", "command": "make" },
+  ]
+}

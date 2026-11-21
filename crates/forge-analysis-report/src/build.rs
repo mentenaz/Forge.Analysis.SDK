@@ -145,8 +145,11 @@ fn trigger_rank(t: ScriptTrigger) -> u8 {
     match t {
         ScriptTrigger::Install => 0,
         ScriptTrigger::Prepare => 1,
-        ScriptTrigger::Hook => 2,
-        ScriptTrigger::Manual => 3,
+        ScriptTrigger::OnOpen => 2,
+        ScriptTrigger::OnGit => 3,
+        ScriptTrigger::OnBuild => 4,
+        ScriptTrigger::Hook => 5,
+        ScriptTrigger::Manual => 6,
     }
 }
 

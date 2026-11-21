@@ -1,7 +1,7 @@
 # Forge analysis report
 
 - Engine: `forge-analysis 0.0.1`
-- Schema: 4
+- Schema: 5
 - Mode: static only (no code was run)
 - Scope: full (every file we can read as code)
 - Snapshot: `9ce6978007195f638eeee5bbb73f818d77aa1370dbd1aa0b2d698984b2b370ce`
@@ -16,7 +16,7 @@
 3. [Execution timeline](#execution-timeline) (1) — When code runs: which functions run immediately, later, repeatedly, on events, at exit or at install, and every timer.
 4. [Effects](#effects) (4) — What the code does to the outside world: files, network, processes, environment and loading of code, each with its location.
 5. [Data flows](#data-flows) (0) — Data from the network or a file that can reach code execution or a command, from where it enters to where it is used.
-6. [Install scripts and shell commands](#install-scripts-and-shell-commands) (2) — Every package.json script, when it runs, and the commands inside it that we could not follow.
+6. [Install scripts and shell commands](#install-scripts-and-shell-commands) (2) — Every command a project file asks a tool or package manager to run (package.json scripts, editor tasks, agent hooks, git settings and more): when it runs, and the commands inside it that we could not follow.
 7. [Dependencies](#dependencies) (2) — Every declared dependency with where its code comes from: registry, git, URL, local path or bundled.
 8. [Unresolved](#unresolved) (3) — Places where static analysis cannot say what happens (computed code, dynamic loads, shell commands). Each one hides behaviour.
 9. [Unlinked imports](#unlinked-imports) (4) — Imports we could not follow to their source: packages, missing files and names that are not exported.
@@ -131,7 +131,7 @@ None found.
 
 ## 6. Install scripts and shell commands
 
-Every package.json script, when it runs, and the commands inside it that we could not follow.
+Every command a project file asks a tool or package manager to run (package.json scripts, editor tasks, agent hooks, git settings and more): when it runs, and the commands inside it that we could not follow.
 
 ### Scripts (2)
 

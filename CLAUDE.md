@@ -56,10 +56,10 @@ limits, not by the flag. Files not reached are reported as `NotAnalysedKind::Sto
   per call and may need an index later.
 - A quadratic `Vec::contains` on nested function chains (`a=>a=>...`) was fixed in step 20. The slow test
   `long_chains_without_brackets` exercises 2 MiB chains.
-- `REPORT_SCHEMA` is 4. **Bump rule** (also in the doc comment in `crates/forge-analysis/src/run.rs`): bump it when
+- `REPORT_SCHEMA` is 5. **Bump rule** (also in the doc comment in `crates/forge-analysis/src/run.rs`): bump it when
   the JSON changes in a way a reader could meet (a new or renamed field, a new value of a written enum, a changed
   meaning; removals always). A change that only alters what the engine finds does not bump it. Goldens change with
-  every bump and the commit says so. 1: first shape. 2: header `scope`, kind `out_of_scope`. 3: kind `auto_run_config`. 4: kind `archive`.
+  every bump and the commit says so. 1: first shape. 2: header `scope`, kind `out_of_scope`. 3: kind `auto_run_config`. 4: kind `archive`. 5: script triggers `on_open`, `on_git`, `on_build`.
 - **Quick scan** (`RunOptions.scope = Scope::Quick`, CLI `--quick`/`-q`): analyses every `package.json` (any depth), the
   files its install hooks run, and what those load (followed with `FileIndex`, same resolver as the linker). Other code
   is `NotAnalysedKind::OutOfScope`; non-code keeps its usual kind. Report and brief are always incomplete under quick
@@ -123,8 +123,21 @@ Waiting on the owner: sign off Milestone 1, and the full (slow) test run if he w
    same exception. Archives (`.zip`, `.tgz`, `.jar`, `.whl`, `.vsix` and more) get `NotAnalysedKind::Archive` and the
    brief reason `ArchiveNotOpened` (brief incomplete); they are **listed, not opened**. Known gaps: archives are not
    opened (needs size, zip-bomb and path-traversal limits); content inside a file (a `plugins` entry in
-   `tsconfig.json`, `scripts` in `composer.json`, the keys in `.git/config`) is not parsed; `.git/modules` and
-   `.git/info` are not read. Slice B (parse MSBuild XML and the other manifests into facts, so an `<Exec>` target gives `review`) is not started.
+   `tsconfig.json`, a key that config.rs does not list) is not read; `.git/modules` and
+   `.git/info` are not read. Slice B is partly built (see above).
+   **Slice B, pieces 1 and 2 are built** (`crates/forge-analysis-core/src/imports/config.rs`): these files are now
+   *read*, not only listed: `.git/config`, `.vscode/tasks.json`, `.claude/settings.json` (+ `.local`), `.mcp.json`,
+   `.cursor/mcp.json`, `.vscode/mcp.json`, `devcontainer.json`, `composer.json`, `global.json` (`msbuild-sdks`). Each
+   command becomes a `LifecycleScript` fact with a trigger (`on_open`, `on_git`, `on_build`, or `install`/`hook`/`manual`)
+   plus an unresolved `ShellCommand` fact on the same text (quoted, not followed). Only commands that hang on an
+   automatic trigger are a brief reason (`AutomaticCommand`, gives `review`); a task that someone must start is listed
+   as `manual`. A read file with nothing automatic leaves the unread list; a file that does not parse gets
+   `ParseFailed` (brief incomplete). Repeated keys are flagged (`AmbiguousBinding`). Editor files that allow comments
+   use `json::parse_lenient`; the rest stay strict. Intake keeps the text of `.git/config`
+   (`Options::source_path_endings`). Files the reader handles must also be on the `CONFIG` table (a test checks it).
+   Command text is quoted in the report, so a secret written inside a command (a credential helper) would show.
+   Not built yet: piece 3 (MSBuild XML: `Directory.Build.*`, `.csproj`, `nuget.config`) and piece 4 (TOML:
+   `.cargo/config.toml`, `pyproject.toml`, `.mise.toml`). Following `node x.js` inside these commands is not done.
    Still to do per ecosystem: confirm the list against the canary test. Built from what Forge's panels really run and what the canary test showed:
    - .NET: `Directory.Build.props` and `.targets` (their targets run during a plain `dotnet list package`
      scan, high priority), `global.json`, `nuget.config`.

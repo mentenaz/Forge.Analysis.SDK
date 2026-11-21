@@ -2,7 +2,8 @@
 
 use forge_analysis_catalog::Catalog;
 use forge_analysis_core::imports::{
-    analyze_file_full, analyze_package, link_project, Analysis, EntryWant, FileIndex, LinkFile,
+    analyze_config, analyze_file_full, analyze_package, is_config_manifest, link_project, Analysis, EntryWant,
+    FileIndex, LinkFile,
 };
 use forge_analysis_intake::{snapshot, snapshot_from_memory, IntakeError, MemFile, Options, SkipReason, Snapshot};
 use forge_analysis_report::{
@@ -25,7 +26,8 @@ use std::time::{Duration, Instant};
 ///
 /// 1: first shape. 2: header gains `scope`; not-analysed kinds gain `out_of_scope`.
 /// 3: not-analysed kinds gain `auto_run_config`. 4: not-analysed kinds gain `archive`.
-pub const REPORT_SCHEMA: u32 = 4;
+/// 5: script triggers gain `on_open`, `on_git` and `on_build`.
+pub const REPORT_SCHEMA: u32 = 5;
 
 /// Lets another thread stop a run. The run looks at it between files, so one very large file is
 /// bounded by the size limits, not by this flag.
@@ -124,7 +126,7 @@ pub fn analyze_snapshot(snap: &Snapshot, opts: &RunOptions, started: Instant) ->
             .iter()
             .filter(|f| {
                 let name = f.path.as_quoted().text();
-                name.rsplit('/').next() == Some("package.json") || is_auto_run_code(name)
+                name.rsplit('/').next() == Some("package.json") || is_auto_run_code(name) || is_config_manifest(name)
             })
             .collect()
     } else {
@@ -174,6 +176,10 @@ pub fn analyze_snapshot(snap: &Snapshot, opts: &RunOptions, started: Instant) ->
                     }
                     done = true;
                 }
+            } else if let Some(c) = analyze_config(&f.path, text) {
+                // Editor, agent, git and build files whose commands run by themselves.
+                package_facts.extend(c.facts);
+                done = true;
             } else if let Some(a) = analyze_file_full(&f.path, text, &catalog) {
                 if quick {
                     for edge in &a.link.imports {
@@ -254,4 +260,33 @@ pub fn analyze_snapshot(snap: &Snapshot, opts: &RunOptions, started: Instant) ->
         unrecorded_skips: snap.skipped_dropped(),
     })
     .map_err(RunError::Report)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// The config reader and the auto-run table must agree: a file that is read must also be one a
+    /// tool acts on by itself, or it could drop off the list when its parser fails.
+    #[test]
+    fn every_file_the_config_reader_handles_is_on_the_auto_run_table() {
+        for p in [
+            ".git/config",
+            "a/.git/config",
+            ".vscode/tasks.json",
+            ".claude/settings.json",
+            ".claude/settings.local.json",
+            ".mcp.json",
+            ".cursor/mcp.json",
+            ".vscode/mcp.json",
+            ".devcontainer/devcontainer.json",
+            ".devcontainer/x/devcontainer.json",
+            ".devcontainer.json",
+            "composer.json",
+            "global.json",
+        ] {
+            assert!(is_config_manifest(p), "{p}");
+            assert!(is_auto_run_config(p), "{p} is read but not on the auto-run table");
+        }
+    }
 }

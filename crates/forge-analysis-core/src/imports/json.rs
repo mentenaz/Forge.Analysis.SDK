@@ -5,6 +5,10 @@
 //! is RFC 8259: no comments, no trailing commas, no single quotes, no `NaN`.
 //!
 //! Limits (a file over them is refused, never partly read): 4 MiB, 64 levels of nesting.
+//!
+//! `parse_lenient` is for the files whose own format allows more: editor settings and tasks, dev
+//! container files and `global.json` are JSON with comments (`//`, `/* */`) and trailing commas.
+//! Everything else stays strict, and repeated keys stay visible in both.
 
 pub const MAX_BYTES: usize = 4 * 1024 * 1024;
 pub const MAX_DEPTH: usize = 64;
@@ -42,11 +46,20 @@ pub struct JsonError {
 }
 
 pub fn parse(src: &str) -> Result<Jv, JsonError> {
+    parse_with(src, false)
+}
+
+/// JSON with comments and trailing commas, as editors read their own files.
+pub fn parse_lenient(src: &str) -> Result<Jv, JsonError> {
+    parse_with(src, true)
+}
+
+fn parse_with(src: &str, lenient: bool) -> Result<Jv, JsonError> {
     if src.len() > MAX_BYTES {
         return Err(JsonError { at: 0, what: "file too large" });
     }
     let b = src.as_bytes();
-    let mut p = P { b, i: if b.starts_with(&[0xEF, 0xBB, 0xBF]) { 3 } else { 0 }, depth: 0 };
+    let mut p = P { b, i: if b.starts_with(&[0xEF, 0xBB, 0xBF]) { 3 } else { 0 }, depth: 0, lenient };
     p.ws();
     let v = p.value()?;
     p.ws();
@@ -60,6 +73,7 @@ struct P<'a> {
     b: &'a [u8],
     i: usize,
     depth: usize,
+    lenient: bool,
 }
 
 impl P<'_> {
@@ -68,8 +82,29 @@ impl P<'_> {
     }
 
     fn ws(&mut self) {
-        while matches!(self.b.get(self.i), Some(b' ' | b'\t' | b'\n' | b'\r')) {
-            self.i += 1;
+        loop {
+            while matches!(self.b.get(self.i), Some(b' ' | b'\t' | b'\n' | b'\r')) {
+                self.i += 1;
+            }
+            if !self.lenient || self.b.get(self.i) != Some(&b'/') {
+                return;
+            }
+            match self.b.get(self.i + 1) {
+                Some(b'/') => {
+                    while !matches!(self.b.get(self.i), None | Some(b'\n')) {
+                        self.i += 1;
+                    }
+                }
+                Some(b'*') => {
+                    self.i += 2;
+                    // An unterminated comment swallows the rest, so the value after it fails to parse.
+                    while self.i < self.b.len() && !self.b[self.i..].starts_with(b"*/") {
+                        self.i += 1;
+                    }
+                    self.i = (self.i + 2).min(self.b.len());
+                }
+                _ => return,
+            }
         }
     }
 
@@ -240,6 +275,11 @@ impl P<'_> {
             items.push(self.value()?);
             self.ws();
             if self.eat(b',') {
+                self.ws();
+                if self.lenient && self.eat(b']') {
+                    self.depth -= 1;
+                    return Ok(Kind::Array(items));
+                }
                 continue;
             }
             if self.eat(b']') {
@@ -276,6 +316,11 @@ impl P<'_> {
             members.push(Member { key, key_start, key_end, value });
             self.ws();
             if self.eat(b',') {
+                self.ws();
+                if self.lenient && self.eat(b'}') {
+                    self.depth -= 1;
+                    return Ok(Kind::Object(members));
+                }
                 continue;
             }
             if self.eat(b'}') {
@@ -297,6 +342,28 @@ mod tests {
 
     fn bad(s: &str) {
         assert!(parse(s).is_err(), "should be rejected: {s}");
+    }
+
+    #[test]
+    fn lenient_mode_allows_comments_and_trailing_commas_and_strict_mode_does_not() {
+        let src = "// head\n{ /* a */ \"a\": [1, 2,], \"b\": {\"c\": 1,}, }";
+        assert!(parse(src).is_err());
+        let v = parse_lenient(src).unwrap();
+        let Kind::Object(ms) = v.kind else { panic!() };
+        assert_eq!(ms.len(), 2);
+        // Repeats stay visible, and the limits still apply.
+        let rep = parse_lenient("{\"a\":1,\"a\":2}").unwrap();
+        assert!(matches!(rep.kind, Kind::Object(ref m) if m.len() == 2));
+        assert!(parse_lenient(&format!("{}{}", "[".repeat(MAX_DEPTH + 1), "]".repeat(MAX_DEPTH + 1))).is_err());
+    }
+
+    #[test]
+    fn lenient_mode_still_rejects_broken_json() {
+        for s in ["{\"a\": /* never closed", "{\"a\" 1}", "[1 2]", "{,}", "[,]", "{\"a\":1,,}", "/ {}", "{\"a\": // x"] {
+            assert!(parse_lenient(s).is_err(), "{s}");
+        }
+        // A `/` inside a string is not a comment.
+        assert!(parse_lenient("{\"url\": \"http://x/*y*/\"}").is_ok());
     }
 
     #[test]

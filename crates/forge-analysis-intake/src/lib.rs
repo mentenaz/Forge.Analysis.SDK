@@ -23,6 +23,9 @@ pub struct Options {
     pub max_depth: usize,
     pub ignored_dirs: Vec<String>,
     pub source_extensions: Vec<String>,
+    /// Files with no source extension whose text is kept anyway, matched by their path ending
+    /// (case does not matter). `.git/config` is read as text because git acts on it.
+    pub source_path_endings: Vec<String>,
 }
 
 impl Default for Options {
@@ -37,6 +40,7 @@ impl Default for Options {
                 .iter()
                 .map(|s| s.to_string())
                 .collect(),
+            source_path_endings: vec![".git/config".to_string()],
         }
     }
 }
@@ -139,6 +143,14 @@ enum Walk {
     Normal,
     GitDir,
     GitHooks,
+}
+
+/// Is this a file whose text is kept although its name has no source extension?
+fn keeps_text(rel: &str, opts: &Options) -> bool {
+    let lower = rel.to_ascii_lowercase();
+    opts.source_path_endings
+        .iter()
+        .any(|e| lower == *e || lower.ends_with(&format!("/{e}")))
 }
 
 fn is_sample(name: &str) -> bool {
@@ -313,7 +325,7 @@ pub fn snapshot(root: &Path, opts: &Options) -> Result<Snapshot, IntakeError> {
             total += read_len;
             let sha256 = Hash::of(&bytes);
 
-            let (text, invalid_utf8) = if is_source(&name, &opts.source_extensions) {
+            let (text, invalid_utf8) = if is_source(&name, &opts.source_extensions) || keeps_text(&rel, opts) {
                 match String::from_utf8(bytes) {
                     Ok(s) => (Some(s), false),
                     Err(e) => (
@@ -413,7 +425,7 @@ pub fn snapshot_from_memory(input: Vec<MemFile>, opts: &Options) -> Snapshot {
         }
         total += size;
         let sha256 = Hash::of(&bytes);
-        let (text, invalid_utf8) = if is_source(&name, &opts.source_extensions) {
+        let (text, invalid_utf8) = if is_source(&name, &opts.source_extensions) || keeps_text(&rel, opts) {
             match String::from_utf8(bytes) {
                 Ok(s) => (Some(s), false),
                 Err(e) => (Some(String::from_utf8_lossy(e.as_bytes()).into_owned()), true),
