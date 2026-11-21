@@ -593,7 +593,9 @@ pub fn build(input: &ReportInput<'_>) -> Result<Report, BuildError> {
         CoverageLine { section: SectionId::Dependencies, label: "dependencies whose own code and install scripts were not analysed", count: count(outside_dependencies) },
         CoverageLine { section: SectionId::Functions, label: "calls whose target we could not see (no function followed, no fact)", count: not_traced_total },
     ];
-    let completeness = if coverage.iter().any(|c| c.count > 0) { Completeness::Incomplete } else { Completeness::Complete };
+    // A quick scan is never complete: it left code unread on purpose, even when no file is listed.
+    let quick = input.header.scope == forge_analysis_schema::Scope::Quick;
+    let completeness = if quick || coverage.iter().any(|c| c.count > 0) { Completeness::Incomplete } else { Completeness::Complete };
 
     let mirrored_output = mirror_notes(&linked.files);
     let unreached_functions = count(functions.functions.iter().filter(|f| !f.reachable_from_entry).count());

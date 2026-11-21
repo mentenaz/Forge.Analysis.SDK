@@ -352,6 +352,9 @@ pub enum NotAnalysedKind {
     Excluded,
     /// Not reached: the run was stopped by its time budget or by the caller.
     Stopped,
+    /// Code we would read in a full run, left unread because a quick scan only reads the files
+    /// that run by themselves.
+    OutOfScope,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]

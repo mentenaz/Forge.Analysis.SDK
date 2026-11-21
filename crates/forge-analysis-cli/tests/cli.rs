@@ -36,13 +36,16 @@ fn fixture(name: &str) -> String {
 
 #[test]
 fn arguments_are_parsed() {
-    let run = |f: &str, o: Option<&str>| Command::Run { folder: PathBuf::from(f), out: o.map(PathBuf::from) };
+    let run = |f: &str, o: Option<&str>| Command::Run { folder: PathBuf::from(f), out: o.map(PathBuf::from), quick: false };
     assert_eq!(parse_args(&args(&["a"])), Ok(run("a", None)));
     assert_eq!(parse_args(&args(&["a", "--out", "o"])), Ok(run("a", Some("o"))));
     assert_eq!(parse_args(&args(&["--out", "o", "a"])), Ok(run("a", Some("o"))));
     assert_eq!(parse_args(&args(&["-o", "o", "a"])), Ok(run("a", Some("o"))));
     assert_eq!(parse_args(&args(&["a", "--out=o"])), Ok(run("a", Some("o"))));
     assert_eq!(parse_args(&args(&["--", "-odd-name"])), Ok(run("-odd-name", None)));
+    let quick = Command::Run { folder: PathBuf::from("a"), out: None, quick: true };
+    assert_eq!(parse_args(&args(&["a", "--quick"])), Ok(quick.clone()));
+    assert_eq!(parse_args(&args(&["-q", "a"])), Ok(quick));
     assert_eq!(parse_args(&args(&["-h"])), Ok(Command::Help));
     assert_eq!(parse_args(&args(&["a", "--help"])), Ok(Command::Help));
     assert_eq!(parse_args(&args(&["--version"])), Ok(Command::Version));
@@ -95,6 +98,24 @@ fn a_run_prints_a_summary_and_writes_nothing_without_out() {
 }
 
 #[test]
+fn quick_says_so_counts_what_it_skipped_and_is_never_complete() {
+    let t = Temp::new("quick");
+    let dest = t.0.join("q");
+    let (code, out, err) = go(&[&fixture("install-script"), "--quick", "--out", dest.to_str().unwrap()]);
+    assert_eq!(code, EXIT_OK, "{err}");
+    assert!(out.contains("Scope: quick"), "{out}");
+    assert!(out.contains("Status: incomplete"), "{out}");
+    let v: serde_json::Value = serde_json::from_str(&std::fs::read_to_string(dest.join("report.json")).unwrap()).unwrap();
+    assert_eq!(v["header"]["scope"], "quick");
+    let md = std::fs::read_to_string(dest.join("report.md")).unwrap();
+    assert!(md.contains("Scope: quick"));
+    // A clean project is still incomplete under a quick scan.
+    let (code, out, _) = go(&[&fixture("clean"), "--quick"]);
+    assert_eq!(code, EXIT_OK);
+    assert!(out.contains("Status: incomplete"), "{out}");
+}
+
+#[test]
 fn with_out_it_writes_both_reports_and_creates_the_folder() {
     let t = Temp::new("out");
     let dest = t.0.join("deep").join("er");
@@ -103,8 +124,9 @@ fn with_out_it_writes_both_reports_and_creates_the_folder() {
     assert!(out.contains("Report written to"));
     let json = std::fs::read_to_string(dest.join("report.json")).unwrap();
     let v: serde_json::Value = serde_json::from_str(&json).unwrap();
-    assert_eq!(v["header"]["schema"], 1);
+    assert_eq!(v["header"]["schema"], 2);
     assert_eq!(v["header"]["mode"], "static_only");
+    assert_eq!(v["header"]["scope"], "full");
     assert!(v["header"]["engine"].as_str().unwrap().starts_with("forge-analysis "));
     let md = std::fs::read_to_string(dest.join("report.md")).unwrap();
     assert!(md.starts_with("# Forge analysis report\n"));

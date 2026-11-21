@@ -1,8 +1,9 @@
 //! Argument handling, the summary and the two output files.
 
-use crate::pipeline::{analyze_folder, RunError};
+use crate::pipeline::{analyze_folder_scoped, RunError};
 use forge_analysis_intake::Options;
 use forge_analysis_report::{to_json, to_markdown, Completeness, Report};
+use forge_analysis_schema::Scope;
 use std::io::Write;
 use std::path::{Path, PathBuf};
 
@@ -19,7 +20,7 @@ pub const EXIT_CANNOT_WRITE: i32 = 4;
 pub enum Command {
     Help,
     Version,
-    Run { folder: PathBuf, out: Option<PathBuf> },
+    Run { folder: PathBuf, out: Option<PathBuf>, quick: bool },
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -42,13 +43,16 @@ impl std::fmt::Display for ParseError {
 }
 
 pub fn usage() -> String {
-    "Usage: forge-analysis <folder> [--out <dir>]\n\
+    "Usage: forge-analysis <folder> [--quick] [--out <dir>]\n\
      \n\
      Reads <folder> and reports what its code does, without running any of it.\n\
      \n\
      Options:\n\
      \x20 -o, --out <dir>   write report.json and report.md into <dir>\n\
      \x20                   (never inside the analysed folder)\n\
+     \x20 -q, --quick      read only the files that run by themselves (install hooks and what\n\
+     \x20                   they load). Every other file is counted as not examined, so a\n\
+     \x20                   quick scan is always reported as incomplete.\n\
      \x20 -h, --help        show this help\n\
      \x20 -V, --version     show the version\n\
      \n\
@@ -60,6 +64,7 @@ pub fn usage() -> String {
 pub fn parse_args(args: &[String]) -> Result<Command, ParseError> {
     let mut folder: Option<PathBuf> = None;
     let mut out: Option<PathBuf> = None;
+    let mut quick = false;
     let mut only_positional = false;
     let mut i = 0;
     while i < args.len() {
@@ -75,6 +80,7 @@ pub fn parse_args(args: &[String]) -> Result<Command, ParseError> {
             "--" => only_positional = true,
             "-h" | "--help" => return Ok(Command::Help),
             "-V" | "--version" => return Ok(Command::Version),
+            "-q" | "--quick" => quick = true,
             "-o" | "--out" => match args.get(i) {
                 Some(v) => {
                     out = Some(PathBuf::from(v));
@@ -90,7 +96,7 @@ pub fn parse_args(args: &[String]) -> Result<Command, ParseError> {
         }
     }
     match folder {
-        Some(folder) => Ok(Command::Run { folder, out }),
+        Some(folder) => Ok(Command::Run { folder, out, quick }),
         None => Err(ParseError::NoFolder),
     }
 }
@@ -127,6 +133,9 @@ pub fn summary(r: &Report) -> String {
     let o = &r.overview;
     let mut s = String::new();
     s.push_str("Forge analysis (static only: no code was run)\n");
+    if r.header.scope == Scope::Quick {
+        s.push_str("Scope: quick (only files that run by themselves)\n");
+    }
     s.push_str(&format!(
         "Files analysed: {}   not analysed: {}   functions: {}   facts: {}\n",
         o.files_analysed, o.files_not_analysed, o.functions, o.facts
@@ -157,14 +166,14 @@ pub fn run(args: &[String], out: &mut dyn Write, err: &mut dyn Write) -> i32 {
             let _ = writeln!(out, "forge-analysis {}", env!("CARGO_PKG_VERSION"));
             EXIT_OK
         }
-        Ok(Command::Run { folder, out: out_dir }) => {
+        Ok(Command::Run { folder, out: out_dir, quick }) => {
             if let Some(o) = &out_dir {
                 if out_is_inside(&folder, o) {
                     let _ = writeln!(err, "error: the output folder is inside the analysed folder; choose one outside it");
                     return EXIT_USAGE;
                 }
             }
-            let report = match analyze_folder(&folder, &Options::default()) {
+            let report = match analyze_folder_scoped(&folder, &Options::default(), if quick { Scope::Quick } else { Scope::Full }) {
                 Ok(r) => r,
                 Err(e @ RunError::Intake(_)) | Err(e @ RunError::Report(_)) => {
                     let _ = writeln!(err, "error: {e}");

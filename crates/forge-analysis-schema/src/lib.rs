@@ -175,6 +175,18 @@ pub enum Mode {
     WithRun,
 }
 
+/// How much of the project a run set out to read.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum Scope {
+    /// Every file we can read as code.
+    #[default]
+    Full,
+    /// Only the files that run by themselves (install hooks and what they load). Every other
+    /// file is counted in the report as not examined.
+    Quick,
+}
+
 /// Report header. Forge-authored fields only, so plain strings are fine here.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct Header {
@@ -183,6 +195,7 @@ pub struct Header {
     pub catalog_sha256: Hash,
     pub snapshot_sha256: Hash,
     pub mode: Mode,
+    pub scope: Scope,
 }
 
 /// Typed, so callers and tests match on the kind of problem, not on message text.
@@ -1080,9 +1093,11 @@ mod tests {
             catalog_sha256: Hash::of(b"catalog"),
             snapshot_sha256: Hash::of(b"snapshot"),
             mode: Mode::StaticOnly,
+            scope: Scope::Quick,
         };
         let v = serde_json::to_value(&h).unwrap();
         assert_eq!(v["mode"], "static_only");
+        assert_eq!(v["scope"], "quick");
     }
 
     #[test]

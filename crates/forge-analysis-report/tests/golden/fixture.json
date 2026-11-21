@@ -4,7 +4,8 @@
     "engine": "test",
     "catalog_sha256": "2e7d2c03a9507ae265ecf5b5356885a53393a2029d241394997265a1a25aefc6",
     "snapshot_sha256": "043a718774c572bd8a25adbeb1bfcd5c0256ae11cecf9f9c3f925d0e52beaf89",
-    "mode": "static_only"
+    "mode": "static_only",
+    "scope": "full"
   },
   "index": [
     {

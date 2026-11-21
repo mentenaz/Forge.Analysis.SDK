@@ -28,7 +28,7 @@ pub use link::{link as link_files, ExportName, ExportTarget, Exports, ExtCall, E
 mod json;
 mod package;
 
-pub use link::{link_project, link_seeded, EntryWant};
+pub use link::{link_project, link_seeded, EntryWant, FileIndex};
 pub use package::{analyze_package, classify_dependency, interpret_command, Action, PackageAnalysis};
 
 

@@ -1,8 +1,9 @@
 # Forge analysis report
 
 - Engine: `forge-analysis 0.0.1`
-- Schema: 1
+- Schema: 2
 - Mode: static only (no code was run)
+- Scope: full (every file we can read as code)
 - Snapshot: `9ce6978007195f638eeee5bbb73f818d77aa1370dbd1aa0b2d698984b2b370ce`
 - Catalog: `661ff253d0997c290715b16d7de935041072e290e1efd30a82fa0c75eed0949b`
 

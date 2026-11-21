@@ -50,7 +50,7 @@ fn linked_fn(file: u32, func: u32, lanes: Vec<Lane>) -> LinkedFn {
     }
 }
 fn header() -> Header {
-    Header { schema: 1, engine: "test".into(), catalog_sha256: Hash::of(b"c"), snapshot_sha256: Hash::of(b"s"), mode: Mode::StaticOnly }
+    Header { schema: 1, engine: "test".into(), catalog_sha256: Hash::of(b"c"), snapshot_sha256: Hash::of(b"s"), mode: Mode::StaticOnly, scope: Scope::Full }
 }
 
 struct Fixture {

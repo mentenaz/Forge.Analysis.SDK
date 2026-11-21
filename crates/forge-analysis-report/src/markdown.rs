@@ -9,7 +9,7 @@
 use crate::model::*;
 use forge_analysis_schema::{
     DepSection, DependencySource, Delay, Effect, EntryBasis, FactKind, FlowSink, FnId, Lane, Mode, Quoted,
-    ScriptTrigger, Span, UnlinkedReason, UnresolvedReason, UrlValue,
+    Scope, ScriptTrigger, Span, UnlinkedReason, UnresolvedReason, UrlValue,
 };
 use std::fmt::Write;
 
@@ -187,6 +187,7 @@ fn not_analysed_text(k: NotAnalysedKind) -> (&'static str, &'static str) {
         Unreadable => ("Skipped: could not be read", "The operating system refused or failed to read it."),
         Excluded => ("Skipped: not a regular file or a bad path", "Devices, odd names or paths outside the folder."),
         Stopped => ("Not reached: the run was stopped", "The time budget ran out or the caller cancelled before these files were read."),
+        OutOfScope => ("Not read: outside the quick scan", "Code a full run would read. A quick scan reads only the files that run by themselves, and what they load."),
     }
 }
 
@@ -337,6 +338,11 @@ pub fn to_markdown(r: &Report) -> String {
     w.item(&format!("Engine: {}", code(&r.header.engine)));
     w.item(&format!("Schema: {}", r.header.schema));
     w.item(&format!("Mode: {mode}"));
+    let scope = match r.header.scope {
+        Scope::Full => "full (every file we can read as code)",
+        Scope::Quick => "quick (only files that run by themselves; everything else is counted as not examined)",
+    };
+    w.item(&format!("Scope: {scope}"));
     w.item(&format!("Snapshot: {}", code(r.header.snapshot_sha256.as_str())));
     w.item(&format!("Catalog: {}", code(r.header.catalog_sha256.as_str())));
 

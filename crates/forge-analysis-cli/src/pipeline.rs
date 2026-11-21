@@ -4,11 +4,17 @@
 use forge_analysis::RunOptions;
 use forge_analysis_intake::Options;
 use forge_analysis_report::Report;
+use forge_analysis_schema::Scope;
 use std::path::Path;
 
 pub use forge_analysis::{RunError, REPORT_SCHEMA};
 
 /// Reads a folder and returns the report. Never writes anything and never runs the code.
 pub fn analyze_folder(root: &Path, opts: &Options) -> Result<Report, RunError> {
-    forge_analysis::analyze_folder(root, &RunOptions { limits: opts.clone(), ..RunOptions::default() })
+    analyze_folder_scoped(root, opts, Scope::Full)
+}
+
+/// The same, with a scope: `Quick` reads only the files that run by themselves.
+pub fn analyze_folder_scoped(root: &Path, opts: &Options, scope: Scope) -> Result<Report, RunError> {
+    forge_analysis::analyze_folder(root, &RunOptions { limits: opts.clone(), scope, ..RunOptions::default() })
 }

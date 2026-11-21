@@ -3,6 +3,7 @@
 - Engine: `test`
 - Schema: 1
 - Mode: static only (no code was run)
+- Scope: full (every file we can read as code)
 - Snapshot: `043a718774c572bd8a25adbeb1bfcd5c0256ae11cecf9f9c3f925d0e52beaf89`
 - Catalog: `2e7d2c03a9507ae265ecf5b5356885a53393a2029d241394997265a1a25aefc6`
 

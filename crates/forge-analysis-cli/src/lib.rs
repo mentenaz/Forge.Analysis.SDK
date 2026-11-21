@@ -9,4 +9,4 @@ pub use cli::{
     parse_args, run, summary, usage, Command, ParseError, EXIT_CANNOT_RUN, EXIT_CANNOT_WRITE, EXIT_OK,
     EXIT_USAGE,
 };
-pub use pipeline::{analyze_folder, RunError, REPORT_SCHEMA};
+pub use pipeline::{analyze_folder, analyze_folder_scoped, RunError, REPORT_SCHEMA};

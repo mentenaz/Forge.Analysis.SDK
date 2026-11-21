@@ -2,7 +2,7 @@
 //! Golden files pin the exact output. Rewrite them after an intended change with
 //! `FORGE_BLESS=1 cargo test -p forge-analysis-cli --test fixtures`, then read the diff.
 
-use forge_analysis_cli::analyze_folder;
+use forge_analysis_cli::{analyze_folder, analyze_folder_scoped};
 use forge_analysis_intake::Options;
 use forge_analysis_report::*;
 use forge_analysis_schema::*;
@@ -265,6 +265,19 @@ fn a_call_that_was_not_followed_keeps_its_alarm() {
         .collect();
     assert_eq!(open, vec!["missing()".to_string()]);
     assert_eq!(r.overview.completeness, Completeness::Incomplete);
+}
+
+#[test]
+fn quick_scan_of_the_install_script_fixture_matches_its_golden() {
+    let r = analyze_folder_scoped(&fixtures_dir().join("install-script"), &Options::default(), Scope::Quick).unwrap();
+    // The hook target is read; `main` and the test file are not, and are counted instead.
+    assert_eq!(r.header.scope, Scope::Quick);
+    assert_eq!(r.overview.files_analysed, 1);
+    assert!(r.not_analysed.groups.iter().any(|g| g.kind == NotAnalysedKind::OutOfScope));
+    assert_eq!(r.overview.completeness, Completeness::Incomplete);
+    golden("install-script.quick", "json", &(to_json(&r) + "
+"));
+    golden("install-script.quick", "md", &to_markdown(&r));
 }
 
 #[test]

@@ -305,6 +305,30 @@ pub fn link(files: &[LinkFile<'_>], all_files: &BTreeSet<String>, entries: &[usi
     link_seeded(files, all_files, entries, &[])
 }
 
+/// Finds which file a relative import points at, with the same rules the linker uses. A quick scan
+/// uses it to decide which files an auto-run file pulls in, before anything is linked.
+pub struct FileIndex<'a> {
+    rs: Resolver<'a>,
+    names: Vec<&'a str>,
+}
+
+impl<'a> FileIndex<'a> {
+    pub fn new(all_files: &'a BTreeSet<String>) -> FileIndex<'a> {
+        let names: Vec<&str> = all_files.iter().map(|s| s.as_str()).collect();
+        let analysed = names.iter().enumerate().map(|(i, p)| (p.to_string(), i)).collect();
+        FileIndex { rs: Resolver { analysed, all: all_files }, names }
+    }
+
+    /// The file `spec` (as written in `from`) resolves to. Packages, built-ins and paths that match
+    /// no file give `None`.
+    pub fn resolve(&self, from: &str, spec: &str) -> Option<&'a str> {
+        match self.rs.resolve(&norm(from), spec) {
+            Res::File(i) => Some(self.names[i]),
+            _ => None,
+        }
+    }
+}
+
 /// A declared entry point: a file named by a `package.json` field or script.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct EntryWant {

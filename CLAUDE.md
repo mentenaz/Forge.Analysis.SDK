@@ -56,7 +56,14 @@ limits, not by the flag. Files not reached are reported as `NotAnalysedKind::Sto
   per call and may need an index later.
 - A quadratic `Vec::contains` on nested function chains (`a=>a=>...`) was fixed in step 20. The slow test
   `long_chains_without_brackets` exercises 2 MiB chains.
-- `REPORT_SCHEMA` is 1. There is no written rule yet for when it must change. Writing one is open work.
+- `REPORT_SCHEMA` is 2. **Bump rule** (also in the doc comment in `crates/forge-analysis/src/run.rs`): bump it when
+  the JSON changes in a way a reader could meet (a new or renamed field, a new value of a written enum, a changed
+  meaning; removals always). A change that only alters what the engine finds does not bump it. Goldens change with
+  every bump and the commit says so. 1: first shape. 2: header `scope`, kind `out_of_scope`.
+- **Quick scan** (`RunOptions.scope = Scope::Quick`, CLI `--quick`/`-q`): analyses every `package.json` (any depth), the
+  files its install hooks run, and what those load (followed with `FileIndex`, same resolver as the linker). Other code
+  is `NotAnalysedKind::OutOfScope`; non-code keeps its usual kind. Report and brief are always incomplete under quick
+  (Decision A); `Review` still wins in the brief. `main`/`bin` are not followed: they do not run by themselves.
 
 ## Commands (PowerShell, from the workspace folder)
 
@@ -64,7 +71,7 @@ limits, not by the flag. Files not reached are reported as `NotAnalysedKind::Sto
 cargo test --workspace -- --skip long_chains_without_brackets   # fast check
 cargo test --workspace                                          # full, includes the slow robustness test
 cargo test -p forge-analysis-core --test robustness long_chains -- --nocapture
-cargo run --release -p forge-analysis-cli -- <folder> --out <report-folder>   # binary name: forge-analysis
+cargo run --release -p forge-analysis-cli -- <folder> --out <report-folder>   # binary name: forge-analysis; add --quick for a quick scan
 cargo test -p forge-analysis-report <test_name>                  # one test (name filter works across crates)
 cargo test -p forge-analysis-cli --test fixtures                 # CLI golden tests only
 $env:FORGE_BLESS = "1"; cargo test -p forge-analysis-cli --test fixtures   # re-bless goldens, then read the diff
@@ -93,9 +100,7 @@ Waiting on the owner: sign off Milestone 1, and the full (slow) test run if he w
 
 ## Next steps, in the agreed order
 
-1. **Quick mode for JS/TS:** read only the files that run by themselves, using a fixed list (not a
-   pattern). Starts with `package.json` install hooks. Adds `scope: quick`. Counts every file it did not
-   read in `not_examined`. No cache in the first slice.
+1. ~~Quick mode for JS/TS~~ done (first slice, no cache). The fixed list lives in `analyze_snapshot`.
 2. **Per-ecosystem lists**, built from what Forge's panels really run and what the canary test showed:
    - .NET: `Directory.Build.props` and `.targets` (their targets run during a plain `dotnet list package`
      scan, high priority), `global.json`, `nuget.config`.

@@ -6,11 +6,12 @@
 //! brief, so the count is never hidden.
 
 use forge_analysis_report::{NotAnalysedKind, Report};
+pub use forge_analysis_schema::Scope;
 use forge_analysis_schema::{Effect, Lane, ScriptTrigger, UnresolvedReason};
 use serde::Serialize;
 
 /// A brief never lists more reasons than this.
-pub const MAX_REASONS: usize = 5;
+pub const MAX_REASONS: usize = 6;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "snake_case")]
@@ -25,13 +26,6 @@ pub enum Verdict {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "snake_case")]
-pub enum Scope {
-    /// Every file was analysed. (A quick scan of auto-run files will add its own scope.)
-    Full,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
-#[serde(rename_all = "snake_case")]
 pub enum ReasonKind {
     /// Data from the network can reach code execution or a call on it.
     DataReachesCode,
@@ -41,6 +35,8 @@ pub enum ReasonKind {
     InstallTimeEffect,
     /// The run was stopped (time budget or cancel) before every file was read.
     RunStopped,
+    /// A quick scan: code that a full run would read was left unread on purpose.
+    QuickScope,
     /// Files skipped by a limit, unreadable files, or code that could not be parsed.
     NotFullyRead,
 }
@@ -118,6 +114,14 @@ pub fn brief(report: &Report) -> Brief {
         .map(|g| g.items.len())
         .sum::<usize>()
         + usize::try_from(report.not_analysed.unrecorded).unwrap_or(usize::MAX);
+    let out_of_scope: usize = report
+        .not_analysed
+        .groups
+        .iter()
+        .filter(|g| g.kind == NotAnalysedKind::OutOfScope)
+        .map(|g| g.items.len())
+        .sum();
+    let quick = report.header.scope == Scope::Quick;
     let unparsed: usize = report
         .unresolved
         .iter()
@@ -138,6 +142,7 @@ pub fn brief(report: &Report) -> Brief {
         (ReasonKind::InstallScript, install_scripts),
         (ReasonKind::InstallTimeEffect, install_effects),
         (ReasonKind::RunStopped, stopped),
+        (ReasonKind::QuickScope, out_of_scope),
         (ReasonKind::NotFullyRead, skipped.saturating_add(unparsed)),
     ] {
         if n > 0 {
@@ -146,7 +151,9 @@ pub fn brief(report: &Report) -> Brief {
     }
     reasons.truncate(MAX_REASONS);
 
-    let complete = stopped == 0 && skipped == 0 && unparsed == 0;
+    // A quick scan never says it is complete: it left code unread on purpose, and only the files
+    // that run by themselves were looked at.
+    let complete = !quick && stopped == 0 && skipped == 0 && unparsed == 0;
     let review = flows > 0 || install_scripts > 0 || install_effects > 0;
     let verdict = if review {
         Verdict::Review
@@ -158,7 +165,7 @@ pub fn brief(report: &Report) -> Brief {
 
     Brief {
         verdict,
-        scope: Scope::Full,
+        scope: report.header.scope,
         complete,
         reasons,
         not_examined: report.overview.files_not_analysed,
@@ -307,5 +314,100 @@ mod tests {
         let json = serde_json::to_string(&b).unwrap();
         assert!(json.contains(r#""verdict":"nothing_found""#), "{json}");
         assert!(json.contains(r#""scope":"full""#), "{json}");
+    }
+
+    fn quick() -> RunOptions {
+        RunOptions { scope: Scope::Quick, ..RunOptions::default() }
+    }
+
+    fn hook_project() -> Vec<MemFile> {
+        vec![
+            file("package.json", r#"{"name":"a","scripts":{"postinstall":"node scripts/setup.js"}}"#),
+            file("scripts/setup.js", "require('../lib/x.js');
+"),
+            file("lib/x.js", "require('child_process').exec('ls');
+"),
+            file("src/other.js", "console.log(1);
+"),
+            file("src/more.ts", "export const a = 1;
+"),
+            file("README.md", "# hi"),
+        ]
+    }
+
+    #[test]
+    fn quick_reads_the_hook_and_what_it_loads_and_counts_the_rest() {
+        let report = analyze_files(hook_project(), &quick()).unwrap();
+        // The hook target and the file it requires (`package.json` is not counted as code).
+        assert_eq!(report.overview.files_analysed, 2);
+        let out_of_scope: Vec<_> = report
+            .not_analysed
+            .groups
+            .iter()
+            .filter(|g| g.kind == NotAnalysedKind::OutOfScope)
+            .flat_map(|g| g.items.iter().map(|i| i.path.text().to_string()))
+            .collect();
+        assert_eq!(out_of_scope, vec!["src/more.ts", "src/other.js"]);
+        // README.md keeps the kind it has in a full run.
+        assert!(report.not_analysed.groups.iter().any(|g| g.kind == NotAnalysedKind::OtherFile));
+        assert_eq!(report.header.scope, Scope::Quick);
+        assert_eq!(report.overview.completeness, forge_analysis_report::Completeness::Incomplete);
+    }
+
+    #[test]
+    fn quick_finds_a_payload_one_require_away_from_the_hook() {
+        let b = brief(&analyze_files(hook_project(), &quick()).unwrap());
+        assert_eq!(b.verdict, Verdict::Review);
+        assert_eq!(b.scope, Scope::Quick);
+        assert!(!b.complete);
+        let kinds: Vec<_> = b.reasons.iter().map(|r| r.kind).collect();
+        assert!(kinds.contains(&ReasonKind::InstallScript));
+        assert!(kinds.contains(&ReasonKind::InstallTimeEffect));
+        let q = b.reasons.iter().find(|r| r.kind == ReasonKind::QuickScope).unwrap();
+        assert_eq!(q.count, 2);
+    }
+
+    #[test]
+    fn a_quick_scan_never_says_nothing_found() {
+        let files = vec![file("package.json", r#"{"name":"a"}"#), file("index.js", "console.log(1);
+")];
+        let b = brief(&analyze_files(files, &quick()).unwrap());
+        assert_eq!(b.verdict, Verdict::Incomplete);
+        assert!(!b.complete);
+        assert_eq!(b.scope, Scope::Quick);
+
+        // Even when no file is left unread, the scope alone keeps it from saying nothing_found.
+        let only = brief(&analyze_files(vec![file("package.json", r#"{"name":"a"}"#)], &quick()).unwrap());
+        assert_eq!(only.verdict, Verdict::Incomplete);
+    }
+
+    #[test]
+    fn a_quick_scan_ignores_main_and_bin_but_the_full_run_reads_everything() {
+        let files = vec![
+            file("package.json", r#"{"name":"a","main":"lib/main.js"}"#),
+            file("lib/main.js", "console.log(1);
+"),
+        ];
+        let q = analyze_files(files.clone(), &quick()).unwrap();
+        assert_eq!(q.overview.files_analysed, 0);
+        let full = analyze_files(files, &RunOptions::default()).unwrap();
+        assert_eq!(full.overview.files_analysed, 1);
+        assert_eq!(full.header.scope, Scope::Full);
+        assert_eq!(brief(&full).scope, Scope::Full);
+    }
+
+    #[test]
+    fn quick_follows_nested_package_json_and_import_cycles() {
+        let files = vec![
+            file("package.json", r#"{"name":"root"}"#),
+            file("packages/a/package.json", r#"{"name":"a","scripts":{"install":"node i.js"}}"#),
+            file("packages/a/i.js", "require('./j.js');
+"),
+            file("packages/a/j.js", "require('./i.js');
+"),
+        ];
+        let r = analyze_files(files, &quick()).unwrap();
+        assert_eq!(r.overview.files_analysed, 2);
+        assert_eq!(brief(&r).verdict, Verdict::Review);
     }
 }
