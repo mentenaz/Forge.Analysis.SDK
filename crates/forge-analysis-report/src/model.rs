@@ -336,6 +336,9 @@ pub struct UnlinkedGroup {
 #[serde(rename_all = "snake_case")]
 pub enum NotAnalysedKind {
     NpmConfig,
+    /// A build or tool file the tooling reads and acts on by itself, such as MSBuild's
+    /// `Directory.Build.targets`, a project file, `global.json` or `nuget.config`. Not parsed yet.
+    AutoRunConfig,
     ShellScript,
     Container,
     CiWorkflow,

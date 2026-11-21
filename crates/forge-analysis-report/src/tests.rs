@@ -329,6 +329,16 @@ fn classify_path_knows_the_usual_suspects() {
     use NotAnalysedKind::*;
     for (p, k) in [
         (".npmrc", NpmConfig),
+        ("Directory.Build.targets", AutoRunConfig),
+        ("src/directory.build.PROPS", AutoRunConfig),
+        ("a\\Directory.Packages.props", AutoRunConfig),
+        ("global.json", AutoRunConfig),
+        ("NuGet.Config", AutoRunConfig),
+        ("src/App/App.csproj", AutoRunConfig),
+        ("Lib.FSPROJ", AutoRunConfig),
+        ("All.sln", AutoRunConfig),
+        ("tool/other.props", OtherFile),
+        ("src/App/Program.cs", OtherFile),
         ("web/.yarnrc.yml", NpmConfig),
         ("scripts/setup.sh", ShellScript),
         ("install.PS1", ShellScript),

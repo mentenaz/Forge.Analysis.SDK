@@ -11,7 +11,7 @@ use forge_analysis_schema::{Effect, Lane, ScriptTrigger, UnresolvedReason};
 use serde::Serialize;
 
 /// A brief never lists more reasons than this.
-pub const MAX_REASONS: usize = 6;
+pub const MAX_REASONS: usize = 7;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "snake_case")]
@@ -33,6 +33,8 @@ pub enum ReasonKind {
     InstallScript,
     /// Code on the install path that spawns processes, uses the network, changes files or loads code.
     InstallTimeEffect,
+    /// Files the tooling reads and acts on by itself (build and tool settings) that were not read.
+    AutoRunNotAnalysed,
     /// The run was stopped (time budget or cancel) before every file was read.
     RunStopped,
     /// A quick scan: code that a full run would read was left unread on purpose.
@@ -114,6 +116,13 @@ pub fn brief(report: &Report) -> Brief {
         .map(|g| g.items.len())
         .sum::<usize>()
         + usize::try_from(report.not_analysed.unrecorded).unwrap_or(usize::MAX);
+    let auto_run: usize = report
+        .not_analysed
+        .groups
+        .iter()
+        .filter(|g| matches!(g.kind, NotAnalysedKind::AutoRunConfig | NotAnalysedKind::NpmConfig))
+        .map(|g| g.items.len())
+        .sum();
     let out_of_scope: usize = report
         .not_analysed
         .groups
@@ -141,6 +150,7 @@ pub fn brief(report: &Report) -> Brief {
         (ReasonKind::DataReachesCode, flows),
         (ReasonKind::InstallScript, install_scripts),
         (ReasonKind::InstallTimeEffect, install_effects),
+        (ReasonKind::AutoRunNotAnalysed, auto_run),
         (ReasonKind::RunStopped, stopped),
         (ReasonKind::QuickScope, out_of_scope),
         (ReasonKind::NotFullyRead, skipped.saturating_add(unparsed)),
@@ -153,7 +163,7 @@ pub fn brief(report: &Report) -> Brief {
 
     // A quick scan never says it is complete: it left code unread on purpose, and only the files
     // that run by themselves were looked at.
-    let complete = !quick && stopped == 0 && skipped == 0 && unparsed == 0;
+    let complete = !quick && stopped == 0 && skipped == 0 && unparsed == 0 && auto_run == 0;
     let review = flows > 0 || install_scripts > 0 || install_effects > 0;
     let verdict = if review {
         Verdict::Review
@@ -333,6 +343,53 @@ mod tests {
 "),
             file("README.md", "# hi"),
         ]
+    }
+
+    fn dotnet_project() -> Vec<MemFile> {
+        vec![
+            file("Directory.Build.targets", "<Project><Target Name=\"x\" BeforeTargets=\"Restore\"><Exec Command=\"id\" /></Target></Project>"),
+            file("src/directory.build.PROPS", "<Project />"),
+            file("global.json", "{}"),
+            file("NuGet.Config", "<configuration />"),
+            file("src/App/App.csproj", "<Project Sdk=\"Microsoft.NET.Sdk\" />"),
+            file("src/App/Program.cs", "class P {}"),
+        ]
+    }
+
+    #[test]
+    fn build_files_that_run_by_themselves_make_the_brief_incomplete_in_either_scope() {
+        for opts in [RunOptions::default(), quick()] {
+            let b = brief(&analyze_files(dotnet_project(), &opts).unwrap());
+            assert_eq!(b.verdict, Verdict::Incomplete, "{:?}", opts.scope);
+            assert!(!b.complete);
+            let r = b.reasons.iter().find(|r| r.kind == ReasonKind::AutoRunNotAnalysed).unwrap();
+            // Program.cs is not one of them.
+            assert_eq!(r.count, 5);
+        }
+    }
+
+    #[test]
+    fn an_install_script_still_wins_over_unread_build_files() {
+        let mut files = dotnet_project();
+        files.push(file("package.json", r#"{"scripts":{"postinstall":"node x.js"}}"#));
+        let b = brief(&analyze_files(files, &RunOptions::default()).unwrap());
+        assert_eq!(b.verdict, Verdict::Review);
+        let kinds: Vec<_> = b.reasons.iter().map(|r| r.kind).collect();
+        assert!(kinds.contains(&ReasonKind::InstallScript) && kinds.contains(&ReasonKind::AutoRunNotAnalysed));
+    }
+
+    #[test]
+    fn a_package_manager_config_is_an_unread_file_that_runs_by_itself() {
+        let b = run(vec![file("index.js", "let a;
+"), file(".npmrc", "registry=https://x.example/")], &RunOptions::default());
+        assert_eq!(b.verdict, Verdict::Incomplete);
+        assert_eq!(b.reasons.iter().find(|r| r.kind == ReasonKind::AutoRunNotAnalysed).unwrap().count, 1);
+    }
+
+    #[test]
+    fn every_reason_kind_fits_in_a_brief() {
+        // The list in `brief` has one entry per kind; a cap below that would drop reasons silently.
+        assert!(MAX_REASONS >= 7);
     }
 
     #[test]

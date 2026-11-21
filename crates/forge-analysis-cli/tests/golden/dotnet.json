@@ -1,0 +1,288 @@
+{
+  "header": {
+    "schema": 3,
+    "engine": "forge-analysis 0.0.1",
+    "catalog_sha256": "661ff253d0997c290715b16d7de935041072e290e1efd30a82fa0c75eed0949b",
+    "snapshot_sha256": "8c9fb747ba5b2ffacf0abf5328b0a6b8728dca7a0d4c09bb9d5d29d48a5f62c7",
+    "mode": "static_only",
+    "scope": "full"
+  },
+  "index": [
+    {
+      "section": "overview",
+      "number": 1,
+      "title": "Overview",
+      "explanation": "What was analysed, whether the picture is complete, and one count for everything we could not see.",
+      "count": null,
+      "anchor": "overview"
+    },
+    {
+      "section": "entry_points",
+      "number": 2,
+      "title": "Entry points",
+      "explanation": "What runs first: runtime and install entry files, and declared entries that do not match any analysed file.",
+      "count": 0,
+      "anchor": "entry-points"
+    },
+    {
+      "section": "timeline",
+      "number": 3,
+      "title": "Execution timeline",
+      "explanation": "When code runs: which functions run immediately, later, repeatedly, on events, at exit or at install, and every timer.",
+      "count": 0,
+      "anchor": "execution-timeline"
+    },
+    {
+      "section": "effects",
+      "number": 4,
+      "title": "Effects",
+      "explanation": "What the code does to the outside world: files, network, processes, environment and loading of code, each with its location.",
+      "count": 0,
+      "anchor": "effects"
+    },
+    {
+      "section": "flows",
+      "number": 5,
+      "title": "Data flows",
+      "explanation": "Data from the network or a file that can reach code execution or a command, from where it enters to where it is used.",
+      "count": 0,
+      "anchor": "data-flows"
+    },
+    {
+      "section": "scripts",
+      "number": 6,
+      "title": "Install scripts and shell commands",
+      "explanation": "Every package.json script, when it runs, and the commands inside it that we could not follow.",
+      "count": 0,
+      "anchor": "install-scripts-and-shell-commands"
+    },
+    {
+      "section": "dependencies",
+      "number": 7,
+      "title": "Dependencies",
+      "explanation": "Every declared dependency with where its code comes from: registry, git, URL, local path or bundled.",
+      "count": 0,
+      "anchor": "dependencies"
+    },
+    {
+      "section": "unresolved",
+      "number": 8,
+      "title": "Unresolved",
+      "explanation": "Places where static analysis cannot say what happens (computed code, dynamic loads, shell commands). Each one hides behaviour.",
+      "count": 0,
+      "anchor": "unresolved"
+    },
+    {
+      "section": "unlinked",
+      "number": 9,
+      "title": "Unlinked imports",
+      "explanation": "Imports we could not follow to their source: packages, missing files and names that are not exported.",
+      "count": 0,
+      "anchor": "unlinked-imports"
+    },
+    {
+      "section": "not_analysed",
+      "number": 10,
+      "title": "Not analysed",
+      "explanation": "Files and folders that were not read as code, by kind, and anything skipped by a limit.",
+      "count": 7,
+      "anchor": "not-analysed"
+    },
+    {
+      "section": "functions",
+      "number": 11,
+      "title": "Function index",
+      "explanation": "Every function with its lanes, effects, callers and the facts inside it.",
+      "count": 0,
+      "anchor": "function-index"
+    }
+  ],
+  "overview": {
+    "files_analysed": 0,
+    "files_not_analysed": 7,
+    "functions": 0,
+    "facts": 0,
+    "links_made": 0,
+    "unresolved_cleared_by_links": 0,
+    "completeness": "incomplete",
+    "coverage": [
+      {
+        "section": "unresolved",
+        "label": "places where static analysis cannot say what happens",
+        "count": 0
+      },
+      {
+        "section": "unlinked",
+        "label": "imports not followed to their source",
+        "count": 0
+      },
+      {
+        "section": "entry_points",
+        "label": "declared entry points that match no analysed file",
+        "count": 0
+      },
+      {
+        "section": "not_analysed",
+        "label": "files or folders not read as code",
+        "count": 7
+      },
+      {
+        "section": "dependencies",
+        "label": "dependencies whose own code and install scripts were not analysed",
+        "count": 0
+      },
+      {
+        "section": "functions",
+        "label": "calls whose target we could not see (no function followed, no fact)",
+        "count": 0
+      }
+    ],
+    "fact_counts": [
+      {
+        "kind": "entry",
+        "count": 0
+      },
+      {
+        "kind": "import",
+        "count": 0
+      },
+      {
+        "kind": "call",
+        "count": 0
+      },
+      {
+        "kind": "effect",
+        "count": 0
+      },
+      {
+        "kind": "timer",
+        "count": 0
+      },
+      {
+        "kind": "lifecycle_script",
+        "count": 0
+      },
+      {
+        "kind": "dependency",
+        "count": 0
+      },
+      {
+        "kind": "unresolved",
+        "count": 0
+      },
+      {
+        "kind": "flow",
+        "count": 0
+      }
+    ],
+    "mirrored_output": [],
+    "unreached_functions": 0
+  },
+  "entry_points": {
+    "basis": "roots",
+    "runtime": [],
+    "install": [],
+    "issues": []
+  },
+  "timeline": {
+    "lanes": [],
+    "timers": []
+  },
+  "effects": [],
+  "flows": [],
+  "scripts": [],
+  "dependencies": [],
+  "unresolved": [],
+  "unlinked": [],
+  "package_calls": [],
+  "not_analysed": {
+    "groups": [
+      {
+        "kind": "auto_run_config",
+        "items": [
+          {
+            "path": {
+              "text": "Directory.Build.props",
+              "truncated": false,
+              "original_len": 21,
+              "sha256": "9da24614831c308827a1ae533ffea392c97638c261dd42bd0f5226baa136d16e"
+            },
+            "size": 96,
+            "kind": "auto_run_config"
+          },
+          {
+            "path": {
+              "text": "Directory.Build.targets",
+              "truncated": false,
+              "original_len": 23,
+              "sha256": "50e91c82311ea26f2a73202525dfdf2b0a89c178ee666b2bf3ad4c84ac4c06dc"
+            },
+            "size": 150,
+            "kind": "auto_run_config"
+          },
+          {
+            "path": {
+              "text": "NuGet.Config",
+              "truncated": false,
+              "original_len": 12,
+              "sha256": "b54ee602750f150b3d4986e0334cc3ec901d47510560e26e792e8d294ab6f37a"
+            },
+            "size": 141,
+            "kind": "auto_run_config"
+          },
+          {
+            "path": {
+              "text": "global.json",
+              "truncated": false,
+              "original_len": 11,
+              "sha256": "8df3cd354bc584349d04ad5675b33c042d8b99b741b8b95af394c55e0f5001bf"
+            },
+            "size": 80,
+            "kind": "auto_run_config"
+          },
+          {
+            "path": {
+              "text": "src/App/App.csproj",
+              "truncated": false,
+              "original_len": 18,
+              "sha256": "0a6d44a2ce0c43d8994a2831f7153ef35b022757dcbd2d8a348a8682c9cb008e"
+            },
+            "size": 116,
+            "kind": "auto_run_config"
+          },
+          {
+            "path": {
+              "text": "src/App/Directory.Build.rsp",
+              "truncated": false,
+              "original_len": 27,
+              "sha256": "022949165505af2467cb2d6a28a9c39743bd37d9c7afe6642d370ed63d6174d4"
+            },
+            "size": 8,
+            "kind": "auto_run_config"
+          }
+        ]
+      },
+      {
+        "kind": "other_file",
+        "items": [
+          {
+            "path": {
+              "text": "src/App/Program.cs",
+              "truncated": false,
+              "original_len": 18,
+              "sha256": "9e4f3f82f2a9db0bfece040dd784d8d75f402c44ad63de968ea31318f55413be"
+            },
+            "size": 40,
+            "kind": "other_file"
+          }
+        ]
+      }
+    ],
+    "unrecorded": 0
+  },
+  "functions": {
+    "functions": [],
+    "untraced_by_callee": [],
+    "unplaced_facts": []
+  }
+}

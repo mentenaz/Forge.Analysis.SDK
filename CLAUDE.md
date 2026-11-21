@@ -56,14 +56,19 @@ limits, not by the flag. Files not reached are reported as `NotAnalysedKind::Sto
   per call and may need an index later.
 - A quadratic `Vec::contains` on nested function chains (`a=>a=>...`) was fixed in step 20. The slow test
   `long_chains_without_brackets` exercises 2 MiB chains.
-- `REPORT_SCHEMA` is 2. **Bump rule** (also in the doc comment in `crates/forge-analysis/src/run.rs`): bump it when
+- `REPORT_SCHEMA` is 3. **Bump rule** (also in the doc comment in `crates/forge-analysis/src/run.rs`): bump it when
   the JSON changes in a way a reader could meet (a new or renamed field, a new value of a written enum, a changed
   meaning; removals always). A change that only alters what the engine finds does not bump it. Goldens change with
-  every bump and the commit says so. 1: first shape. 2: header `scope`, kind `out_of_scope`.
+  every bump and the commit says so. 1: first shape. 2: header `scope`, kind `out_of_scope`. 3: kind `auto_run_config`.
 - **Quick scan** (`RunOptions.scope = Scope::Quick`, CLI `--quick`/`-q`): analyses every `package.json` (any depth), the
   files its install hooks run, and what those load (followed with `FileIndex`, same resolver as the linker). Other code
   is `NotAnalysedKind::OutOfScope`; non-code keeps its usual kind. Report and brief are always incomplete under quick
   (Decision A); `Review` still wins in the brief. `main`/`bin` are not followed: they do not run by themselves.
+
+## CI
+
+`.github/workflows/ci.yml`: fast tests on Ubuntu and Windows, `cargo deny` on core, and the full release suite on pushes
+to master/main (not pull requests). Rust is pinned to 1.100.0. Only GitHub's own actions are used. Passed on its first run.
 
 ## Commands (PowerShell, from the workspace folder)
 
@@ -101,7 +106,13 @@ Waiting on the owner: sign off Milestone 1, and the full (slow) test run if he w
 ## Next steps, in the agreed order
 
 1. ~~Quick mode for JS/TS~~ done (first slice, no cache). The fixed list lives in `analyze_snapshot`.
-2. **Per-ecosystem lists**, built from what Forge's panels really run and what the canary test showed:
+2. **Per-ecosystem lists.** Slice A (list and flag, no parsing) is built for .NET: `AUTO_RUN_FILE_NAMES` and
+   `AUTO_RUN_EXTENSIONS` in `crates/forge-analysis-report/src/build.rs` are the one place to extend. Files on them get
+   `NotAnalysedKind::AutoRunConfig` (as does `.npmrc`'s `NpmConfig` for the brief) and the brief reason
+   `AutoRunNotAnalysed`; an unread auto-run file makes the brief `incomplete` in either scope (`review` still wins).
+   The .NET list comes from MSBuild/NuGet docs and is **not yet checked against the canary test**. Project files
+   (`.csproj` etc.) are the one extension-based exception to "fixed list, not a pattern". Slice B (parse the MSBuild
+   XML into facts, so an `<Exec>` target gives `review`) is not started. Still to do: Rust, Node, Python rows. Built from what Forge's panels really run and what the canary test showed:
    - .NET: `Directory.Build.props` and `.targets` (their targets run during a plain `dotnet list package`
      scan, high priority), `global.json`, `nuget.config`.
    - Rust: `.cargo/config.toml`, `rust-toolchain.toml`, `build.rs`. Note that `cargo metadata --no-deps`
@@ -110,7 +121,7 @@ Waiting on the owner: sign off Milestone 1, and the full (slow) test run if he w
 3. **Restricted Mode integration (Forge side, not here):** show the quick-scan result in the Restricted
    Mode dialog. The panel trust gate itself is on Forge's `forge-panel-trust-gate` branch.
 4. Then: the findings layer, lockfile and advisory matching (OSV), the fetch crate, typed receivers,
-   CI (there is no `.github` folder yet), catalog breadth, a command catalog, write-destination
+   catalog breadth, a command catalog, write-destination
    resolution, and a written bump rule for `REPORT_SCHEMA`.
 
 Parked: behaviour diff between versions (needs fact IDs that stay stable across edits), a Python frontend.

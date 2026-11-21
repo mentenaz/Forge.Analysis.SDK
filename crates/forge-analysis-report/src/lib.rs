@@ -3,7 +3,9 @@ mod build;
 mod markdown;
 mod model;
 
-pub use build::{build, classify_path, to_json, BuildError, FileInput, ReportInput};
+pub use build::{
+    build, classify_path, to_json, BuildError, FileInput, ReportInput, AUTO_RUN_EXTENSIONS, AUTO_RUN_FILE_NAMES,
+};
 pub use markdown::{to_markdown, COLLAPSE_AT};
 pub use model::*;
 

@@ -96,7 +96,7 @@ fn json_strings(v: &serde_json::Value, key: &str, found: &mut Vec<(String, Strin
 
 #[test]
 fn there_is_a_fixture_for_each_kind_of_project() {
-    assert_eq!(names(), vec!["clean", "cross-file", "hostile", "install-script", "packages"]);
+    assert_eq!(names(), vec!["clean", "cross-file", "dotnet", "hostile", "install-script", "packages"]);
 }
 
 #[test]
@@ -278,6 +278,34 @@ fn quick_scan_of_the_install_script_fixture_matches_its_golden() {
     golden("install-script.quick", "json", &(to_json(&r) + "
 "));
     golden("install-script.quick", "md", &to_markdown(&r));
+}
+
+#[test]
+fn quick_scan_of_the_dotnet_fixture_flags_the_files_msbuild_runs_by_itself() {
+    let quick = analyze_folder_scoped(&fixtures_dir().join("dotnet"), &Options::default(), Scope::Quick).unwrap();
+    let full = report("dotnet");
+    for r in [&quick, &full] {
+        let group = r.not_analysed.groups.iter().find(|g| g.kind == NotAnalysedKind::AutoRunConfig).unwrap();
+        let mut paths: Vec<&str> = group.items.iter().map(|i| i.path.text()).collect();
+        paths.sort();
+        assert_eq!(
+            paths,
+            vec![
+                "Directory.Build.props",
+                "Directory.Build.targets",
+                "NuGet.Config",
+                "global.json",
+                "src/App/App.csproj",
+                "src/App/Directory.Build.rsp",
+            ]
+        );
+        // Program.cs is not on the list: it stays an ordinary other file.
+        let other = r.not_analysed.groups.iter().find(|g| g.kind == NotAnalysedKind::OtherFile).unwrap();
+        assert_eq!(other.items.len(), 1);
+    }
+    golden("dotnet.quick", "json", &(to_json(&quick) + "
+"));
+    golden("dotnet.quick", "md", &to_markdown(&quick));
 }
 
 #[test]
