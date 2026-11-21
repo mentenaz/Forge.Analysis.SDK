@@ -1,4 +1,4 @@
-use forge_analysis_intake::{snapshot, IntakeError, Options, SkipReason};
+use forge_analysis_intake::{snapshot, snapshot_from_memory, IntakeError, MemFile, Options, SkipReason};
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicUsize, Ordering};
@@ -227,4 +227,44 @@ fn crate_source_contains_no_write_apis() {
             "intake must stay read-only, found {banned}"
         );
     }
+}
+
+fn mem(files: &[(&str, &[u8])]) -> Vec<MemFile> {
+    files.iter().map(|(p, b)| MemFile { path: p.to_string(), bytes: b.to_vec() }).collect()
+}
+
+fn paths(snap: &forge_analysis_intake::Snapshot) -> Vec<String> {
+    snap.files().iter().map(|f| f.path.as_quoted().text().to_string()).collect()
+}
+
+#[test]
+fn memory_and_disk_give_the_same_snapshot() {
+    let files: Vec<(&str, &[u8])> = vec![
+        ("package.json", b"{\"name\":\"a\"}"),
+        ("src/index.js", b"console.log(1)"),
+        ("src/util.ts", b"export const x = 1"),
+        ("README.md", b"# hi"),
+        ("node_modules/dep/index.js", b"module.exports = 1"),
+    ];
+    let t = Tmp::new("parity");
+    for (p, b) in &files {
+        t.write(p, b);
+    }
+    let disk = snapshot(t.path(), &Options::default()).unwrap();
+    let mut reversed = mem(&files);
+    reversed.reverse();
+    let from_mem = snapshot_from_memory(reversed, &Options::default());
+    // The disk walk records an ignored folder once; memory records each file in it. So the
+    // included files and sizes are compared here, and the hash on a run with no ignored folder.
+    assert_eq!(paths(&disk), paths(&from_mem));
+    assert_eq!(disk.total_bytes(), from_mem.total_bytes());
+
+    let plain = &files[..4];
+    let t = Tmp::new("parity2");
+    for (p, b) in plain {
+        t.write(p, b);
+    }
+    let disk = snapshot(t.path(), &Options::default()).unwrap();
+    let from_mem = snapshot_from_memory(mem(plain), &Options::default());
+    assert_eq!(disk.sha256(), from_mem.sha256());
 }

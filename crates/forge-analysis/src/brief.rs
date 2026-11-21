@@ -1,0 +1,311 @@
+//! The short answer: one verdict and at most five reasons, built only from a finished report.
+//!
+//! The verdict is never "safe". `nothing_found` means what was read held nothing on the list
+//! below, and `complete` says whether everything that should have been read was read. Files that
+//! are not code we read (documents, images, native binaries) are counted in `not_examined` in every
+//! brief, so the count is never hidden.
+
+use forge_analysis_report::{NotAnalysedKind, Report};
+use forge_analysis_schema::{Effect, Lane, ScriptTrigger, UnresolvedReason};
+use serde::Serialize;
+
+/// A brief never lists more reasons than this.
+pub const MAX_REASONS: usize = 5;
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum Verdict {
+    /// Nothing on the review list was found in what was read, and all of it was read.
+    NothingFound,
+    /// Something on the review list was found. Look at the report before running the code.
+    Review,
+    /// Nothing on the review list was found, but part of what should have been read was not.
+    Incomplete,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum Scope {
+    /// Every file was analysed. (A quick scan of auto-run files will add its own scope.)
+    Full,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ReasonKind {
+    /// Data from the network can reach code execution or a call on it.
+    DataReachesCode,
+    /// A package script that runs by itself when the package is installed.
+    InstallScript,
+    /// Code on the install path that spawns processes, uses the network, changes files or loads code.
+    InstallTimeEffect,
+    /// The run was stopped (time budget or cancel) before every file was read.
+    RunStopped,
+    /// Files skipped by a limit, unreadable files, or code that could not be parsed.
+    NotFullyRead,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+pub struct Reason {
+    pub kind: ReasonKind,
+    pub count: u32,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct Brief {
+    pub verdict: Verdict,
+    pub scope: Scope,
+    /// True when nothing that should have been read was left unread.
+    pub complete: bool,
+    /// At most five, most serious first.
+    pub reasons: Vec<Reason>,
+    /// Files that are not code we read as code. Always shown, even when zero.
+    pub not_examined: u32,
+    pub files_analysed: u32,
+}
+
+fn count(n: usize) -> u32 {
+    u32::try_from(n).unwrap_or(u32::MAX)
+}
+
+/// Builds the brief from a report. Pure: the same report always gives the same brief.
+pub fn brief(report: &Report) -> Brief {
+    let flows = report.flows.len();
+    let install_scripts = report
+        .scripts
+        .iter()
+        .filter(|s| matches!(s.trigger, ScriptTrigger::Install | ScriptTrigger::Prepare))
+        .count();
+    let install_effects: usize = report
+        .effects
+        .iter()
+        .filter(|g| {
+            matches!(
+                g.effect,
+                Effect::ProcessSpawn
+                    | Effect::NetOut
+                    | Effect::FsWrite
+                    | Effect::FsDelete
+                    | Effect::FsChmod
+                    | Effect::DynamicLoad
+                    | Effect::CodeLoad
+            )
+        })
+        .map(|g| g.items.iter().filter(|i| i.place.lanes.contains(&Lane::Install)).count())
+        .sum();
+
+    let stopped: usize = report
+        .not_analysed
+        .groups
+        .iter()
+        .filter(|g| g.kind == NotAnalysedKind::Stopped)
+        .map(|g| g.items.len())
+        .sum();
+    let skipped: usize = report
+        .not_analysed
+        .groups
+        .iter()
+        .filter(|g| {
+            matches!(
+                g.kind,
+                NotAnalysedKind::TooLarge
+                    | NotAnalysedKind::TooDeep
+                    | NotAnalysedKind::CapReached
+                    | NotAnalysedKind::Unreadable
+                    | NotAnalysedKind::Excluded
+            )
+        })
+        .map(|g| g.items.len())
+        .sum::<usize>()
+        + usize::try_from(report.not_analysed.unrecorded).unwrap_or(usize::MAX);
+    let unparsed: usize = report
+        .unresolved
+        .iter()
+        .filter(|g| {
+            matches!(
+                g.reason,
+                UnresolvedReason::ParseFailed
+                    | UnresolvedReason::TooDeeplyNested
+                    | UnresolvedReason::UnsupportedSyntax
+            )
+        })
+        .map(|g| g.items.len())
+        .sum();
+
+    let mut reasons: Vec<Reason> = Vec::new();
+    for (kind, n) in [
+        (ReasonKind::DataReachesCode, flows),
+        (ReasonKind::InstallScript, install_scripts),
+        (ReasonKind::InstallTimeEffect, install_effects),
+        (ReasonKind::RunStopped, stopped),
+        (ReasonKind::NotFullyRead, skipped.saturating_add(unparsed)),
+    ] {
+        if n > 0 {
+            reasons.push(Reason { kind, count: count(n) });
+        }
+    }
+    reasons.truncate(MAX_REASONS);
+
+    let complete = stopped == 0 && skipped == 0 && unparsed == 0;
+    let review = flows > 0 || install_scripts > 0 || install_effects > 0;
+    let verdict = if review {
+        Verdict::Review
+    } else if !complete {
+        Verdict::Incomplete
+    } else {
+        Verdict::NothingFound
+    };
+
+    Brief {
+        verdict,
+        scope: Scope::Full,
+        complete,
+        reasons,
+        not_examined: report.overview.files_not_analysed,
+        files_analysed: report.overview.files_analysed,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::{analyze_files, MemFile, RunOptions};
+    use std::sync::atomic::AtomicBool;
+    use std::sync::Arc;
+
+    fn file(path: &str, text: &str) -> MemFile {
+        MemFile { path: path.into(), bytes: text.as_bytes().to_vec() }
+    }
+
+    fn run(files: Vec<MemFile>, opts: &RunOptions) -> Brief {
+        brief(&analyze_files(files, opts).unwrap())
+    }
+
+    #[test]
+    fn plain_code_gives_nothing_found_and_complete() {
+        let b = run(vec![file("index.js", "console.log(1 + 1);\n")], &RunOptions::default());
+        assert_eq!(b.verdict, Verdict::NothingFound);
+        assert!(b.complete);
+        assert!(b.reasons.is_empty());
+        assert_eq!(b.files_analysed, 1);
+    }
+
+    #[test]
+    fn files_that_are_not_code_are_counted_not_hidden() {
+        let b = run(
+            vec![file("index.js", "let a = 1;\n"), file("README.md", "# hi"), file("logo.png", "x")],
+            &RunOptions::default(),
+        );
+        assert_eq!(b.verdict, Verdict::NothingFound);
+        assert_eq!(b.not_examined, 2);
+    }
+
+    #[test]
+    fn an_install_script_is_a_review_reason() {
+        let b = run(
+            vec![file("package.json", r#"{"name":"a","scripts":{"postinstall":"node setup.js"}}"#)],
+            &RunOptions::default(),
+        );
+        assert_eq!(b.verdict, Verdict::Review);
+        assert!(b.reasons.iter().any(|r| r.kind == ReasonKind::InstallScript && r.count == 1));
+    }
+
+    #[test]
+    fn a_manual_script_alone_is_not_a_reason() {
+        let b = run(
+            vec![file("package.json", r#"{"name":"a","scripts":{"start":"node index.js"}}"#)],
+            &RunOptions::default(),
+        );
+        assert!(b.reasons.iter().all(|r| r.kind != ReasonKind::InstallScript));
+    }
+
+    #[test]
+    fn network_data_reaching_eval_is_a_review_reason() {
+        let b = run(
+            vec![file("index.js", "const d = await fetch(url).then(r => r.text());\neval(d);\n")],
+            &RunOptions::default(),
+        );
+        assert_eq!(b.verdict, Verdict::Review);
+        assert!(b.reasons.iter().any(|r| r.kind == ReasonKind::DataReachesCode));
+    }
+
+    #[test]
+    fn install_time_code_that_spawns_a_process_is_a_review_reason() {
+        let b = run(
+            vec![
+                file("package.json", r#"{"name":"a","scripts":{"postinstall":"node setup.js"}}"#),
+                file("setup.js", "require('child_process').exec('whoami');\n"),
+            ],
+            &RunOptions::default(),
+        );
+        assert_eq!(b.verdict, Verdict::Review);
+        assert!(b.reasons.iter().any(|r| r.kind == ReasonKind::InstallTimeEffect));
+    }
+
+    #[test]
+    fn a_file_over_the_size_limit_makes_the_brief_incomplete() {
+        let mut opts = RunOptions::default();
+        opts.limits.max_file_bytes = 8;
+        let b = run(vec![file("big.js", "console.log('a long line of code');\n")], &opts);
+        assert_eq!(b.verdict, Verdict::Incomplete);
+        assert!(!b.complete);
+        assert!(b.reasons.iter().any(|r| r.kind == ReasonKind::NotFullyRead));
+    }
+
+    #[test]
+    fn code_that_does_not_parse_makes_the_brief_incomplete() {
+        let b = run(vec![file("broken.js", "function ( {{{ ;;\n")], &RunOptions::default());
+        assert_eq!(b.verdict, Verdict::Incomplete);
+        assert!(!b.complete);
+    }
+
+    #[test]
+    fn a_cancelled_run_is_incomplete_and_lists_every_file_it_did_not_reach() {
+        let cancel = Arc::new(AtomicBool::new(true));
+        let opts = RunOptions { cancel: Some(cancel), ..RunOptions::default() };
+        let b = run(vec![file("a.js", "let a;\n"), file("b.js", "let b;\n")], &opts);
+        assert_eq!(b.verdict, Verdict::Incomplete);
+        assert!(b.reasons.iter().any(|r| r.kind == ReasonKind::RunStopped && r.count == 2));
+        assert_eq!(b.files_analysed, 0);
+    }
+
+    #[test]
+    fn a_zero_time_budget_stops_before_the_first_file() {
+        let opts = RunOptions { time_budget: Some(std::time::Duration::ZERO), ..RunOptions::default() };
+        let b = run(vec![file("a.js", "let a;\n")], &opts);
+        assert_eq!(b.verdict, Verdict::Incomplete);
+        assert!(!b.complete);
+    }
+
+    #[test]
+    fn review_wins_over_incomplete_but_completeness_is_still_reported() {
+        let mut opts = RunOptions::default();
+        opts.limits.max_file_bytes = 100;
+        let b = run(
+            vec![
+                file("package.json", r#"{"name":"a","scripts":{"install":"node x.js"}}"#),
+                file("big.js", &"let a = 1;\n".repeat(50)),
+            ],
+            &opts,
+        );
+        assert_eq!(b.verdict, Verdict::Review);
+        assert!(!b.complete);
+        assert!(b.reasons.len() <= MAX_REASONS);
+    }
+
+    #[test]
+    fn the_same_input_gives_the_same_brief_whatever_the_file_order() {
+        let a = vec![file("a.js", "fetch(u);\n"), file("package.json", r#"{"scripts":{"postinstall":"x"}}"#)];
+        let mut b = a.clone();
+        b.reverse();
+        assert_eq!(run(a, &RunOptions::default()), run(b, &RunOptions::default()));
+    }
+
+    #[test]
+    fn the_brief_serialises_with_plain_names() {
+        let b = run(vec![file("index.js", "let a;\n")], &RunOptions::default());
+        let json = serde_json::to_string(&b).unwrap();
+        assert!(json.contains(r#""verdict":"nothing_found""#), "{json}");
+        assert!(json.contains(r#""scope":"full""#), "{json}");
+    }
+}

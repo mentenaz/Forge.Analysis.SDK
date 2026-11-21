@@ -410,6 +410,7 @@
   "flows": [
     {
       "id": "fact:173633518a7cb701",
+      "sink": "code",
       "at": {
         "file": {
           "text": "a.js",

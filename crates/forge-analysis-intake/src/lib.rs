@@ -304,19 +304,7 @@ pub fn snapshot(root: &Path, opts: &Options) -> Result<Snapshot, IntakeError> {
     files.sort_by(|a, b| a.0.cmp(&b.0));
     skipped.sort_by(|a, b| a.0.cmp(&b.0));
 
-    // Snapshot hash: every included file (path, content hash, size), every skipped
-    // item (path, reason) and the overflow count. Nothing about the root folder's own
-    // name or location, so the same content gives the same hash anywhere.
-    let mut lines: Vec<String> = Vec::new();
-    for (rel, f) in &files {
-        lines.push(format!("F\0{rel}\0{}\0{}", f.sha256.as_str(), f.size));
-    }
-    for (rel, s) in &skipped {
-        lines.push(format!("S\0{rel}\0{}", s.reason.tag()));
-    }
-    lines.push(format!("D\0{dropped}"));
-    lines.sort();
-    let sha256 = Hash::of(lines.join("\n").as_bytes());
+    let sha256 = snapshot_hash(&files, &skipped, dropped);
 
     Ok(Snapshot {
         files: files.into_iter().map(|(_, f)| f).collect(),
@@ -325,6 +313,105 @@ pub fn snapshot(root: &Path, opts: &Options) -> Result<Snapshot, IntakeError> {
         total_bytes: total,
         sha256,
     })
+}
+
+/// One file handed over from memory (an editor buffer, an archive entry, a test) instead of a folder.
+#[derive(Debug, Clone)]
+pub struct MemFile {
+    /// Path relative to the project root, with `/` separators.
+    pub path: String,
+    pub bytes: Vec<u8>,
+}
+
+/// Builds a snapshot from files in memory, with the same limits, the same skip reasons and the same
+/// hash as `snapshot` gives for the same files on disk. Nothing is read from or written to the disk.
+pub fn snapshot_from_memory(input: Vec<MemFile>, opts: &Options) -> Snapshot {
+    let mut files: Vec<(String, SnapshotFile)> = Vec::new();
+    let mut skipped: Vec<(String, Skipped)> = Vec::new();
+    let mut dropped = 0u64;
+    let mut total = 0u64;
+
+    let mut input = input;
+    // Sorted by path, so the cap behaviour does not depend on the order the caller gave.
+    input.sort_by(|a, b| a.path.cmp(&b.path));
+
+    for MemFile { path: rel, bytes } in input {
+        let name = rel.rsplit('/').next().unwrap_or(&rel).to_string();
+        let segments: Vec<&str> = rel.split('/').collect();
+        if segments.iter().any(|s| s.is_empty() || *s == "." || *s == "..") || rel.contains('\\') || rel.contains('\0') {
+            record(&mut skipped, &mut dropped, &rel, SkipReason::BadPath);
+            continue;
+        }
+        if segments.iter().any(|s| is_reserved_name(s)) {
+            record(&mut skipped, &mut dropped, &rel, SkipReason::ReservedName);
+            continue;
+        }
+        if segments[..segments.len() - 1].iter().any(|d| opts.ignored_dirs.iter().any(|i| i == d)) {
+            record(&mut skipped, &mut dropped, &rel, SkipReason::IgnoredDir);
+            continue;
+        }
+        if segments.len() - 1 > opts.max_depth {
+            record(&mut skipped, &mut dropped, &rel, SkipReason::TooDeep);
+            continue;
+        }
+        let rel_path = match RelPath::new(&rel) {
+            Some(p) => p,
+            None => {
+                record(&mut skipped, &mut dropped, &rel, SkipReason::BadPath);
+                continue;
+            }
+        };
+        if files.len() >= opts.max_files {
+            record(&mut skipped, &mut dropped, &rel, SkipReason::FileCapReached);
+            continue;
+        }
+        let size = bytes.len() as u64;
+        if size > opts.max_file_bytes {
+            record(&mut skipped, &mut dropped, &rel, SkipReason::TooLarge { size });
+            continue;
+        }
+        if total.saturating_add(size) > opts.max_total_bytes {
+            record(&mut skipped, &mut dropped, &rel, SkipReason::TotalCapReached);
+            continue;
+        }
+        total += size;
+        let sha256 = Hash::of(&bytes);
+        let (text, invalid_utf8) = if is_source(&name, &opts.source_extensions) {
+            match String::from_utf8(bytes) {
+                Ok(s) => (Some(s), false),
+                Err(e) => (Some(String::from_utf8_lossy(e.as_bytes()).into_owned()), true),
+            }
+        } else {
+            (None, false)
+        };
+        files.push((rel, SnapshotFile { path: rel_path, sha256, size, text, invalid_utf8 }));
+    }
+
+    files.sort_by(|a, b| a.0.cmp(&b.0));
+    skipped.sort_by(|a, b| a.0.cmp(&b.0));
+    let sha256 = snapshot_hash(&files, &skipped, dropped);
+    Snapshot {
+        files: files.into_iter().map(|(_, f)| f).collect(),
+        skipped: skipped.into_iter().map(|(_, s)| s).collect(),
+        skipped_dropped: dropped,
+        total_bytes: total,
+        sha256,
+    }
+}
+
+/// The snapshot hash: every included file (path, content hash, size), every skipped item (path,
+/// reason) and the overflow count. Nothing about the root folder's own name or location.
+fn snapshot_hash(files: &[(String, SnapshotFile)], skipped: &[(String, Skipped)], dropped: u64) -> Hash {
+    let mut lines: Vec<String> = Vec::new();
+    for (rel, f) in files {
+        lines.push(format!("F\0{rel}\0{}\0{}", f.sha256.as_str(), f.size));
+    }
+    for (rel, s) in skipped {
+        lines.push(format!("S\0{rel}\0{}", s.reason.tag()));
+    }
+    lines.push(format!("D\0{dropped}"));
+    lines.sort();
+    Hash::of(lines.join("\n").as_bytes())
 }
 
 fn record(skipped: &mut Vec<(String, Skipped)>, dropped: &mut u64, rel: &str, reason: SkipReason) {
@@ -408,5 +495,31 @@ mod tests {
         assert!(is_source("x.ts", &exts));
         assert!(!is_source("x.txt", &exts));
         assert!(!is_source("Makefile", &exts));
+    }
+
+    #[test]
+    fn memory_input_is_checked_like_the_disk_walk() {
+        let opts = Options { max_file_bytes: 4, max_files: 3, ..Options::default() };
+        let mem = snapshot_from_memory(
+            vec![
+                MemFile { path: "a.js".into(), bytes: b"1".to_vec() },
+                MemFile { path: "big.js".into(), bytes: b"12345".to_vec() },
+                MemFile { path: "../evil.js".into(), bytes: b"1".to_vec() },
+                MemFile { path: "dir//x.js".into(), bytes: b"1".to_vec() },
+                MemFile { path: "CON.js".into(), bytes: b"1".to_vec() },
+                MemFile { path: "node_modules/x/i.js".into(), bytes: b"1".to_vec() },
+                MemFile { path: "b.js".into(), bytes: vec![0xff, 0xfe] },
+                MemFile { path: "c.js".into(), bytes: b"1".to_vec() },
+                MemFile { path: "d.js".into(), bytes: b"1".to_vec() },
+            ],
+            &opts,
+        );
+        let kept: Vec<_> = mem.files().iter().map(|f| f.path.as_quoted().text().to_string()).collect();
+        assert_eq!(kept, vec!["a.js", "b.js", "c.js"]);
+        assert!(mem.files()[1].invalid_utf8);
+        let reasons: Vec<_> = mem.skipped().iter().map(|s| s.reason.tag()).collect();
+        for want in ["too_large", "bad_path", "reserved_name", "ignored_dir", "file_cap"] {
+            assert!(reasons.contains(&want), "{want} missing in {reasons:?}");
+        }
     }
 }

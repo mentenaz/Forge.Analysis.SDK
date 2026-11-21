@@ -501,6 +501,7 @@
   "flows": [
     {
       "id": "fact:68df2048122e2fe3",
+      "sink": "code",
       "at": {
         "file": {
           "text": "setup.js",

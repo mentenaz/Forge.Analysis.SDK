@@ -200,6 +200,7 @@ pub enum ValidationError {
     TimerMissingTiming,
     FlowMissingOrigin,
     OriginOnNonFlow,
+    FlowSinkMismatch,
     ReachabilityMismatch,
     TransitiveMissingDirect,
     /// `unfollowed_sites` and `unfollowed_calls` disagree.
@@ -287,6 +288,17 @@ pub enum FactKind {
     /// Data from a source (the network) may reach a sink (code or a command).
     /// Located at the sink; `StaticFact::origin` is where the data came from.
     Flow,
+}
+
+/// What a `Flow` fact's data reaches.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum FlowSink {
+    /// It is run as code or as a command (`eval`, `new Function`, `spawn`, a timer string).
+    Code,
+    /// It is the thing being called: a method or function that came from, or is looked up on,
+    /// network data (`const r = await fetch(u); r.scan()`). What runs is decided by the server.
+    Callee,
 }
 
 impl FactKind {
@@ -674,6 +686,8 @@ pub struct StaticFact {
     /// Only on `Flow` facts: where the data entered. Not part of the ID, so one flow
     /// fact per sink (the detail carries the quoted source expression).
     pub origin: Option<Span>,
+    /// Only on `Flow` facts: what the data reaches (code, or being called).
+    pub flow_sink: Option<FlowSink>,
     /// The function this fact is inside; `FnId(0)` is the file's top level.
     pub within: Option<FnId>,
     /// Only on `LifecycleScript` facts.
@@ -706,7 +720,7 @@ pub fn number_repeats(facts: &mut [StaticFact]) {
 impl Serialize for StaticFact {
     fn serialize<S: serde::Serializer>(&self, ser: S) -> Result<S::Ok, S::Error> {
         use serde::ser::SerializeStruct;
-        let mut st = ser.serialize_struct("StaticFact", 14)?;
+        let mut st = ser.serialize_struct("StaticFact", 15)?;
         st.serialize_field("id", &self.id())?;
         st.serialize_field("kind", &self.kind)?;
         st.serialize_field("at", &self.at)?;
@@ -716,6 +730,7 @@ impl Serialize for StaticFact {
         st.serialize_field("timing", &self.timing)?;
         st.serialize_field("unresolved", &self.unresolved)?;
         st.serialize_field("origin", &self.origin)?;
+        st.serialize_field("flow_sink", &self.flow_sink)?;
         st.serialize_field("within", &self.within)?;
         st.serialize_field("script", &self.script)?;
         st.serialize_field("module", &self.module)?;
@@ -738,6 +753,7 @@ impl StaticFact {
             timing: None,
             unresolved: None,
             origin: None,
+            flow_sink: None,
             within: None,
             script: None,
             module: None,
@@ -752,6 +768,9 @@ impl StaticFact {
         let mut variant = match (&self.unresolved, &self.effect) {
             (Some(r), _) => Some(format!("unresolved:{:?}", r)),
             (None, Some(e)) => Some(format!("effect:{:?}", e)),
+            // Code flows keep the ID they always had; a call-on-network-data flow at the
+            // same place is a different fact.
+            (None, None) if self.flow_sink == Some(FlowSink::Callee) => Some("flow:callee".to_string()),
             (None, None) => None,
         };
         if let Some(n) = self.seq {
@@ -787,6 +806,9 @@ impl StaticFact {
             } else {
                 ValidationError::OriginOnNonFlow
             });
+        }
+        if (self.kind == FactKind::Flow) != self.flow_sink.is_some() {
+            errors.push(ValidationError::FlowSinkMismatch);
         }
         if (self.kind == FactKind::LifecycleScript) != self.script.is_some() {
             errors.push(ValidationError::ScriptMismatch);
@@ -1209,9 +1231,12 @@ mod tests {
     #[test]
     fn a_flow_fact_needs_an_origin_and_only_a_flow_may_have_one() {
         let mut f = StaticFact::new(FactKind::Flow, span(40, 50), Some(Quoted::new("fetch(u)")));
+        f.flow_sink = Some(FlowSink::Code);
         assert_eq!(f.validate(), vec![ValidationError::FlowMissingOrigin]);
         f.origin = Some(span(0, 8));
         assert!(f.validate().is_empty());
+        f.flow_sink = None;
+        assert_eq!(f.validate(), vec![ValidationError::FlowSinkMismatch]);
 
         let mut c = StaticFact::new(FactKind::Call, span(0, 1), None);
         c.origin = Some(span(0, 1));
@@ -1221,6 +1246,7 @@ mod tests {
     #[test]
     fn a_backwards_origin_span_is_reported() {
         let mut f = StaticFact::new(FactKind::Flow, span(40, 50), None);
+        f.flow_sink = Some(FlowSink::Code);
         f.origin = Some(span(9, 3));
         assert_eq!(f.validate(), vec![ValidationError::SpanBytesBackwards]);
     }
@@ -1238,12 +1264,27 @@ mod tests {
     fn a_flow_fact_serializes_with_its_origin() {
         let mut f = StaticFact::new(FactKind::Flow, span(40, 50), Some(Quoted::new("fetch(u)")));
         f.origin = Some(span(0, 8));
+        f.flow_sink = Some(FlowSink::Callee);
         let v = serde_json::to_value(&f).unwrap();
         assert_eq!(v["kind"], "flow");
+        assert_eq!(v["flow_sink"], "callee");
         assert_eq!(v["origin"]["start_byte"], 0);
         assert_eq!(v["origin"]["end_byte"], 8);
         let plain = StaticFact::new(FactKind::Call, span(0, 1), None);
         assert!(serde_json::to_value(&plain).unwrap()["origin"].is_null());
+    }
+
+    #[test]
+    fn a_call_on_network_data_is_a_different_fact_from_code_run_from_it() {
+        let mk = |k| {
+            let mut f = StaticFact::new(FactKind::Flow, span(40, 50), Some(Quoted::new("fetch(u)")));
+            f.origin = Some(span(0, 8));
+            f.flow_sink = Some(k);
+            f
+        };
+        assert_ne!(mk(FlowSink::Code).id(), mk(FlowSink::Callee).id());
+        let plain = StaticFact::new(FactKind::Flow, span(40, 50), Some(Quoted::new("fetch(u)")));
+        assert_eq!(mk(FlowSink::Code).id(), plain.id());
     }
 
     // ---- FunctionSummary ----

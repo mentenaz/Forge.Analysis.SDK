@@ -13,6 +13,12 @@
 //!   * `x.onmessage = e => ..` where `x` is tainted;
 //!   * destructuring.
 //!
+//! A second kind of hit: the thing CALLED is network data (`const r = await fetch(u);
+//! r.scan()`, `fn()` where `fn` came from a response). Calling a method every response,
+//! string, array, stream or promise has (`json`, `text`, `on`, `map`, `then`, ..) is not a hit;
+//! any other name is, because the server decides what it runs. A remote object that happens to
+//! use one of the standard names is the known gap; those calls stay in the named untraced list.
+//!
 //! What it does NOT follow (reported in the coverage line, never silently dropped):
 //!   * flows across function calls, across files, through object properties or arrays used
 //!     as storage, or through storage (download, write to disk, load later).
@@ -47,6 +53,9 @@ pub struct Site {
 pub struct FlowHit {
     pub sink: Span,
     pub origin: Span,
+    /// The data is not an argument but the thing being called: `r.scan()` where `r` holds
+    /// network data. What runs is decided by whoever answered the request.
+    pub callee: bool,
 }
 
 type Sites = BTreeMap<(u32, u32), Site>;
@@ -62,8 +71,8 @@ pub fn find_flows(
     scoping: &Scoping,
     sites: &Sites,
 ) -> Vec<FlowHit> {
-    // No sources, or no sinks, means no flows: skip all the work.
-    if !sites.values().any(|s| s.source) || !sites.values().any(|s| s.sink) {
+    // No sources means no flows (a call on network data needs a source too): skip all the work.
+    if !sites.values().any(|s| s.source) {
         return Vec::new();
     }
 
@@ -89,7 +98,7 @@ pub fn find_flows(
 
     let mut finder = SinkFinder { scoping, sites, tainted: &tainted, hits: Vec::new() };
     finder.visit_program(program);
-    finder.hits.sort_by_key(|h| (h.sink.start, h.sink.end));
+    finder.hits.sort_by_key(|h| (h.sink.start, h.sink.end, h.callee));
     finder.hits
 }
 
@@ -371,15 +380,83 @@ impl SinkFinder<'_> {
                 continue;
             }
             if let Some(origin) = origin_of_arg(self.scoping, self.sites, self.tainted, a) {
-                self.hits.push(FlowHit { sink: at, origin });
+                self.hits.push(FlowHit { sink: at, origin, callee: false });
                 return;
             }
         }
     }
 }
 
+impl SinkFinder<'_> {
+    /// Is the function being called network data, or looked up on network data?
+    fn check_callee(&mut self, it: &CallExpression<'_>) {
+        let mut callee = &it.callee;
+        while let Expression::ParenthesizedExpression(p) = callee {
+            callee = &p.expression;
+        }
+        let origin = match callee {
+            Expression::Identifier(id) => {
+                symbol_of(self.scoping, id).and_then(|s| self.tainted.get(&s).copied())
+            }
+            Expression::StaticMemberExpression(m) => {
+                if is_standard_method(m.property.name.as_str()) {
+                    None
+                } else {
+                    origin_of_expr(self.scoping, self.sites, self.tainted, &m.object)
+                }
+            }
+            Expression::ComputedMemberExpression(m) => {
+                origin_of_expr(self.scoping, self.sites, self.tainted, &m.object)
+            }
+            // `new Function(d)()` and `eval(t)()`: the sink itself is already reported.
+            Expression::NewExpression(n) if self.sites.get(&key(n.span)).is_some_and(|x| x.sink) => None,
+            Expression::CallExpression(c) if self.sites.get(&key(c.span)).is_some_and(|x| x.sink) => None,
+            other => origin_of_expr(self.scoping, self.sites, self.tainted, other),
+        };
+        if let Some(origin) = origin {
+            self.hits.push(FlowHit { sink: it.span, origin, callee: true });
+        }
+    }
+}
+
+/// Methods that strings, arrays, objects, maps, promises, responses, headers, streams, event
+/// emitters, sockets and requests all have. Calling one on network data is ordinary handling
+/// of it, not the server choosing what runs.
+fn is_standard_method(name: &str) -> bool {
+    const STANDARD: &[&str] = &[
+        // strings
+        "at", "charAt", "charCodeAt", "codePointAt", "concat", "endsWith", "includes", "indexOf",
+        "lastIndexOf", "localeCompare", "match", "matchAll", "normalize", "padEnd", "padStart",
+        "repeat", "replace", "replaceAll", "search", "slice", "split", "startsWith", "substring",
+        "substr", "toLowerCase", "toUpperCase", "toLocaleLowerCase", "toLocaleUpperCase", "trim",
+        "trimStart", "trimEnd",
+        // arrays
+        "map", "filter", "forEach", "reduce", "reduceRight", "find", "findIndex", "findLast",
+        "findLastIndex", "some", "every", "flat", "flatMap", "join", "push", "pop", "shift",
+        "unshift", "splice", "sort", "reverse", "fill", "keys", "values", "entries", "copyWithin",
+        "toSorted", "toReversed", "toSpliced", "with",
+        // every object
+        "toString", "valueOf", "toJSON", "toLocaleString", "toFixed", "toPrecision",
+        "hasOwnProperty", "isPrototypeOf", "propertyIsEnumerable",
+        // maps, sets, headers
+        "get", "set", "has", "add", "delete", "clear", "append",
+        // promises
+        "then", "catch", "finally",
+        // fetch responses
+        "json", "text", "blob", "arrayBuffer", "formData", "bytes", "clone",
+        // streams, emitters, sockets, requests
+        "on", "once", "off", "addListener", "removeListener", "removeAllListeners", "emit",
+        "addEventListener", "removeEventListener", "pipe", "unpipe", "setEncoding", "setTimeout",
+        "pause", "resume", "destroy", "end", "write", "abort", "close", "send", "read", "cancel",
+        "getReader", "setHeader", "getHeader", "open", "setRequestHeader", "getResponseHeader",
+        "getAllResponseHeaders",
+    ];
+    STANDARD.contains(&name)
+}
+
 impl<'a> Visit<'a> for SinkFinder<'_> {
     fn visit_call_expression(&mut self, it: &CallExpression<'a>) {
+        self.check_callee(it);
         self.check(it.span, &it.arguments);
         walk::walk_call_expression(self, it);
     }
@@ -446,11 +523,78 @@ mod tests {
         stub.visit_program(program);
         find_flows(program, sem.semantic.scoping(), &stub.sites)
             .into_iter()
+            .filter(|h| !h.callee)
             .map(|h| {
                 let t = |s: Span| src[s.start as usize..s.end as usize].to_string();
                 (t(h.sink), t(h.origin))
             })
             .collect()
+    }
+
+    /// The calls whose callee is network data: (the call, where the data came from).
+    fn callee_flows(src: &str) -> Vec<(String, String)> {
+        let alloc = Allocator::default();
+        let ret = Parser::new(&alloc, src, SourceType::mjs()).parse();
+        assert!(ret.diagnostics.is_empty(), "parse: {:?}", ret.diagnostics);
+        let program: &Program<'_> = &ret.program;
+        let sem = SemanticBuilder::new().build(program);
+        let mut stub = Stub { src, sites: Sites::new() };
+        stub.visit_program(program);
+        find_flows(program, sem.semantic.scoping(), &stub.sites)
+            .into_iter()
+            .filter(|h| h.callee)
+            .map(|h| {
+                let t = |s: Span| src[s.start as usize..s.end as usize].to_string();
+                (t(h.sink), t(h.origin))
+            })
+            .collect()
+    }
+
+    #[test]
+    fn a_method_called_on_network_data_is_a_callee_flow() {
+        let f = callee_flows("const vuln = await fetch(server); await vuln.scan();");
+        assert_eq!(f, vec![("vuln.scan()".to_string(), "fetch(server)".to_string())]);
+    }
+
+    #[test]
+    fn handling_the_response_the_normal_way_is_not() {
+        let f = callee_flows(
+            "const r = await fetch(u); const t = await r.text(); const j = await r.json(); \
+             t.trim().split(',').map(x => x.toString()); r.headers.get('a');",
+        );
+        assert!(f.is_empty(), "{f:?}");
+    }
+
+    #[test]
+    fn calling_a_function_that_came_from_the_response_is_a_callee_flow() {
+        let f = callee_flows("const { run } = await (await fetch(u)).json(); run(1);");
+        assert_eq!(f.len(), 1, "{f:?}");
+        assert_eq!(f[0].0, "run(1)");
+    }
+
+    #[test]
+    fn a_computed_method_on_network_data_is_a_callee_flow() {
+        let f = callee_flows("const r = await fetch(u); r[name]();");
+        assert_eq!(f.len(), 1, "{f:?}");
+    }
+
+    #[test]
+    fn a_chain_after_network_data_reports_each_unknown_call() {
+        let f = callee_flows("const r = await fetch(u); r.a().b();");
+        assert_eq!(f.len(), 2, "{f:?}");
+    }
+
+    #[test]
+    fn a_method_on_local_data_is_not_a_callee_flow() {
+        let f = callee_flows("const r = {scan(){}}; r.scan(); const s = await fetch(u); other.scan();");
+        assert!(f.is_empty(), "{f:?}");
+    }
+
+    #[test]
+    fn a_callback_parameter_of_a_network_call_may_be_called() {
+        let f = callee_flows("https.get(u, res => { res.on('data', d => d.toString()); res.exec2(); });");
+        assert_eq!(f.len(), 1, "{f:?}");
+        assert_eq!(f[0].0, "res.exec2()");
     }
 
     fn one(src: &str) -> (String, String) {

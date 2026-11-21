@@ -3,7 +3,7 @@
 //! No section ever drops an item: a long section is grouped, never cut.
 
 use forge_analysis_schema::{
-    DependencyInfo, Effect, EffectUse, EntryBasis, EntryIssue, FactId, FactKind, FnId, Header, Lane,
+    DependencyInfo, Effect, EffectUse, EntryBasis, EntryIssue, FactId, FactKind, FlowSink, FnId, Header, Lane,
     Quoted, RelPath, ScriptTrigger, Span, Timing, UnlinkedReason, UnresolvedReason, UrlValue,
 };
 use serde::Serialize;
@@ -253,6 +253,8 @@ pub struct EffectGroup {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct FlowItem {
     pub id: FactId,
+    /// What the data reaches: code run from it, or a call made on it.
+    pub sink: FlowSink,
     /// The sink.
     pub at: Span,
     pub origin: Span,
@@ -348,6 +350,8 @@ pub enum NotAnalysedKind {
     CapReached,
     Unreadable,
     Excluded,
+    /// Not reached: the run was stopped by its time budget or by the caller.
+    Stopped,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]

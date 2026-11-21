@@ -3,7 +3,7 @@
 
 use crate::model::*;
 use forge_analysis_schema::{
-    DependencySource, Effect, FactId, FactKind, FnId, FnRef, FunctionSummary, Header, Lane, Linked,
+    DependencySource, Effect, FactId, FactKind, FlowSink, FnId, FnRef, FunctionSummary, Header, Lane, Linked,
     LinkedFn, Quoted, ScriptTrigger, Span, StaticFact, UnlinkedReason, UnresolvedReason,
 };
 use std::collections::BTreeMap;
@@ -301,7 +301,7 @@ pub fn build(input: &ReportInput<'_>) -> Result<Report, BuildError> {
             }
             FactKind::Flow => {
                 if let Some(origin) = &f.origin {
-                    flows.push(FlowItem { id: f.id().clone(), at: f.at().clone(), origin: origin.clone(), detail: f.detail().cloned(), place: place.clone() });
+                    flows.push(FlowItem { id: f.id().clone(), sink: f.flow_sink.unwrap_or(FlowSink::Code), at: f.at().clone(), origin: origin.clone(), detail: f.detail().cloned(), place: place.clone() });
                 }
             }
             FactKind::LifecycleScript => {

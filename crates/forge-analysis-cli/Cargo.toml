@@ -17,6 +17,7 @@ path = "src/main.rs"
 
 [dependencies]
 forge-analysis-schema.workspace = true
+forge-analysis = { path = "../forge-analysis" }
 forge-analysis-catalog.workspace = true
 forge-analysis-intake = { path = "../forge-analysis-intake" }
 forge-analysis-core = { path = "../forge-analysis-core" }

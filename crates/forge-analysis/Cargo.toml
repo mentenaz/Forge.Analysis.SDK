@@ -1,0 +1,19 @@
+[package]
+name = "forge-analysis"
+edition.workspace = true
+version.workspace = true
+publish.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+forge-analysis-schema.workspace = true
+forge-analysis-catalog.workspace = true
+forge-analysis-intake = { path = "../forge-analysis-intake" }
+forge-analysis-core = { path = "../forge-analysis-core" }
+forge-analysis-report = { path = "../forge-analysis-report" }
+serde.workspace = true
+
+[dev-dependencies]
+serde_json.workspace = true

@@ -8,7 +8,7 @@
 
 use crate::model::*;
 use forge_analysis_schema::{
-    DepSection, DependencySource, Delay, Effect, EntryBasis, FactKind, FnId, Lane, Mode, Quoted,
+    DepSection, DependencySource, Delay, Effect, EntryBasis, FactKind, FlowSink, FnId, Lane, Mode, Quoted,
     ScriptTrigger, Span, UnlinkedReason, UnresolvedReason, UrlValue,
 };
 use std::fmt::Write;
@@ -186,6 +186,7 @@ fn not_analysed_text(k: NotAnalysedKind) -> (&'static str, &'static str) {
         CapReached => ("Skipped: a limit was reached", "The total size or file count limit stopped the intake."),
         Unreadable => ("Skipped: could not be read", "The operating system refused or failed to read it."),
         Excluded => ("Skipped: not a regular file or a bad path", "Devices, odd names or paths outside the folder."),
+        Stopped => ("Not reached: the run was stopped", "The time budget ran out or the caller cancelled before these files were read."),
     }
 }
 
@@ -503,9 +504,13 @@ fn flows(w: &mut W, r: &Report) {
     if r.flows.is_empty() {
         w.none();
     } else {
-        w.group("Flows", "Each line: where the data is used, where it came from, and the expression it came from.", r.flows.len(), |w| {
+        w.group("Flows", "Each line: where the data is used, where it came from, and the expression it came from. \"calls it\" means the thing being called is network data, so the server decides what runs.", r.flows.len(), |w| {
             for f in &r.flows {
-                w.item(&format!("{} ← {}: {}", at_line(&f.at, &f.place), loc(&f.origin), oq(&f.detail)));
+                let how = match f.sink {
+                    FlowSink::Code => "",
+                    FlowSink::Callee => " (calls it)",
+                };
+                w.item(&format!("{}{} ← {}: {}", at_line(&f.at, &f.place), how, loc(&f.origin), oq(&f.detail)));
             }
         });
     }

@@ -15,7 +15,7 @@ use super::handles::{self, Handles};
 use super::summary::{self, Bound};
 use forge_analysis_catalog::{Catalog, Entry, Role};
 use forge_analysis_schema::{
-    Delay, Effect, FactKind, FunctionSummary, Lane, Quoted, RelPath, StaticFact, Timing,
+    Delay, Effect, FactKind, FlowSink, FunctionSummary, Lane, Quoted, RelPath, StaticFact, Timing,
     UnresolvedReason,
 };
 use oxc_allocator::Allocator;
@@ -162,6 +162,7 @@ fn analyze_parsed(file: &RelPath, source: &str, source_type: SourceType, catalog
         let detail = Quoted::new(matcher.ctx.text(hit.origin));
         let mut fact = StaticFact::new(FactKind::Flow, matcher.ctx.span(hit.sink), Some(detail));
         fact.origin = Some(matcher.ctx.span(hit.origin));
+        fact.flow_sink = Some(if hit.callee { FlowSink::Callee } else { FlowSink::Code });
         matcher.ctx.facts.push(fact);
     }
 
@@ -1663,6 +1664,29 @@ function D(setB) { setB(1); } function E() { const [a, setC] = other(); setC(1);
             "async function f() { const t = await (await fetch(u)).text(); eval(t); }",
         );
         assert_eq!(f, vec![("eval(t)".to_string(), "fetch(u)".to_string())]);
+    }
+
+    #[test]
+    fn a_method_called_on_fetched_data_is_a_flow_that_calls_it() {
+        let src = "async function f() { const vuln = await fetch(server); await vuln.scan(); }";
+        let a = analyze_file_full(&RelPath::new("a.js").unwrap(), src, &Catalog::node_defaults()).unwrap();
+        let hits: Vec<_> = a.flows.iter().filter(|h| h.callee).collect();
+        assert_eq!(hits.len(), 1, "{:?}", a.flows);
+        let at = hits[0].sink;
+        assert_eq!(&src[at.start as usize..at.end as usize], "vuln.scan()");
+        let facts: Vec<_> = a.file.facts.iter().filter(|f| f.kind() == FactKind::Flow).collect();
+        assert_eq!(facts.len(), 1);
+        assert_eq!(facts[0].flow_sink, Some(FlowSink::Callee));
+        assert!(facts[0].validate().is_empty());
+    }
+
+    #[test]
+    fn reading_a_response_the_normal_way_is_no_flow() {
+        let f = run(
+            "a.js",
+            "async function f() { const r = await fetch(u); const t = await r.text(); const j = await r.json(); t.trim(); }",
+        );
+        assert!(f.facts.iter().all(|x| x.kind() != FactKind::Flow), "{:?}", f.facts);
     }
 
     #[test]

@@ -34,6 +34,7 @@ const JS_CORPUS: &[&str] = &[
     "import fs from 'fs';\nfs.readFileSync('a');\nexport function f(x){ return fs.rmSync(x); }\n",
     "const { exec } = require('child_process');\nsetTimeout(() => exec(cmd), 1000);\nmodule.exports = { exec };\n",
     "const r = await fetch('https://example.com/x');\nconst t = await r.text();\neval(t);\nnew Function(t)();\n",
+    "const vuln = await fetch(server);\nawait vuln.scan();\nvuln[name]();\nconst { run } = await vuln.json();\nrun(1);\nhttps.get(u, res => { res.on('d', d => d.go()); });\n",
     "import * as ns from './b';\nexport default function App(){ return <ns.X a={b} {...c} />; }\n",
     "class A extends B { static #x = 1; async *g(){ yield* this.h(); } get v(){ return super.v; } }\n",
     "const o = { ['a'+b]: 1, ...rest, f(){}, async g(){}, get h(){ return 1 } };\nglobalThis['ev'+'al'](o);\n",

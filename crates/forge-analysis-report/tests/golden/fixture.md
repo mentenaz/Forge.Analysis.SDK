@@ -126,7 +126,7 @@ Data from the network or a file that can reach code execution or a command, from
 
 ### Flows (1)
 
-Each line: where the data is used, where it came from, and the expression it came from.
+Each line: where the data is used, where it came from, and the expression it came from. "calls it" means the thing being called is network data, so the server decides what runs.
 
 - `a.js:9` in `helper` in `a.js:4` (runs: deferred) ← `a.js:8`: `fetch`
 

