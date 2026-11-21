@@ -110,10 +110,12 @@ Waiting on the owner: sign off Milestone 1, and the full (slow) test run if he w
 
 Parked: behaviour diff between versions (needs fact IDs that stay stable across edits), a Python frontend.
 
-## Open decision
+## Decisions
 
-**Decision A:** when a quick scan did not examine some files, does the brief say `incomplete`, or does it
-keep a separate state? The brief currently covers full analyses only. Ask before building quick mode.
+**Decision A (decided by Francois):** when a quick scan did not examine some files, the brief says
+`incomplete`. There is no separate quick state. The report carries `scope: quick` so the reader sees
+the scan was deliberate, and every unread file is counted in `not_examined`. A quick scan can never say
+`nothing_found`.
 
 ## How to work with Francois
 
