@@ -1,0 +1,99 @@
+name: CI
+
+# Only GitHub's own actions are used, and nothing here needs a secret: this is a static
+# analyser, and its own pipeline should not trust more than it has to.
+
+on:
+  push:
+    branches: [master, main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  CARGO_TERM_COLOR: always
+  CARGO_INCREMENTAL: "0"
+  # The version the owner develops with. The minimum the engine needs is 1.98 (oxc).
+  RUST_TOOLCHAIN: "1.100.0"
+
+jobs:
+  # The fast check from CLAUDE.md, on both platforms: intake handles symlinks, reserved
+  # Windows device names and path separators, so Linux alone is not enough.
+  test:
+    name: test (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install Rust
+        run: |
+          rustup toolchain install "$RUST_TOOLCHAIN" --profile minimal --no-self-update
+          rustup default "$RUST_TOOLCHAIN"
+          rustc --version
+      - uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: test-${{ matrix.os }}-${{ env.RUST_TOOLCHAIN }}-${{ hashFiles('Cargo.lock') }}
+          restore-keys: test-${{ matrix.os }}-${{ env.RUST_TOOLCHAIN }}-
+      - name: Test (fast; the slow robustness test runs in the full job)
+        run: cargo test --locked --workspace -- --skip long_chains_without_brackets
+
+  # Core must stay free of network, process and OS crates. See deny.toml.
+  deny:
+    name: cargo deny (core stays pure)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install Rust
+        run: |
+          rustup toolchain install "$RUST_TOOLCHAIN" --profile minimal --no-self-update
+          rustup default "$RUST_TOOLCHAIN"
+      - uses: actions/cache@v4
+        id: deny-cache
+        with:
+          path: ~/.cargo/bin/cargo-deny
+          key: cargo-deny-0.21.0-${{ env.RUST_TOOLCHAIN }}
+      - name: Install cargo-deny
+        if: steps.deny-cache.outputs.cache-hit != 'true'
+        run: cargo install cargo-deny --locked --version 0.21.0
+      - name: Check bans
+        run: cargo deny --manifest-path crates/forge-analysis-core/Cargo.toml check bans
+
+  # The whole suite including the slow robustness test (about 4 minutes in release).
+  # Not on pull requests, so a review does not wait for it.
+  full:
+    name: full suite (release)
+    if: github.event_name != 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install Rust
+        run: |
+          rustup toolchain install "$RUST_TOOLCHAIN" --profile minimal --no-self-update
+          rustup default "$RUST_TOOLCHAIN"
+      - uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: full-${{ env.RUST_TOOLCHAIN }}-${{ hashFiles('Cargo.lock') }}
+          restore-keys: full-${{ env.RUST_TOOLCHAIN }}-
+      - name: Test everything
+        run: cargo test --locked --release --workspace
