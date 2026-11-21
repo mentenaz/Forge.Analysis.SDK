@@ -106,13 +106,21 @@ Waiting on the owner: sign off Milestone 1, and the full (slow) test run if he w
 ## Next steps, in the agreed order
 
 1. ~~Quick mode for JS/TS~~ done (first slice, no cache). The fixed list lives in `analyze_snapshot`.
-2. **Per-ecosystem lists.** Slice A (list and flag, no parsing) is built for .NET: `AUTO_RUN_FILE_NAMES` and
-   `AUTO_RUN_EXTENSIONS` in `crates/forge-analysis-report/src/build.rs` are the one place to extend. Files on them get
-   `NotAnalysedKind::AutoRunConfig` (as does `.npmrc`'s `NpmConfig` for the brief) and the brief reason
-   `AutoRunNotAnalysed`; an unread auto-run file makes the brief `incomplete` in either scope (`review` still wins).
-   The .NET list comes from MSBuild/NuGet docs and is **not yet checked against the canary test**. Project files
-   (`.csproj` etc.) are the one extension-based exception to "fixed list, not a pattern". Slice B (parse the MSBuild
-   XML into facts, so an `<Exec>` target gives `review`) is not started. Still to do: Rust, Node, Python rows. Built from what Forge's panels really run and what the canary test showed:
+2. **Per-ecosystem lists.** Slice A (list and flag, no parsing) is built, and the list is broad on purpose: everything
+   a tool, editor, AI agent, package manager or build system might act on by itself (.NET, editors and agent hooks
+   such as `.vscode/tasks.json`, `.claude/settings.json`, `.mcp.json`, git hooks, Python, Rust, Ruby, PHP, JVM,
+   Apple, C/C++ build files, `.env`, autorun/shortcut files). The one place to extend it is
+   `crates/forge-analysis-report/src/autorun.rs`: `CONFIG` (flagged, cannot parse yet: `NotAnalysedKind::AutoRunConfig`)
+   and `CODE_PREFIXES` (JS/TS tool config such as `webpack.config.js`, `.eslintrc.cjs`: **a quick scan reads these as
+   code**). Widening the table does not change the report shape, so it does not bump `REPORT_SCHEMA`. The brief reason
+   is `AutoRunNotAnalysed`; an unread auto-run file makes the brief `incomplete` in either scope (`review` still wins).
+   The list comes from tool documentation and known abuse and is **not yet checked against the canary test**; the
+   entries say a file *can* act, not that it does. Project files (`.csproj` etc.) and several others match by
+   extension or folder, so "fixed list, not a pattern" is relaxed for them.
+   Known gaps: `.git/hooks` and `.git/config` are on the list but intake skips `.git`; archives (`.tgz`, `.zip`, `.jar`)
+   are not opened; content inside a file (a `plugins` entry in `tsconfig.json`, `scripts` in `composer.json`) is not
+   parsed. Slice B (parse MSBuild XML and the other manifests into facts, so an `<Exec>` target gives `review`) is not started.
+   Still to do per ecosystem: confirm the list against the canary test. Built from what Forge's panels really run and what the canary test showed:
    - .NET: `Directory.Build.props` and `.targets` (their targets run during a plain `dotnet list package`
      scan, high priority), `global.json`, `nuget.config`.
    - Rust: `.cargo/config.toml`, `rust-toolchain.toml`, `build.rs`. Note that `cargo metadata --no-deps`

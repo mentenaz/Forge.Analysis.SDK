@@ -6,7 +6,8 @@ use forge_analysis_core::imports::{
 };
 use forge_analysis_intake::{snapshot, snapshot_from_memory, IntakeError, MemFile, Options, SkipReason, Snapshot};
 use forge_analysis_report::{
-    build, classify_path, BuildError, FileInput, NotAnalysedFile, NotAnalysedKind, Report, ReportInput,
+    build, classify_path, is_auto_run_code, is_auto_run_config, BuildError, FileInput, NotAnalysedFile,
+    NotAnalysedKind, Report, ReportInput,
 };
 use forge_analysis_schema::{Header, Mode, Quoted, RelPath, Scope, StaticFact};
 use std::collections::{BTreeSet, VecDeque};
@@ -39,8 +40,9 @@ pub struct RunOptions {
     /// Stop reading new files once this is set to true.
     pub cancel: Option<CancelFlag>,
     /// `Full` analyses every file. `Quick` analyses only the files that run by themselves: every
-    /// `package.json`, the files its install hooks run, and what those files load. Every other file
-    /// is counted as not examined.
+    /// `package.json`, the files its install hooks run, tool configuration written as code (see
+    /// `is_auto_run_code`), and what all of those load. Every other file is counted as not examined,
+    /// and build and tool files we cannot read yet are listed as `AutoRunConfig`.
     pub scope: Scope,
 }
 
@@ -118,7 +120,13 @@ pub fn analyze_snapshot(snap: &Snapshot, opts: &RunOptions, started: Instant) ->
     // A full run visits every file in path order. A quick run starts from the `package.json` files
     // and adds what the install hooks run, and what those files load, as they are found.
     let mut work: VecDeque<&forge_analysis_intake::SnapshotFile> = if quick {
-        snap.files().iter().filter(|f| f.path.as_quoted().text().rsplit('/').next() == Some("package.json")).collect()
+        snap.files()
+            .iter()
+            .filter(|f| {
+                let name = f.path.as_quoted().text();
+                name.rsplit('/').next() == Some("package.json") || is_auto_run_code(name)
+            })
+            .collect()
     } else {
         snap.files().iter().collect()
     };
@@ -202,9 +210,16 @@ pub fn analyze_snapshot(snap: &Snapshot, opts: &RunOptions, started: Instant) ->
             if visited.contains(name) {
                 continue;
             }
-            // JSON is read as text but never analysed as code, in a full run either.
+            // JSON is read as text but never analysed as code, in a full run either. A file a tool
+            // acts on by itself keeps that label even when it happens to be code.
             let is_code = f.text.is_some() && !name.to_ascii_lowercase().ends_with(".json");
-            let kind = if is_code { NotAnalysedKind::OutOfScope } else { classify_path(name) };
+            let kind = if is_auto_run_config(name) {
+                NotAnalysedKind::AutoRunConfig
+            } else if is_code {
+                NotAnalysedKind::OutOfScope
+            } else {
+                classify_path(name)
+            };
             not_analysed.push(NotAnalysedFile { path: f.path.as_quoted().clone(), size: Some(f.size), kind });
         }
     }

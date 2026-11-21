@@ -173,7 +173,7 @@ fn not_analysed_text(k: NotAnalysedKind) -> (&'static str, &'static str) {
     use NotAnalysedKind::*;
     match k {
         NpmConfig => ("Package manager settings", "`.npmrc` and similar: can change where packages come from and run hooks."),
-        AutoRunConfig => ("Build and tool files that run by themselves", "MSBuild `Directory.Build.*`, project files, `global.json`, `nuget.config` and the like. The tooling reads and acts on them without being asked, and they can run commands or change where packages come from. Not read yet. MSBuild also reads `Directory.Build.props` and `.targets` from parent folders, which are outside what was analysed."),
+        AutoRunConfig => ("Build and tool files that run by themselves", "Files a tool, editor or package manager reads and acts on without being asked: build scripts, MSBuild `Directory.Build.*`, editor tasks, AI-agent hooks, git hooks, `setup.py`, `build.rs` and the like. They can run commands or change where packages come from. Not read yet, and most are harmless: this says they could act, not that they do. MSBuild also reads `Directory.Build.props` and `.targets` from parent folders, which are outside what was analysed."),
         ShellScript => ("Shell and batch scripts", "Not read. They can run anything."),
         Container => ("Container definitions", "Dockerfiles and compose files: build steps and what runs in the container."),
         CiWorkflow => ("CI and workflow files", "Pipelines that run on a server when the code changes."),

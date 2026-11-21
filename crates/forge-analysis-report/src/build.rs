@@ -38,28 +38,6 @@ impl std::fmt::Display for BuildError {
 
 impl std::error::Error for BuildError {}
 
-/// Files named exactly like this (case does not matter) are read and acted on by their tooling
-/// without anyone asking. This is the one list to extend for a new ecosystem.
-///
-/// .NET: MSBuild imports `Directory.Build.props` and `.targets` from the nearest parent folder
-/// into every project under it, so their targets run during a plain restore, build or
-/// `dotnet list package`. NuGet and the SDK resolver read `nuget.config` and `global.json`.
-/// Taken from MSBuild and NuGet documentation, not yet checked against Forge's canary test.
-pub const AUTO_RUN_FILE_NAMES: &[&str] = &[
-    "directory.build.props",
-    "directory.build.targets",
-    "directory.build.rsp",
-    "directory.solution.props",
-    "directory.solution.targets",
-    "directory.packages.props",
-    "global.json",
-    "nuget.config",
-];
-
-/// The same, by extension. These are the only patterns on the list: project and solution files are
-/// evaluated by the same tooling and can hold targets, and they have no fixed name.
-pub const AUTO_RUN_EXTENSIONS: &[&str] = &["csproj", "fsproj", "vbproj", "sln", "slnx"];
-
 /// How a file that was not read as code is classified, from its path alone.
 pub fn classify_path(path: &str) -> NotAnalysedKind {
     let lower = path.to_ascii_lowercase().replace('\\', "/");
@@ -67,6 +45,8 @@ pub fn classify_path(path: &str) -> NotAnalysedKind {
     let ext = name.rsplit_once('.').map(|(_, e)| e).unwrap_or("");
     if matches!(name, ".npmrc" | ".yarnrc" | ".yarnrc.yml" | ".pnpmrc") {
         NotAnalysedKind::NpmConfig
+    } else if crate::autorun::is_auto_run_config(&lower) {
+        NotAnalysedKind::AutoRunConfig
     } else if lower.contains(".github/workflows/")
         || lower.contains(".circleci/")
         || matches!(name, ".gitlab-ci.yml" | "azure-pipelines.yml" | "jenkinsfile")
@@ -80,8 +60,6 @@ pub fn classify_path(path: &str) -> NotAnalysedKind {
         NotAnalysedKind::Container
     } else if matches!(ext, "sh" | "bash" | "zsh" | "fish" | "ps1" | "bat" | "cmd") {
         NotAnalysedKind::ShellScript
-    } else if AUTO_RUN_FILE_NAMES.contains(&name) || AUTO_RUN_EXTENSIONS.contains(&ext) {
-        NotAnalysedKind::AutoRunConfig
     } else if matches!(
         ext,
         "node" | "exe" | "dll" | "so" | "dylib" | "wasm" | "a" | "o" | "bin" | "pyd"

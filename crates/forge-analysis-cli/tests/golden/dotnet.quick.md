@@ -156,7 +156,7 @@ Files and folders that were not read as code, by kind, and anything skipped by a
 
 ### Build and tool files that run by themselves (6)
 
-MSBuild `Directory.Build.*`, project files, `global.json`, `nuget.config` and the like. The tooling reads and acts on them without being asked, and they can run commands or change where packages come from. Not read yet. MSBuild also reads `Directory.Build.props` and `.targets` from parent folders, which are outside what was analysed.
+Files a tool, editor or package manager reads and acts on without being asked: build scripts, MSBuild `Directory.Build.*`, editor tasks, AI-agent hooks, git hooks, `setup.py`, `build.rs` and the like. They can run commands or change where packages come from. Not read yet, and most are harmless: this says they could act, not that they do. MSBuild also reads `Directory.Build.props` and `.targets` from parent folders, which are outside what was analysed.
 
 - `Directory.Build.props` (96 bytes)
 - `Directory.Build.targets` (150 bytes)

@@ -96,7 +96,7 @@ fn json_strings(v: &serde_json::Value, key: &str, found: &mut Vec<(String, Strin
 
 #[test]
 fn there_is_a_fixture_for_each_kind_of_project() {
-    assert_eq!(names(), vec!["clean", "cross-file", "dotnet", "hostile", "install-script", "packages"]);
+    assert_eq!(names(), vec!["autorun", "clean", "cross-file", "dotnet", "hostile", "install-script", "packages"]);
 }
 
 #[test]
@@ -306,6 +306,49 @@ fn quick_scan_of_the_dotnet_fixture_flags_the_files_msbuild_runs_by_itself() {
     golden("dotnet.quick", "json", &(to_json(&quick) + "
 "));
     golden("dotnet.quick", "md", &to_markdown(&quick));
+}
+
+#[test]
+fn quick_scan_flags_what_tools_run_by_themselves_in_every_ecosystem_and_reads_tool_config_as_code() {
+    let quick = analyze_folder_scoped(&fixtures_dir().join("autorun"), &Options::default(), Scope::Quick).unwrap();
+    let full = report("autorun");
+    for r in [&quick, &full] {
+        let group = r.not_analysed.groups.iter().find(|g| g.kind == NotAnalysedKind::AutoRunConfig).unwrap();
+        let mut paths: Vec<&str> = group.items.iter().map(|i| i.path.text()).collect();
+        paths.sort();
+        assert_eq!(
+            paths,
+            vec![
+                ".cargo/config.toml",
+                ".claude/settings.json",
+                ".devcontainer/devcontainer.json",
+                ".envrc",
+                ".husky/pre-commit",
+                ".vscode/tasks.json",
+                "Cargo.toml",
+                "Gemfile",
+                "Makefile",
+                "build.rs",
+                "composer.json",
+                "pom.xml",
+                "setup.py",
+                "venv/pyvenv.cfg",
+            ]
+        );
+        // Not on the list: notes and `tsconfig.json` stay ordinary other files.
+        let other = r.not_analysed.groups.iter().find(|g| g.kind == NotAnalysedKind::OtherFile).unwrap();
+        let mut o: Vec<&str> = other.items.iter().map(|i| i.path.text()).collect();
+        o.sort();
+        assert_eq!(o, vec!["docs/notes.md", "tsconfig.json"]);
+    }
+    // Quick reads the tool config as code, so what it does is a fact; `src/app.js` is counted instead.
+    assert_eq!(quick.overview.files_analysed, 1);
+    assert!(quick.effects.iter().any(|g| g.effect == Effect::ProcessSpawn));
+    assert!(quick.not_analysed.groups.iter().any(|g| g.kind == NotAnalysedKind::OutOfScope));
+    assert_eq!(full.overview.files_analysed, 2);
+    golden("autorun.quick", "json", &(to_json(&quick) + "
+"));
+    golden("autorun.quick", "md", &to_markdown(&quick));
 }
 
 #[test]
