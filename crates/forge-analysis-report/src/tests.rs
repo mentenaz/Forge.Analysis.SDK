@@ -353,6 +353,10 @@ fn classify_path_knows_the_usual_suspects() {
         ("build/addon.node", NativeBinary),
         ("bin/tool.exe", NativeBinary),
         ("pkg/core.wasm", NativeBinary),
+        ("dist/app.tgz", Archive),
+        ("lib/Thing.JAR", Archive),
+        ("pkg/a.whl", Archive),
+        ("ext/x.vsix", Archive),
         ("README.md", OtherFile),
         ("img/logo.png", OtherFile),
     ] {

@@ -341,6 +341,13 @@ fn quick_scan_flags_what_tools_run_by_themselves_in_every_ecosystem_and_reads_to
         o.sort();
         assert_eq!(o, vec!["docs/notes.md", "tsconfig.json"]);
     }
+    // Archives are listed in their own group, in either scope.
+    for r in [&quick, &full] {
+        let group = r.not_analysed.groups.iter().find(|g| g.kind == NotAnalysedKind::Archive).unwrap();
+        let mut paths: Vec<&str> = group.items.iter().map(|i| i.path.text()).collect();
+        paths.sort();
+        assert_eq!(paths, vec!["dist/release.tgz", "tools/helper.jar"]);
+    }
     // Quick reads the tool config as code, so what it does is a fact; `src/app.js` is counted instead.
     assert_eq!(quick.overview.files_analysed, 1);
     assert!(quick.effects.iter().any(|g| g.effect == Effect::ProcessSpawn));

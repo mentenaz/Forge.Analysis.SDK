@@ -11,7 +11,7 @@ use forge_analysis_schema::{Effect, Lane, ScriptTrigger, UnresolvedReason};
 use serde::Serialize;
 
 /// A brief never lists more reasons than this.
-pub const MAX_REASONS: usize = 7;
+pub const MAX_REASONS: usize = 8;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "snake_case")]
@@ -35,6 +35,8 @@ pub enum ReasonKind {
     InstallTimeEffect,
     /// Files the tooling reads and acts on by itself (build and tool settings) that were not read.
     AutoRunNotAnalysed,
+    /// Archives and packages whose contents were not opened, so anything inside is unseen.
+    ArchiveNotOpened,
     /// The run was stopped (time budget or cancel) before every file was read.
     RunStopped,
     /// A quick scan: code that a full run would read was left unread on purpose.
@@ -123,6 +125,13 @@ pub fn brief(report: &Report) -> Brief {
         .filter(|g| matches!(g.kind, NotAnalysedKind::AutoRunConfig | NotAnalysedKind::NpmConfig))
         .map(|g| g.items.len())
         .sum();
+    let archives: usize = report
+        .not_analysed
+        .groups
+        .iter()
+        .filter(|g| g.kind == NotAnalysedKind::Archive)
+        .map(|g| g.items.len())
+        .sum();
     let out_of_scope: usize = report
         .not_analysed
         .groups
@@ -151,6 +160,7 @@ pub fn brief(report: &Report) -> Brief {
         (ReasonKind::InstallScript, install_scripts),
         (ReasonKind::InstallTimeEffect, install_effects),
         (ReasonKind::AutoRunNotAnalysed, auto_run),
+        (ReasonKind::ArchiveNotOpened, archives),
         (ReasonKind::RunStopped, stopped),
         (ReasonKind::QuickScope, out_of_scope),
         (ReasonKind::NotFullyRead, skipped.saturating_add(unparsed)),
@@ -163,7 +173,7 @@ pub fn brief(report: &Report) -> Brief {
 
     // A quick scan never says it is complete: it left code unread on purpose, and only the files
     // that run by themselves were looked at.
-    let complete = !quick && stopped == 0 && skipped == 0 && unparsed == 0 && auto_run == 0;
+    let complete = !quick && stopped == 0 && skipped == 0 && unparsed == 0 && auto_run == 0 && archives == 0;
     let review = flows > 0 || install_scripts > 0 || install_effects > 0;
     let verdict = if review {
         Verdict::Review
@@ -387,9 +397,34 @@ mod tests {
     }
 
     #[test]
+    fn git_hooks_and_config_are_seen_and_make_the_brief_incomplete() {
+        let files = vec![
+            file("index.js", "let a;\n"),
+            file(".git/config", "[core]\n\tfsmonitor = x\n"),
+            file(".git/hooks/post-checkout", "#!/bin/sh\n"),
+            file(".git/hooks/post-checkout.sample", "#!/bin/sh\n"),
+            file(".git/HEAD", "ref: x\n"),
+        ];
+        let b = brief(&analyze_files(files, &RunOptions::default()).unwrap());
+        assert_eq!(b.verdict, Verdict::Incomplete);
+        assert_eq!(b.reasons.iter().find(|r| r.kind == ReasonKind::AutoRunNotAnalysed).unwrap().count, 2);
+    }
+
+    #[test]
+    fn an_archive_is_counted_and_makes_the_brief_incomplete_in_either_scope() {
+        for opts in [RunOptions::default(), quick()] {
+            let files = vec![file("index.js", "let a;\n"), file("dist/app.tgz", "x"), file("lib/x.JAR", "y")];
+            let b = brief(&analyze_files(files, &opts).unwrap());
+            assert_eq!(b.verdict, Verdict::Incomplete);
+            assert!(!b.complete);
+            assert_eq!(b.reasons.iter().find(|r| r.kind == ReasonKind::ArchiveNotOpened).unwrap().count, 2);
+        }
+    }
+
+    #[test]
     fn every_reason_kind_fits_in_a_brief() {
         // The list in `brief` has one entry per kind; a cap below that would drop reasons silently.
-        assert!(MAX_REASONS >= 7);
+        assert!(MAX_REASONS >= 8);
     }
 
     #[test]

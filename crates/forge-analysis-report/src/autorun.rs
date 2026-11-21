@@ -14,8 +14,8 @@
 //! say that a file *can* act by itself, never that it does: most of these files are harmless.
 //! Names match without regard to case, as they do on Windows and macOS.
 //!
-//! Known gaps: `.git/hooks` and `.git/config` are listed below but intake skips `.git`, so they are
-//! never seen. Config *inside* a file (a `plugins` entry in `tsconfig.json`, a `[scripts]` table in
+//! Intake reads `.git/config` and the active files in `.git/hooks`, so those entries are live. The
+//! rest of a `.git` folder is not read. Config *inside* a file (a `plugins` entry in `tsconfig.json`, a `[scripts]` table in
 //! a manifest) cannot be told apart from harmless content until those files are parsed.
 
 #[derive(Clone, Copy)]
@@ -81,6 +81,7 @@ const CONFIG: &[Pat] = &[
     Dir(".git-hooks"),
     Dir(".git/hooks"),
     Suffix(".git/config"),
+    Name(".git"), // as a file it points git at another folder (a worktree or submodule)
     Name("lefthook.yml"),
     Name("lefthook.yaml"),
     Name(".lefthook.yml"),

@@ -340,6 +340,9 @@ pub enum NotAnalysedKind {
     /// `Directory.Build.targets`, a project file, `global.json` or `nuget.config`. Not parsed yet.
     AutoRunConfig,
     ShellScript,
+    /// An archive or package file (`.zip`, `.tgz`, `.jar`, `.whl`, `.vsix` and the like). Its contents
+    /// are not opened, so anything inside is unseen.
+    Archive,
     Container,
     CiWorkflow,
     NativeBinary,

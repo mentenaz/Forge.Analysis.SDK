@@ -1,9 +1,9 @@
 {
   "header": {
-    "schema": 3,
+    "schema": 4,
     "engine": "forge-analysis 0.0.1",
     "catalog_sha256": "661ff253d0997c290715b16d7de935041072e290e1efd30a82fa0c75eed0949b",
-    "snapshot_sha256": "67ad2eaa6f3a51928e30f0e85cf3d8703638ca4c4401c729fc715f724c742e3f",
+    "snapshot_sha256": "a603d8f594de33ef4d447e3b18f1237ce6f84c3fbcb13fce231779890a537b90",
     "mode": "static_only",
     "scope": "full"
   },
@@ -85,7 +85,7 @@
       "number": 10,
       "title": "Not analysed",
       "explanation": "Files and folders that were not read as code, by kind, and anything skipped by a limit.",
-      "count": 16,
+      "count": 18,
       "anchor": "not-analysed"
     },
     {
@@ -99,7 +99,7 @@
   ],
   "overview": {
     "files_analysed": 2,
-    "files_not_analysed": 16,
+    "files_not_analysed": 18,
     "functions": 2,
     "facts": 4,
     "links_made": 0,
@@ -124,7 +124,7 @@
       {
         "section": "not_analysed",
         "label": "files or folders not read as code",
-        "count": 16
+        "count": 18
       },
       {
         "section": "dependencies",
@@ -423,6 +423,31 @@
             },
             "size": 19,
             "kind": "auto_run_config"
+          }
+        ]
+      },
+      {
+        "kind": "archive",
+        "items": [
+          {
+            "path": {
+              "text": "dist/release.tgz",
+              "truncated": false,
+              "original_len": 16,
+              "sha256": "15b8f61fbc0bedd8d1debbad102a792428eee4689231306509357f978ea0320e"
+            },
+            "size": 8,
+            "kind": "archive"
+          },
+          {
+            "path": {
+              "text": "tools/helper.jar",
+              "truncated": false,
+              "original_len": 16,
+              "sha256": "88a40005ab956bda030d2583aeb58f5929d4cd3cda75a1503eaf3729ecaafd38"
+            },
+            "size": 8,
+            "kind": "archive"
           }
         ]
       },

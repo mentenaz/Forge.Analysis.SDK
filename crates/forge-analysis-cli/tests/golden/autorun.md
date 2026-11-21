@@ -1,10 +1,10 @@
 # Forge analysis report
 
 - Engine: `forge-analysis 0.0.1`
-- Schema: 3
+- Schema: 4
 - Mode: static only (no code was run)
 - Scope: full (every file we can read as code)
-- Snapshot: `67ad2eaa6f3a51928e30f0e85cf3d8703638ca4c4401c729fc715f724c742e3f`
+- Snapshot: `a603d8f594de33ef4d447e3b18f1237ce6f84c3fbcb13fce231779890a537b90`
 - Catalog: `661ff253d0997c290715b16d7de935041072e290e1efd30a82fa0c75eed0949b`
 
 <a id="index"></a>
@@ -20,7 +20,7 @@
 7. [Dependencies](#dependencies) (0) — Every declared dependency with where its code comes from: registry, git, URL, local path or bundled.
 8. [Unresolved](#unresolved) (0) — Places where static analysis cannot say what happens (computed code, dynamic loads, shell commands). Each one hides behaviour.
 9. [Unlinked imports](#unlinked-imports) (0) — Imports we could not follow to their source: packages, missing files and names that are not exported.
-10. [Not analysed](#not-analysed) (16) — Files and folders that were not read as code, by kind, and anything skipped by a limit.
+10. [Not analysed](#not-analysed) (18) — Files and folders that were not read as code, by kind, and anything skipped by a limit.
 11. [Function index](#function-index) (2) — Every function with its lanes, effects, callers and the facts inside it.
 
 <a id="overview"></a>
@@ -36,12 +36,12 @@ What was analysed, whether the picture is complete, and one count for everything
 | places where static analysis cannot say what happens | 0 | [Unresolved](#unresolved) |
 | imports not followed to their source | 0 | [Unlinked imports](#unlinked-imports) |
 | declared entry points that match no analysed file | 0 | [Entry points](#entry-points) |
-| files or folders not read as code | 16 | [Not analysed](#not-analysed) |
+| files or folders not read as code | 18 | [Not analysed](#not-analysed) |
 | dependencies whose own code and install scripts were not analysed | 0 | [Dependencies](#dependencies) |
 | calls whose target we could not see (no function followed, no fact) | 0 | [Function index](#function-index) |
 
 - Files analysed: 2
-- Files not analysed: 16
+- Files not analysed: 18
 - Functions: 2
 - Cross-file links made: 0
 - Unresolved facts not listed as open because their call was followed to its source: 0
@@ -180,6 +180,13 @@ Files a tool, editor or package manager reads and acts on without being asked: b
 - `pom.xml` (11 bytes)
 - `setup.py` (27 bytes)
 - `venv/pyvenv.cfg` (19 bytes)
+
+### Archives and packages (not opened) (2)
+
+`.zip`, `.tgz`, `.jar`, `.whl`, `.vsix` and the like. Their contents are not opened, so anything inside them, including code that runs when they are unpacked or loaded, is unseen.
+
+- `dist/release.tgz` (8 bytes)
+- `tools/helper.jar` (8 bytes)
 
 ### Other files (2)
 

@@ -1,7 +1,7 @@
 # Forge analysis report
 
 - Engine: `forge-analysis 0.0.1`
-- Schema: 3
+- Schema: 4
 - Mode: static only (no code was run)
 - Scope: quick (only files that run by themselves; everything else is counted as not examined)
 - Snapshot: `8c9fb747ba5b2ffacf0abf5328b0a6b8728dca7a0d4c09bb9d5d29d48a5f62c7`

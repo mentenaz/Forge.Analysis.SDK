@@ -1,6 +1,11 @@
 //! Intake: turns a folder into a hashed, read-only snapshot.
 //! Read-only by construction: nothing here opens a file for writing.
 //! Symlinks and junctions are never followed. Everything skipped is recorded with a reason.
+//!
+//! One exception to "ignored folders are not entered": inside a `.git` folder, `config` and the
+//! active files in `hooks` are read, because git runs them by itself (hooks, `core.fsmonitor`,
+//! `core.hooksPath`, aliases and filters in the config). The `.git` folder is still recorded once
+//! as ignored, so the rest of it stays counted as not read. The inert `*.sample` hooks are not read.
 
 use forge_analysis_schema::{Hash, Quoted, RelPath};
 use std::fs;
@@ -127,6 +132,19 @@ impl std::fmt::Display for IntakeError {
 
 impl std::error::Error for IntakeError {}
 
+/// Which part of a folder the walk is in. Only `Normal` reads everything; the other two read just
+/// the files in a `.git` folder that git acts on by itself.
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum Walk {
+    Normal,
+    GitDir,
+    GitHooks,
+}
+
+fn is_sample(name: &str) -> bool {
+    name.to_ascii_lowercase().ends_with(".sample")
+}
+
 pub fn snapshot(root: &Path, opts: &Options) -> Result<Snapshot, IntakeError> {
     let root_canon = fs::canonicalize(root).map_err(|e| IntakeError::Root(e.to_string()))?;
     if !root_canon.is_dir() {
@@ -137,9 +155,9 @@ pub fn snapshot(root: &Path, opts: &Options) -> Result<Snapshot, IntakeError> {
     let mut skipped: Vec<(String, Skipped)> = Vec::new();
     let mut dropped = 0u64;
     let mut total = 0u64;
-    let mut stack: Vec<(PathBuf, String, usize)> = vec![(root_canon.clone(), String::new(), 0)];
+    let mut stack: Vec<(PathBuf, String, usize, Walk)> = vec![(root_canon.clone(), String::new(), 0, Walk::Normal)];
 
-    while let Some((dir, rel_dir, depth)) = stack.pop() {
+    while let Some((dir, rel_dir, depth, walk)) = stack.pop() {
         let reader = match fs::read_dir(&dir) {
             Ok(r) => r,
             Err(_) => {
@@ -174,6 +192,21 @@ pub fn snapshot(root: &Path, opts: &Options) -> Result<Snapshot, IntakeError> {
                 }
             };
 
+            // Inside `.git` only the files git acts on are looked at. A link with one of those
+            // names still goes on to be recorded, never followed. Everything else is covered by
+            // the one ignored-folder record for `.git`.
+            let wanted = match walk {
+                Walk::Normal => true,
+                Walk::GitDir => {
+                    (name.eq_ignore_ascii_case("config") && (ft.is_file() || ft.is_symlink()))
+                        || (name.eq_ignore_ascii_case("hooks") && (ft.is_dir() || ft.is_symlink()))
+                }
+                Walk::GitHooks => (ft.is_file() || ft.is_symlink()) && !is_sample(&name),
+            };
+            if !wanted {
+                continue;
+            }
+
             // Never follow links. On Windows this also covers junctions.
             if ft.is_symlink() {
                 let target = fs::read_link(&path)
@@ -193,6 +226,9 @@ pub fn snapshot(root: &Path, opts: &Options) -> Result<Snapshot, IntakeError> {
             if ft.is_dir() {
                 if opts.ignored_dirs.iter().any(|d| d == &name) {
                     record(&mut skipped, &mut dropped, &rel, SkipReason::IgnoredDir);
+                    if name == ".git" && walk == Walk::Normal && depth < opts.max_depth && inside(&root_canon, &path) {
+                        stack.push((path, rel, depth + 1, Walk::GitDir));
+                    }
                     continue;
                 }
                 if depth + 1 > opts.max_depth {
@@ -203,7 +239,8 @@ pub fn snapshot(root: &Path, opts: &Options) -> Result<Snapshot, IntakeError> {
                     record(&mut skipped, &mut dropped, &rel, SkipReason::OutsideRoot);
                     continue;
                 }
-                stack.push((path, rel, depth + 1));
+                let next = if walk == Walk::GitDir { Walk::GitHooks } else { Walk::Normal };
+                stack.push((path, rel, depth + 1, next));
                 continue;
             }
 
@@ -346,7 +383,7 @@ pub fn snapshot_from_memory(input: Vec<MemFile>, opts: &Options) -> Snapshot {
             record(&mut skipped, &mut dropped, &rel, SkipReason::ReservedName);
             continue;
         }
-        if segments[..segments.len() - 1].iter().any(|d| opts.ignored_dirs.iter().any(|i| i == d)) {
+        if ignored_in_memory(&segments[..segments.len() - 1], &name, opts) {
             record(&mut skipped, &mut dropped, &rel, SkipReason::IgnoredDir);
             continue;
         }
@@ -397,6 +434,24 @@ pub fn snapshot_from_memory(input: Vec<MemFile>, opts: &Options) -> Snapshot {
         total_bytes: total,
         sha256,
     }
+}
+
+/// Is a path inside an ignored folder, with the same exception the disk walk makes: `.git/config`
+/// and the active files in `.git/hooks` are read.
+fn ignored_in_memory(parents: &[&str], name: &str, opts: &Options) -> bool {
+    let ignored = |d: &str| opts.ignored_dirs.iter().any(|i| i == d);
+    let Some(i) = parents.iter().position(|d| ignored(d)) else {
+        return false;
+    };
+    let rest = &parents[i..];
+    let allowed = parents[i] == ".git"
+        && match rest {
+            [_] => name.eq_ignore_ascii_case("config"),
+            [_, h] => h.eq_ignore_ascii_case("hooks") && !is_sample(name),
+            _ => false,
+        }
+        && rest[1..].iter().all(|d| !ignored(d));
+    !allowed
 }
 
 /// The snapshot hash: every included file (path, content hash, size), every skipped item (path,

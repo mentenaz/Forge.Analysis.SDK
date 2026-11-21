@@ -116,6 +116,24 @@ fn quick_says_so_counts_what_it_skipped_and_is_never_complete() {
 }
 
 #[test]
+fn git_hooks_in_the_folder_are_reported_through_the_command_line() {
+    let t = Temp::new("git");
+    let proj = t.0.join("p");
+    std::fs::create_dir_all(proj.join(".git").join("hooks")).unwrap();
+    std::fs::write(proj.join("package.json"), "{}").unwrap();
+    std::fs::write(proj.join(".git").join("config"), "[core]\n\tfsmonitor = x\n").unwrap();
+    std::fs::write(proj.join(".git").join("hooks").join("pre-commit"), "#!/bin/sh\n").unwrap();
+    let dest = t.0.join("o");
+    let (code, _, err) = go(&[proj.to_str().unwrap(), "--out", dest.to_str().unwrap()]);
+    assert_eq!(code, EXIT_OK, "{err}");
+    let md = std::fs::read_to_string(dest.join("report.md")).unwrap();
+    assert!(md.contains("Build and tool files that run by themselves"), "{md}");
+    assert!(md.contains(".git/hooks/pre-commit") && md.contains(".git/config"), "{md}");
+    // The rest of `.git` is still counted as skipped.
+    assert!(md.contains("Skipped: ignored folders"), "{md}");
+}
+
+#[test]
 fn with_out_it_writes_both_reports_and_creates_the_folder() {
     let t = Temp::new("out");
     let dest = t.0.join("deep").join("er");
@@ -124,7 +142,7 @@ fn with_out_it_writes_both_reports_and_creates_the_folder() {
     assert!(out.contains("Report written to"));
     let json = std::fs::read_to_string(dest.join("report.json")).unwrap();
     let v: serde_json::Value = serde_json::from_str(&json).unwrap();
-    assert_eq!(v["header"]["schema"], 3);
+    assert_eq!(v["header"]["schema"], 4);
     assert_eq!(v["header"]["mode"], "static_only");
     assert_eq!(v["header"]["scope"], "full");
     assert!(v["header"]["engine"].as_str().unwrap().starts_with("forge-analysis "));

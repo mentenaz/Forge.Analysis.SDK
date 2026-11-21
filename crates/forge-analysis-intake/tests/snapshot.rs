@@ -96,7 +96,7 @@ fn changing_a_file_changes_the_hash() {
 fn node_modules_and_git_are_skipped_and_recorded() {
     let t = Tmp::new("ignored");
     t.write("node_modules/x.js", b"1");
-    t.write(".git/config", b"1");
+    t.write(".git/HEAD", b"1"); // not one of the two files intake reads inside .git
     t.write("src/a.js", b"1");
     let snap = snapshot(t.path(), &Options::default()).unwrap();
     assert_eq!(snap.files().len(), 1);
@@ -267,4 +267,91 @@ fn memory_and_disk_give_the_same_snapshot() {
     let disk = snapshot(t.path(), &Options::default()).unwrap();
     let from_mem = snapshot_from_memory(mem(plain), &Options::default());
     assert_eq!(disk.sha256(), from_mem.sha256());
+}
+
+fn git_project(t: &Tmp) {
+    t.write("package.json", b"{}");
+    t.write(".git/config", b"[core]\n\tfsmonitor = x\n");
+    t.write(".git/hooks/pre-commit", b"#!/bin/sh\n");
+    t.write(".git/hooks/pre-commit.sample", b"#!/bin/sh\n");
+    t.write(".git/HEAD", b"ref: refs/heads/main\n");
+    t.write(".git/objects/aa/bb", b"x");
+    t.write("sub/.git/config", b"[core]\n");
+}
+
+#[test]
+fn git_config_and_active_hooks_are_read_and_the_rest_of_git_is_still_skipped() {
+    let t = Tmp::new("git");
+    git_project(&t);
+    let snap = snapshot(t.path(), &Options::default()).unwrap();
+    assert_eq!(paths(&snap), vec![".git/config", ".git/hooks/pre-commit", "package.json", "sub/.git/config"]);
+    // Each `.git` folder is still recorded once as ignored, so the rest of it is counted.
+    let ignored: Vec<_> = snap
+        .skipped()
+        .iter()
+        .filter(|s| matches!(s.reason, SkipReason::IgnoredDir))
+        .map(|s| s.path.text().to_string())
+        .collect();
+    assert_eq!(ignored, vec![".git", "sub/.git"]);
+    // Changing a hook changes the snapshot hash.
+    let before = snap.sha256().clone();
+    t.write(".git/hooks/pre-commit", b"#!/bin/sh\nid\n");
+    assert_ne!(snapshot(t.path(), &Options::default()).unwrap().sha256(), &before);
+    // Changing something intake does not read does not.
+    let before = snapshot(t.path(), &Options::default()).unwrap().sha256().clone();
+    t.write(".git/HEAD", b"ref: refs/heads/other\n");
+    assert_eq!(snapshot(t.path(), &Options::default()).unwrap().sha256(), &before);
+}
+
+#[test]
+fn memory_input_makes_the_same_git_exception() {
+    let t = Tmp::new("gitmem");
+    git_project(&t);
+    let disk = snapshot(t.path(), &Options::default()).unwrap();
+    let from_mem = snapshot_from_memory(
+        mem(&[
+            ("package.json", b"{}"),
+            (".git/config", b"[core]\n\tfsmonitor = x\n"),
+            (".git/hooks/pre-commit", b"#!/bin/sh\n"),
+            (".git/hooks/pre-commit.sample", b"#!/bin/sh\n"),
+            (".git/HEAD", b"ref: refs/heads/main\n"),
+            (".git/objects/aa/bb", b"x"),
+            ("sub/.git/config", b"[core]\n"),
+            // Not let through: a folder deeper in `.git`, and `.git` inside another ignored folder.
+            (".git/hooks/nested/x", b"x"),
+            ("node_modules/p/.git/config", b"x"),
+        ]),
+        &Options::default(),
+    );
+    assert_eq!(paths(&disk), paths(&from_mem));
+}
+
+#[test]
+fn a_huge_git_config_is_recorded_as_too_large_not_hidden() {
+    let t = Tmp::new("gitbig");
+    t.write(".git/config", &vec![b'x'; 200]);
+    let opts = Options { max_file_bytes: 100, ..Options::default() };
+    let snap = snapshot(t.path(), &opts).unwrap();
+    assert!(paths(&snap).is_empty());
+    assert!(snap
+        .skipped()
+        .iter()
+        .any(|s| matches!(s.reason, SkipReason::TooLarge { size: 200 }) && s.path.text() == ".git/config"));
+}
+
+#[test]
+fn a_linked_hooks_folder_is_recorded_and_never_followed() {
+    let t = Tmp::new("gitlink");
+    let outside = Tmp::new("gitlink-outside");
+    outside.write("pre-commit", b"#!/bin/sh\n");
+    t.write(".git/config", b"[core]\n");
+    if !try_symlink_dir(outside.path(), &t.path().join(".git").join("hooks")) {
+        return; // links need privileges on some machines
+    }
+    let snap = snapshot(t.path(), &Options::default()).unwrap();
+    assert_eq!(paths(&snap), vec![".git/config"]);
+    assert!(snap
+        .skipped()
+        .iter()
+        .any(|s| matches!(s.reason, SkipReason::Symlink { .. }) && s.path.text() == ".git/hooks"));
 }

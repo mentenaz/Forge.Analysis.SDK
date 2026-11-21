@@ -56,10 +56,10 @@ limits, not by the flag. Files not reached are reported as `NotAnalysedKind::Sto
   per call and may need an index later.
 - A quadratic `Vec::contains` on nested function chains (`a=>a=>...`) was fixed in step 20. The slow test
   `long_chains_without_brackets` exercises 2 MiB chains.
-- `REPORT_SCHEMA` is 3. **Bump rule** (also in the doc comment in `crates/forge-analysis/src/run.rs`): bump it when
+- `REPORT_SCHEMA` is 4. **Bump rule** (also in the doc comment in `crates/forge-analysis/src/run.rs`): bump it when
   the JSON changes in a way a reader could meet (a new or renamed field, a new value of a written enum, a changed
   meaning; removals always). A change that only alters what the engine finds does not bump it. Goldens change with
-  every bump and the commit says so. 1: first shape. 2: header `scope`, kind `out_of_scope`. 3: kind `auto_run_config`.
+  every bump and the commit says so. 1: first shape. 2: header `scope`, kind `out_of_scope`. 3: kind `auto_run_config`. 4: kind `archive`.
 - **Quick scan** (`RunOptions.scope = Scope::Quick`, CLI `--quick`/`-q`): analyses every `package.json` (any depth), the
   files its install hooks run, and what those load (followed with `FileIndex`, same resolver as the linker). Other code
   is `NotAnalysedKind::OutOfScope`; non-code keeps its usual kind. Report and brief are always incomplete under quick
@@ -117,9 +117,14 @@ Waiting on the owner: sign off Milestone 1, and the full (slow) test run if he w
    The list comes from tool documentation and known abuse and is **not yet checked against the canary test**; the
    entries say a file *can* act, not that it does. Project files (`.csproj` etc.) and several others match by
    extension or folder, so "fixed list, not a pattern" is relaxed for them.
-   Known gaps: `.git/hooks` and `.git/config` are on the list but intake skips `.git`; archives (`.tgz`, `.zip`, `.jar`)
-   are not opened; content inside a file (a `plugins` entry in `tsconfig.json`, `scripts` in `composer.json`) is not
-   parsed. Slice B (parse MSBuild XML and the other manifests into facts, so an `<Exec>` target gives `review`) is not started.
+   Intake makes one exception to "ignored folders are not entered": inside a `.git` folder (any depth) it reads
+   `config` and the active files in `hooks` (not `*.sample`), because git runs them by itself. `.git` is still
+   recorded once as ignored, so the rest of it stays counted; links are never followed; the in-memory path makes the
+   same exception. Archives (`.zip`, `.tgz`, `.jar`, `.whl`, `.vsix` and more) get `NotAnalysedKind::Archive` and the
+   brief reason `ArchiveNotOpened` (brief incomplete); they are **listed, not opened**. Known gaps: archives are not
+   opened (needs size, zip-bomb and path-traversal limits); content inside a file (a `plugins` entry in
+   `tsconfig.json`, `scripts` in `composer.json`, the keys in `.git/config`) is not parsed; `.git/modules` and
+   `.git/info` are not read. Slice B (parse MSBuild XML and the other manifests into facts, so an `<Exec>` target gives `review`) is not started.
    Still to do per ecosystem: confirm the list against the canary test. Built from what Forge's panels really run and what the canary test showed:
    - .NET: `Directory.Build.props` and `.targets` (their targets run during a plain `dotnet list package`
      scan, high priority), `global.json`, `nuget.config`.

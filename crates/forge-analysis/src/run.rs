@@ -24,8 +24,8 @@ use std::time::{Duration, Instant};
 /// files change with every bump, and the commit says so.
 ///
 /// 1: first shape. 2: header gains `scope`; not-analysed kinds gain `out_of_scope`.
-/// 3: not-analysed kinds gain `auto_run_config`.
-pub const REPORT_SCHEMA: u32 = 3;
+/// 3: not-analysed kinds gain `auto_run_config`. 4: not-analysed kinds gain `archive`.
+pub const REPORT_SCHEMA: u32 = 4;
 
 /// Lets another thread stop a run. The run looks at it between files, so one very large file is
 /// bounded by the size limits, not by this flag.

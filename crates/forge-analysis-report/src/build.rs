@@ -60,6 +60,12 @@ pub fn classify_path(path: &str) -> NotAnalysedKind {
         NotAnalysedKind::Container
     } else if matches!(ext, "sh" | "bash" | "zsh" | "fish" | "ps1" | "bat" | "cmd") {
         NotAnalysedKind::ShellScript
+    } else if matches!(ext, "zip" | "tar" | "tgz" | "gz" | "bz2" | "xz" | "zst" | "lz" | "lzma" | "7z" | "rar" | "cab"
+        | "jar" | "war" | "ear" | "whl" | "egg" | "nupkg" | "snupkg" | "gem" | "phar" | "apk" | "aab" | "ipa" | "deb"
+        | "rpm" | "dmg" | "iso" | "pkg" | "msi" | "msix" | "appx" | "vsix" | "crx" | "xpi" | "asar" | "conda" | "tbz"
+        | "tbz2" | "txz")
+    {
+        NotAnalysedKind::Archive
     } else if matches!(
         ext,
         "node" | "exe" | "dll" | "so" | "dylib" | "wasm" | "a" | "o" | "bin" | "pyd"
