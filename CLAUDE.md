@@ -87,8 +87,9 @@ needed `--ignore-rust-version`.
 
 Done: steps 1 to 21, up to the library crate with in-memory input, time budget, cancel and `brief`
 (step 21). Step 20 fixed the call-graph slowdown. Step 19 added tainted-callee flows.
-Waiting on the owner: confirm steps 20 and 21 on his machine, delete the stray
-`crates/forge-analysis-core/src/imports/visitor.rs.bak` (it is tracked in git, so use `git rm`), commit steps 16 to 21, and sign off Milestone 1.
+Steps 16 to 21 are committed and pushed (private repo `mentenaz/Forge.Analysis.SDK`, branch `master`).
+The stray `visitor.rs.bak` is gone. The fast workspace test passes on the owner's machine.
+Waiting on the owner: sign off Milestone 1, and the full (slow) test run if he wants it confirmed.
 
 ## Next steps, in the agreed order
 
