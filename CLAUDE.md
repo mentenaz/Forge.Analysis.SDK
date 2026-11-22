@@ -146,8 +146,21 @@ Waiting on the owner: sign off Milestone 1, and the full (slow) test run if he w
    file tasks (Copy, Delete, WriteLinesToFile) and `PackageReference`s are NOT reported. `nuget.config`: any source
    other than nuget.org, `repositoryPath`/`globalPackagesFolder`, and the presence (never the values) of
    credentials. No schema change, so `REPORT_SCHEMA` stays 5.
-   Not built yet: piece 4 (TOML: `.cargo/config.toml`, `pyproject.toml`, `.mise.toml`). Following `node x.js` inside
-   these commands, and following imported `.targets` files, is not done.
+   **Piece 4 (TOML) is built too** (`imports/config/tomlcfg.rs`, read with `toml_edit`, pinned `=0.22.27`, no default
+   features; core's only new dependency; `cargo deny` still passes; TOML forbids repeated keys so they are a
+   `ParseFailed`). Reads `.cargo/config.toml` (rustc wrappers, linker/runner, credential helpers, link-arg rustflags,
+   dangerous `[env]` names, aliases as manual; source replacement, registries, http proxy as "not analysed"),
+   `Cargo.toml` (only listed as not analysed: build script, proc-macro, `[patch]`/`[replace]`, git or alternative
+   registry dependencies; a build script is not a command because `build.rs` is already flagged unread),
+   `rust-toolchain(.toml)` (`toolchain.path`; a bare channel name is fine), `pyproject.toml` (`backend-path`, custom
+   hatch hooks, pdm pre/post scripts are `on_build`; a build backend or requirement not on the fixed allowlists
+   `KNOWN_BACKENDS`/`KNOWN_REQUIRES`, direct URL requirements, poetry/uv package indexes and pytest `-p` are "not
+   analysed"), `mise.toml` (hooks, `_.source`, `exec(` templates, plugins, tool postinstall; tasks are manual),
+   `.codex/config.toml` (MCP server commands, `notify`) and `.gemini/settings.json` (MCP servers, like the other
+   agent files). No schema change. Intake keeps the text of all `.toml` files.
+   Not built yet: AI-agent *instruction* files (`CLAUDE.md`, `AGENTS.md`, `.cursorrules`, Copilot instructions) are a
+   prompt-injection vector, not a command, and are not flagged. Following `node x.js` inside these commands, and
+   following imported `.targets` files, is not done. `config.rs` is still large; only the TOML part was split out.
    Still to do per ecosystem: confirm the list against the canary test. Built from what Forge's panels really run and what the canary test showed:
    - .NET: `Directory.Build.props` and `.targets` (their targets run during a plain `dotnet list package`
      scan, high priority), `global.json`, `nuget.config`.

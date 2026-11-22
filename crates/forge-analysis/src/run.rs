@@ -291,6 +291,16 @@ mod tests {
             "build/common.props",
             "build/tasks.targets",
             "nuget.config",
+            ".cargo/config.toml",
+            "a/.cargo/config",
+            "Cargo.toml",
+            "rust-toolchain",
+            "rust-toolchain.toml",
+            "pyproject.toml",
+            "mise.toml",
+            ".mise.local.toml",
+            ".codex/config.toml",
+            ".gemini/settings.json",
         ] {
             assert!(is_config_manifest(p), "{p}");
             assert!(is_auto_run_config(p), "{p} is read but not on the auto-run table");

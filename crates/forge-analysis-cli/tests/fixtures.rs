@@ -322,10 +322,8 @@ fn quick_scan_flags_what_tools_run_by_themselves_in_every_ecosystem_and_reads_to
         assert_eq!(
             paths,
             vec![
-                ".cargo/config.toml",
                 ".envrc",
                 ".husky/pre-commit",
-                "Cargo.toml",
                 "Gemfile",
                 "Makefile",
                 "build.rs",
@@ -351,6 +349,11 @@ fn quick_scan_flags_what_tools_run_by_themselves_in_every_ecosystem_and_reads_to
         assert_eq!(find("initializeCommand").unwrap().trigger, ScriptTrigger::OnOpen); // dev container
         assert_eq!(find("post-install-cmd").unwrap().trigger, ScriptTrigger::Install); // Composer
         assert!(find("x").unwrap().unfollowed.iter().any(|c| c.text() == "sh x.sh"));
+        // The TOML files: a compiler wrapper in Cargo config, a local build backend, a mise hook, a Codex server.
+        assert_eq!(find("build.rustc-wrapper").unwrap().trigger, ScriptTrigger::OnBuild);
+        assert_eq!(find("build-system.backend-path").unwrap().trigger, ScriptTrigger::OnBuild);
+        assert_eq!(find("hooks.enter").unwrap().trigger, ScriptTrigger::OnOpen);
+        assert_eq!(find("mcp_servers.codexhelper").unwrap().trigger, ScriptTrigger::OnOpen);
     }
     // Archives are listed in their own group, in either scope.
     for r in [&quick, &full] {

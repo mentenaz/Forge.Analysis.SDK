@@ -14,6 +14,9 @@ forge-analysis-schema = { path = "crates/forge-analysis-schema" }
 forge-analysis-catalog = { path = "crates/forge-analysis-catalog" }
 serde_json = "1"
 toml = "0.8"
+# Read by forge-analysis-core to parse Cargo, Python, mise and agent config files. Pinned like oxc: it is
+# a parser of hostile input. It brings in no network, process or OS crate (see deny.toml).
+toml_edit = { version = "=0.22.27", default-features = false, features = ["parse"] }
 oxc_allocator = "=0.159.0"
 oxc_parser = "=0.159.0"
 oxc_span = "=0.159.0"

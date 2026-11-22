@@ -181,6 +181,7 @@ dependencies = [
  "oxc_parser",
  "oxc_semantic",
  "oxc_span",
+ "toml_edit",
 ]
 
 [[package]]

@@ -77,6 +77,8 @@ const CONFIG: &[Pat] = &[
     Prefix(".env."), // loaded by many tools; `NODE_OPTIONS` can preload code
     Name("mise.toml"),
     Name(".mise.toml"),
+    Name("mise.local.toml"),
+    Name(".mise.local.toml"),
     Name("flake.nix"),
     Name("shell.nix"),
     // ---- Git hooks and the tools that install them: run on commit, push and checkout.

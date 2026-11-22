@@ -200,6 +200,12 @@ const CFG_CORPUS: &[(&str, &str)] = &[
     ("composer.json", "{\"scripts\":{\"post-install-cmd\":[\"@php a\",\"b\"],\"x\":\"y\"}}"),
     ("global.json", "{ /* c */ \"sdk\": {\"version\": \"8\"}, \"msbuild-sdks\": {\"A.Sdk\": \"1.0.0\"} }"),
     ("Directory.Build.targets", "<Project Sdk=\"X.Sdk/1.0\"><!-- c --><Target Name=\"A\" BeforeTargets=\"Restore\" DependsOnTargets=\"B\"><Exec Command=\"x &amp; y\" /><DownloadFile SourceUrl=\"u\" /></Target><Target Name=\"B\"><CallTarget Targets=\"A\" /></Target><UsingTask TaskName=\"T\" AssemblyFile=\"a.dll\" /><PropertyGroup><PostBuildEvent>p</PostBuildEvent></PropertyGroup><Import Project=\"x.targets\" /></Project>"),
+    (".cargo/config.toml", "[build]\nrustc-wrapper = \"w\"\nrustflags = [\"-C\", \"link-arg=-x\"]\n[target.x86_64-unknown-linux-gnu]\nlinker = \"l\"\nrunner = [\"r\", \"a\"]\n[registry]\ncredential-provider = [\"cargo:token\", \"c\"]\n[env]\nRUSTC_WRAPPER = { value = \"x\", force = true }\n[source.crates-io]\nreplace-with = \"m\"\n[source.m]\nregistry = \"https://m.example\"\n"),
+    ("Cargo.toml", "[package]\nname = \"x\"\nbuild = \"b.rs\"\n[lib]\nproc-macro = true\n[dependencies]\na = { git = \"https://g.example/a\" }\nb = { version = \"1\", registry = \"r\" }\n[patch.crates-io]\na = { path = \"p\" }\n"),
+    ("pyproject.toml", "[build-system]\nrequires = [\"setuptools>=61\", \"x @ https://x.example/x.whl\"]\nbuild-backend = \"e\"\nbackend-path = [\"t\"]\n[tool.hatch.build.hooks.custom]\npath = \"h.py\"\n[tool.pdm.scripts]\npost_install = \"p\"\n[[tool.poetry.source]]\nname = \"c\"\nurl = \"https://c.example\"\n[tool.pytest.ini_options]\naddopts = \"-p x\"\n"),
+    ("mise.toml", "[hooks]\nenter = \"e\"\n[env]\n_.source = \"s\"\nT = \"{{ exec(command='c') }}\"\n[tasks]\nb = \"make\"\nt = { run = [\"c\", \"t\"] }\n[plugins]\np = \"https://p.example\"\n[tools]\nn = { version = \"1\", postinstall = \"i\" }\n"),
+    (".codex/config.toml", "notify = [\"n\"]\n[mcp_servers.a]\ncommand = \"c\"\nargs = [\"x\"]\n[mcp_servers.b]\nurl = \"https://b.example\"\n"),
+    ("rust-toolchain.toml", "[toolchain]\nchannel = \"nightly\"\npath = \"p\"\n"),
     ("nuget.config", "<configuration><packageSources><add key=\"a\" value=\"http://x\" /></packageSources><packageSourceCredentials><a><add key=\"k\" value=\"v\" /></a></packageSourceCredentials></configuration>"),
     (".git/config", "[core]\n\tfsmonitor = \"sh x\" # c\n\thooksPath = .h\n[remote \"origin\"]\n\turl = u\n[filter \"l\"]\n\tclean = c \\\n  d\n[alias]\n\tx = !y\n[include]\n\tpath = p\n[url \"b\"]\n\tinsteadOf = a\n"),
 ];
@@ -361,6 +367,12 @@ fn deep_and_long_config_input_ends_in_an_answer() {
             ),
         ),
         ("a.props", format!("{}{}", "<a>".repeat(100_000), "</a>".repeat(100_000))),
+        // TOML: very deep inline arrays and tables, many keys, many tables, and a very long value.
+        ("pyproject.toml", format!("a = {}{}\n", "[".repeat(100_000), "]".repeat(100_000))),
+        ("mise.toml", format!("a = {}1{}\n", "{ a = ".repeat(50_000), " }".repeat(50_000))),
+        (".cargo/config.toml", format!("[alias]\n{}", (0..8_000).map(|i| format!("a{i} = \"b\"\n")).collect::<String>())),
+        ("Cargo.toml", (0..4_000).map(|i| format!("[dependencies.d{i}]\ngit = \"https://g.example/{i}\"\n")).collect::<String>()),
+        (".cargo/config.toml", format!("[build]\nrustc-wrapper = \"{}\"\n", "x".repeat(2 * 1024 * 1024 - 64))),
     ];
     std::thread::Builder::new()
         .stack_size(8 * 1024 * 1024)

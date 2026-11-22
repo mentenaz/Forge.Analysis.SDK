@@ -3,7 +3,7 @@
     "schema": 5,
     "engine": "forge-analysis 0.0.1",
     "catalog_sha256": "661ff253d0997c290715b16d7de935041072e290e1efd30a82fa0c75eed0949b",
-    "snapshot_sha256": "169b7b12ea2e61f2b728068941ee97fdbf1f0e420d238205639e14c359aa4e32",
+    "snapshot_sha256": "fc72c706ef0551e9255916d6803b48eb637da4260a8b5c0888a5504a409f42f3",
     "mode": "static_only",
     "scope": "full"
   },
@@ -53,7 +53,7 @@
       "number": 6,
       "title": "Install scripts and shell commands",
       "explanation": "Every command a project file asks a tool or package manager to run (package.json scripts, editor tasks, agent hooks, git settings and more): when it runs, and the commands inside it that we could not follow.",
-      "count": 6,
+      "count": 10,
       "anchor": "install-scripts-and-shell-commands"
     },
     {
@@ -69,7 +69,7 @@
       "number": 8,
       "title": "Unresolved",
       "explanation": "Places where static analysis cannot say what happens (computed code, dynamic loads, shell commands). Each one hides behaviour.",
-      "count": 6,
+      "count": 9,
       "anchor": "unresolved"
     },
     {
@@ -85,7 +85,7 @@
       "number": 10,
       "title": "Not analysed",
       "explanation": "Files and folders that were not read as code, by kind, and anything skipped by a limit.",
-      "count": 14,
+      "count": 12,
       "anchor": "not-analysed"
     },
     {
@@ -99,9 +99,9 @@
   ],
   "overview": {
     "files_analysed": 2,
-    "files_not_analysed": 14,
+    "files_not_analysed": 12,
     "functions": 2,
-    "facts": 16,
+    "facts": 23,
     "links_made": 0,
     "unresolved_cleared_by_links": 0,
     "completeness": "incomplete",
@@ -109,7 +109,7 @@
       {
         "section": "unresolved",
         "label": "places where static analysis cannot say what happens",
-        "count": 6
+        "count": 9
       },
       {
         "section": "unlinked",
@@ -124,7 +124,7 @@
       {
         "section": "not_analysed",
         "label": "files or folders not read as code",
-        "count": 14
+        "count": 12
       },
       {
         "section": "dependencies",
@@ -160,7 +160,7 @@
       },
       {
         "kind": "lifecycle_script",
-        "count": 6
+        "count": 10
       },
       {
         "kind": "dependency",
@@ -168,7 +168,7 @@
       },
       {
         "kind": "unresolved",
-        "count": 6
+        "count": 9
       },
       {
         "kind": "flow",
@@ -348,6 +348,42 @@
       ]
     },
     {
+      "id": "fact:d9b0e830d74cb605",
+      "at": {
+        "file": {
+          "text": ".codex/config.toml",
+          "truncated": false,
+          "original_len": 18,
+          "sha256": "f32a51ab0e49c380ad5e0cfea774308e9720411df829fa54269505e70b58e039"
+        },
+        "start_line": 1,
+        "end_line": 3,
+        "start_byte": 0,
+        "end_byte": 70
+      },
+      "name": {
+        "text": "mcp_servers.codexhelper",
+        "truncated": false,
+        "original_len": 23,
+        "sha256": "f2d300c22056e7ee5cad81084a50c68ccc1420239a9b140f1855feb022cbd369"
+      },
+      "trigger": "on_open",
+      "command": {
+        "text": "npx -y some-server",
+        "truncated": false,
+        "original_len": 18,
+        "sha256": "b3c7516fb7afaed9834565a52d437aa963aa40823477c12b911f9195d6e6ed2d"
+      },
+      "unfollowed": [
+        {
+          "text": "npx -y some-server",
+          "truncated": false,
+          "original_len": 18,
+          "sha256": "b3c7516fb7afaed9834565a52d437aa963aa40823477c12b911f9195d6e6ed2d"
+        }
+      ]
+    },
+    {
       "id": "fact:7b70dd9ab2773d0f",
       "at": {
         "file": {
@@ -456,6 +492,107 @@
       ]
     },
     {
+      "id": "fact:ab07c50cb10de85d",
+      "at": {
+        "file": {
+          "text": "mise.toml",
+          "truncated": false,
+          "original_len": 9,
+          "sha256": "3c9056799ce8e353b18de841a8b9c8492d46cb096e063c86fb0ce54cfcd117c2"
+        },
+        "start_line": 2,
+        "end_line": 2,
+        "start_byte": 16,
+        "end_byte": 29
+      },
+      "name": {
+        "text": "hooks.enter",
+        "truncated": false,
+        "original_len": 11,
+        "sha256": "2a388060bb8b8fb07e7e64fc46b3f6160202ec9478ec2aa3dcd00da774b6e7d2"
+      },
+      "trigger": "on_open",
+      "command": {
+        "text": "sh enter.sh",
+        "truncated": false,
+        "original_len": 11,
+        "sha256": "e4456c0304a7b09f588cad156064d45698ddc06ac5ca35abd6a359faa691be8f"
+      },
+      "unfollowed": [
+        {
+          "text": "sh enter.sh",
+          "truncated": false,
+          "original_len": 11,
+          "sha256": "e4456c0304a7b09f588cad156064d45698ddc06ac5ca35abd6a359faa691be8f"
+        }
+      ]
+    },
+    {
+      "id": "fact:d2ad2bc303656b71",
+      "at": {
+        "file": {
+          "text": ".cargo/config.toml",
+          "truncated": false,
+          "original_len": 18,
+          "sha256": "9a4f3e4537ebb7474452d131b0d969d89a51286f4269aac5ef268e712be17268"
+        },
+        "start_line": 2,
+        "end_line": 2,
+        "start_byte": 24,
+        "end_byte": 27
+      },
+      "name": {
+        "text": "build.rustc-wrapper",
+        "truncated": false,
+        "original_len": 19,
+        "sha256": "78496f8827771f19cc0861483eeb8b8b1f678400af18ecb2e297cb170dee26e5"
+      },
+      "trigger": "on_build",
+      "command": {
+        "text": "x",
+        "truncated": false,
+        "original_len": 1,
+        "sha256": "2d711642b726b04401627ca9fbac32f5c8530fb1903cc4db02258717921a4881"
+      },
+      "unfollowed": [
+        {
+          "text": "x",
+          "truncated": false,
+          "original_len": 1,
+          "sha256": "2d711642b726b04401627ca9fbac32f5c8530fb1903cc4db02258717921a4881"
+        }
+      ]
+    },
+    {
+      "id": "fact:6258b08d0dbeb880",
+      "at": {
+        "file": {
+          "text": "pyproject.toml",
+          "truncated": false,
+          "original_len": 14,
+          "sha256": "50c86b7ed8ac2cf95bd48334961bf0530cdc77b5a56f852c5c61b89d735fd711"
+        },
+        "start_line": 4,
+        "end_line": 4,
+        "start_byte": 96,
+        "end_byte": 105
+      },
+      "name": {
+        "text": "build-system.backend-path",
+        "truncated": false,
+        "original_len": 25,
+        "sha256": "858c0675f95db479bd309fb1060bdccc1ee81b9165d493d221f8f14dfaaa11c5"
+      },
+      "trigger": "on_build",
+      "command": {
+        "text": "tools",
+        "truncated": false,
+        "original_len": 5,
+        "sha256": "f9d35d43770d39092a663e665e82ae1d84a9e0da3d0d10c407acada6a40cd281"
+      },
+      "unfollowed": []
+    },
+    {
       "id": "fact:8607a09ab25e2a8f",
       "at": {
         "file": {
@@ -498,6 +635,30 @@
       "reason": "shell_command",
       "items": [
         {
+          "id": "fact:78cf0a2aa8af5b3f",
+          "at": {
+            "file": {
+              "text": ".cargo/config.toml",
+              "truncated": false,
+              "original_len": 18,
+              "sha256": "9a4f3e4537ebb7474452d131b0d969d89a51286f4269aac5ef268e712be17268"
+            },
+            "start_line": 2,
+            "end_line": 2,
+            "start_byte": 24,
+            "end_byte": 27
+          },
+          "detail": {
+            "text": "x",
+            "truncated": false,
+            "original_len": 1,
+            "sha256": "2d711642b726b04401627ca9fbac32f5c8530fb1903cc4db02258717921a4881"
+          },
+          "in_fn": null,
+          "lanes": [],
+          "reachable": null
+        },
+        {
           "id": "fact:2d300dc037cf3911",
           "at": {
             "file": {
@@ -516,6 +677,30 @@
             "truncated": false,
             "original_len": 7,
             "sha256": "d7278e1a7afec3191d2ee3a7415eee0040a540af4951db4c3d4ade4254baf183"
+          },
+          "in_fn": null,
+          "lanes": [],
+          "reachable": null
+        },
+        {
+          "id": "fact:21d08e1f1956edeb",
+          "at": {
+            "file": {
+              "text": ".codex/config.toml",
+              "truncated": false,
+              "original_len": 18,
+              "sha256": "f32a51ab0e49c380ad5e0cfea774308e9720411df829fa54269505e70b58e039"
+            },
+            "start_line": 1,
+            "end_line": 3,
+            "start_byte": 0,
+            "end_byte": 70
+          },
+          "detail": {
+            "text": "npx -y some-server",
+            "truncated": false,
+            "original_len": 18,
+            "sha256": "b3c7516fb7afaed9834565a52d437aa963aa40823477c12b911f9195d6e6ed2d"
           },
           "in_fn": null,
           "lanes": [],
@@ -640,6 +825,30 @@
           "in_fn": null,
           "lanes": [],
           "reachable": null
+        },
+        {
+          "id": "fact:69ff6695bf4ec2f3",
+          "at": {
+            "file": {
+              "text": "mise.toml",
+              "truncated": false,
+              "original_len": 9,
+              "sha256": "3c9056799ce8e353b18de841a8b9c8492d46cb096e063c86fb0ce54cfcd117c2"
+            },
+            "start_line": 2,
+            "end_line": 2,
+            "start_byte": 16,
+            "end_byte": 29
+          },
+          "detail": {
+            "text": "sh enter.sh",
+            "truncated": false,
+            "original_len": 11,
+            "sha256": "e4456c0304a7b09f588cad156064d45698ddc06ac5ca35abd6a359faa691be8f"
+          },
+          "in_fn": null,
+          "lanes": [],
+          "reachable": null
         }
       ]
     }
@@ -651,16 +860,6 @@
       {
         "kind": "auto_run_config",
         "items": [
-          {
-            "path": {
-              "text": ".cargo/config.toml",
-              "truncated": false,
-              "original_len": 18,
-              "sha256": "9a4f3e4537ebb7474452d131b0d969d89a51286f4269aac5ef268e712be17268"
-            },
-            "size": 28,
-            "kind": "auto_run_config"
-          },
           {
             "path": {
               "text": ".envrc",
@@ -679,16 +878,6 @@
               "sha256": "d2bc4bbf14eadc292d84e0ef5f7a93115c23557f533809fc80b896934291529d"
             },
             "size": 18,
-            "kind": "auto_run_config"
-          },
-          {
-            "path": {
-              "text": "Cargo.toml",
-              "truncated": false,
-              "original_len": 10,
-              "sha256": "2e9d962a08321605940b5a657135052fbcef87b5e360662bb527c96d9a615542"
-            },
-            "size": 21,
             "kind": "auto_run_config"
           },
           {

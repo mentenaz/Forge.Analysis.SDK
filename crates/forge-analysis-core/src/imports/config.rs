@@ -18,6 +18,8 @@
 //!   targets that hook into a build, `Exec` and other tasks, pre- and post-build events, inline and
 //!   assembly tasks, analyzers, SDKs from NuGet, tool redirects and imports.
 //! - `nuget.config`: package sources other than the public feed, and where credentials are stored.
+//! - TOML (`tomlcfg.rs`): `.cargo/config.toml`, `Cargo.toml`, `rust-toolchain`, `pyproject.toml`, `mise.toml`,
+//!   `.codex/config.toml`. And `.gemini/settings.json`, read like the other agent files.
 //!
 //! A file that does not parse gets a `ParseFailed` fact, so it stays visible and the brief says
 //! incomplete. Repeated keys are flagged, as in `package.json`: parsers disagree about which one
@@ -25,6 +27,8 @@
 //!
 //! Not followed: what a command does (`node ./x.js` is quoted, not read), files named by
 //! `include.path`, and keys not listed above.
+
+mod tomlcfg;
 
 use super::json::{self, Jv, Kind, Member};
 use super::xml::{self, Element};
@@ -44,6 +48,12 @@ enum Manifest {
     GlobalJson,
     Msbuild,
     NuGet,
+    CargoConfig,
+    CargoToml,
+    RustToolchain,
+    Pyproject,
+    Mise,
+    Codex,
 }
 
 /// Imports of the toolset itself, which every project has.
@@ -149,6 +159,20 @@ fn manifest(path: &str) -> Option<(Manifest, bool)> {
         Some((Manifest::GlobalJson, true))
     } else if name == "nuget.config" {
         Some((Manifest::NuGet, false))
+    } else if ends(path, ".cargo/config.toml") || ends(path, ".cargo/config") {
+        Some((Manifest::CargoConfig, false))
+    } else if name == "cargo.toml" {
+        Some((Manifest::CargoToml, false))
+    } else if name == "rust-toolchain" || name == "rust-toolchain.toml" {
+        Some((Manifest::RustToolchain, false))
+    } else if name == "pyproject.toml" {
+        Some((Manifest::Pyproject, false))
+    } else if matches!(name, "mise.toml" | ".mise.toml" | "mise.local.toml" | ".mise.local.toml") {
+        Some((Manifest::Mise, false))
+    } else if ends(path, ".codex/config.toml") {
+        Some((Manifest::Codex, false))
+    } else if ends(path, ".gemini/settings.json") {
+        Some((Manifest::Mcp, true))
     } else if matches!(
         name,
         "directory.build.props"
@@ -182,6 +206,11 @@ pub fn analyze_config(file: &RelPath, src: &str) -> Option<ConfigAnalysis> {
     let mut cf = Cf::new(file, src);
     if kind == Manifest::GitConfig {
         cf.git_config();
+    } else if matches!(
+        kind,
+        Manifest::CargoConfig | Manifest::CargoToml | Manifest::RustToolchain | Manifest::Pyproject | Manifest::Mise | Manifest::Codex
+    ) {
+        cf.toml_file(kind);
     } else if matches!(kind, Manifest::Msbuild | Manifest::NuGet) {
         match xml::parse(src) {
             Err(_) => cf.unresolved(0, cf.len(), UnresolvedReason::ParseFailed, None),
@@ -199,7 +228,7 @@ pub fn analyze_config(file: &RelPath, src: &str) -> Option<ConfigAnalysis> {
                 Manifest::DevContainer => cf.dev_container(&root),
                 Manifest::Composer => cf.composer(&root),
                 Manifest::GlobalJson => cf.global(&root),
-                Manifest::GitConfig | Manifest::Msbuild | Manifest::NuGet => {}
+                _ => {}
             },
         }
     }
