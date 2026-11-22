@@ -53,7 +53,7 @@ limits, not by the flag. Files not reached are reported as `NotAnalysedKind::Sto
 
 - **Flows** (`flow.rs`): sources are network calls (fetch, https.get, XHR, WebSocket). Sinks are code
   arguments (eval, Function, vm, exec/spawn, worker, timer string) and callee sinks (`FlowSink::Callee`:
-  a call on, or of, a value that came from the network). Propagation follows oxc symbols.
+  a call on, or of, a value that came from the network). Propagation follows oxc symbols. A function value is tainted only by what it returns, not by what its body does.
 - **Known gap:** a remote object using a standard method name (`vuln.end()`, `send()`) is only reported
   as an untraced call, not as a flow. Typed receivers would fix it.
 - **Call graph** (`callgraph.rs`): `Edges.seen_refs` keeps references unique. `Graph::owner` is O(functions)
@@ -185,9 +185,11 @@ matching no file (`entry_point_missing`) is `incomplete`.
 
 **Real-project run (22 Nov 2026, release build, full scan):** `forge-demo` 1 s; `fnm/site` under 1 s; `gpui-component/website` 3 s;
 `Forge.Lite` (VS Code scale, about 27,000 JS/TS files) 826 s, reached the intake limit (9,613 files skipped and listed), report.json
-1.9 GB and report.md 259 MB, almost all of it the Unresolved section. Open from that run: grouping of long untraced lists; a likely
-false positive where `new XMLHttpRequest` itself counts as network data (5 `data_reaches_code` on a built vitepress bundle; `flow.rs`
-not yet read to confirm); no `--time-budget` flag on the CLI.
+1.9 GB and report.md 259 MB, almost all of it the Unresolved section. Fixed since: the 5 `data_reaches_code` on the built vitepress bundle were a false positive, not XHR methods. A function
+whose BODY contained `new XMLHttpRequest` counted as network data, and that spread to anything calling it. Now (`flow.rs`,
+`Mentions`) a function value is network data only through what it returns, or when it is called on the spot; a helper that returns
+what it fetched (`const load = () => fetch(u)`) still gives a flow (tests cover both). Open from that run: grouping of long
+untraced lists; no `--time-budget` flag on the CLI.
 
 ## Legal and notices
 

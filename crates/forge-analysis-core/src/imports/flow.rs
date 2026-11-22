@@ -13,6 +13,10 @@
 //!   * `x.onmessage = e => ..` where `x` is tainted;
 //!   * destructuring.
 //!
+//! A function value is network data only through what it returns (`const load = () => fetch(u)`),
+//! not because its body contains a request or a tainted name (`const get = e => { new
+//! XMLHttpRequest().send() }`). A function called on the spot counts in full.
+//!
 //! A second kind of hit: the thing CALLED is network data (`const r = await fetch(u);
 //! r.scan()`, `fn()` where `fn` came from a response). Calling a method every response,
 //! string, array, stream or promise has (`json`, `text`, `on`, `map`, `then`, ..) is not a hit;
@@ -27,7 +31,7 @@
 //! a map from call/new span to `Site`. This module knows nothing about the catalog.
 
 use oxc_ast::ast::{
-    Argument, AssignmentExpression, AssignmentTarget, BindingPattern,
+    Argument, ArrowFunctionExpression, AssignmentExpression, ExpressionStatement, VariableDeclaration, AssignmentTarget, BindingPattern,
     CallExpression, Expression, FormalParameters, Function, IdentifierReference, NewExpression,
     VariableDeclarator,
 };
@@ -214,9 +218,56 @@ struct Mentions<'m> {
     sites: &'m Sites,
     tainted: &'m Tainted,
     found: Option<Span>,
+    /// The next function expression met is called on the spot, so its body counts.
+    run_now: bool,
+    /// Inside a function that is not run on the spot: only what it returns counts.
+    returns_only: bool,
 }
 
 impl<'a> Visit<'a> for Mentions<'_> {
+    // A function value is network data only through what it RETURNS: `const load = () => fetch(u)` is, so
+    // `eval(await load())` is a flow; `const get = e => { new XMLHttpRequest().send() }` is not, because
+    // nothing it does inside is handed back. A function called on the spot counts in full.
+    fn visit_function(&mut self, it: &Function<'a>, flags: ScopeFlags) {
+        if self.run_now {
+            self.run_now = false;
+            walk::walk_function(self, it, flags);
+        } else if !self.returns_only {
+            self.returns_only = true;
+            walk::walk_function(self, it, flags);
+            self.returns_only = false;
+        }
+    }
+
+    fn visit_arrow_function_expression(&mut self, it: &ArrowFunctionExpression<'a>) {
+        if self.run_now {
+            self.run_now = false;
+            walk::walk_arrow_function_expression(self, it);
+        } else if !self.returns_only {
+            if let Some(value) = it.body.as_expression() {
+                // `() => value`: the expression is what is returned.
+                self.visit_expression(value);
+            } else {
+                self.returns_only = true;
+                walk::walk_arrow_function_expression(self, it);
+                self.returns_only = false;
+            }
+        }
+    }
+
+    // Inside a function that is not run on the spot, statements whose value is dropped hand nothing back.
+    fn visit_expression_statement(&mut self, it: &ExpressionStatement<'a>) {
+        if !self.returns_only {
+            walk::walk_expression_statement(self, it);
+        }
+    }
+
+    fn visit_variable_declaration(&mut self, it: &VariableDeclaration<'a>) {
+        if !self.returns_only {
+            walk::walk_variable_declaration(self, it);
+        }
+    }
+
     fn visit_identifier_reference(&mut self, it: &IdentifierReference<'a>) {
         if self.found.is_some() {
             return;
@@ -236,7 +287,23 @@ impl<'a> Visit<'a> for Mentions<'_> {
             self.found = Some(it.span);
             return;
         }
-        walk::walk_call_expression(self, it);
+        // A function expression that is the callee runs now, so what its body fetches is the value.
+        let now = matches!(
+            it.callee.without_parentheses(),
+            Expression::ArrowFunctionExpression(_) | Expression::FunctionExpression(_)
+        );
+        if now {
+            let outer = std::mem::replace(&mut self.returns_only, false);
+            self.run_now = true;
+            self.visit_expression(&it.callee);
+            self.run_now = false;
+            self.returns_only = outer;
+            for arg in &it.arguments {
+                self.visit_argument(arg);
+            }
+        } else {
+            walk::walk_call_expression(self, it);
+        }
     }
 
     fn visit_new_expression(&mut self, it: &NewExpression<'a>) {
@@ -257,7 +324,7 @@ fn origin_of_expr(
     tainted: &Tainted,
     e: &Expression<'_>,
 ) -> Option<Span> {
-    let mut m = Mentions { scoping, sites, tainted, found: None };
+    let mut m = Mentions { scoping, sites, tainted, found: None, run_now: false, returns_only: false };
     m.visit_expression(e);
     m.found
 }
@@ -268,7 +335,7 @@ fn origin_of_arg(
     tainted: &Tainted,
     a: &Argument<'_>,
 ) -> Option<Span> {
-    let mut m = Mentions { scoping, sites, tainted, found: None };
+    let mut m = Mentions { scoping, sites, tainted, found: None, run_now: false, returns_only: false };
     m.visit_argument(a);
     m.found
 }
@@ -548,6 +615,44 @@ mod tests {
                 (t(h.sink), t(h.origin))
             })
             .collect()
+    }
+
+    #[test]
+    fn a_function_that_contains_a_request_is_not_network_data() {
+        // Found on a real built bundle (vitepress): a prefetch helper that makes an XHR inside its body, picked by a
+        // condition and then called. The function is not the response, so calling it is not a callee flow.
+        let f = callee_flows(
+            "const xf = e => { const t = new XMLHttpRequest(); t.open('GET', e); t.send(); };
+             const ef = ok ? other : xf; ef(u);",
+        );
+        assert!(f.is_empty(), "{f:?}");
+    }
+
+    #[test]
+    fn an_object_built_from_a_callback_that_makes_a_request_is_not_network_data() {
+        let f = callee_flows(
+            "const get = e => { const t = new XMLHttpRequest(); t.send(); };
+             const n = new Observer(i => { get(i); }); n.observe(1); n.disconnect();",
+        );
+        assert!(f.is_empty(), "{f:?}");
+    }
+
+    #[test]
+    fn a_helper_that_returns_what_it_fetched_is_still_network_data() {
+        // Wrapping the request in a helper must not hide the flow.
+        let a = flows("const load = () => fetch(u).then(r => r.text()); eval(await load());");
+        assert_eq!(a.len(), 1, "{a:?}");
+        let b = flows("const load = async () => { const r = await fetch(u); return r.text(); }; eval(await load());");
+        assert_eq!(b.len(), 1, "{b:?}");
+        let c = callee_flows("const make = () => fetch(u); const r = make(); r.scan();");
+        assert!(c.contains(&("r.scan()".to_string(), "fetch(u)".to_string())), "{c:?}");
+    }
+
+    #[test]
+    fn a_function_called_on_the_spot_still_hands_back_what_its_body_fetched() {
+        // The body of a function that is called right away does produce the value.
+        let f = callee_flows("const r = (() => fetch(server))(); r.scan();");
+        assert!(f.contains(&("r.scan()".to_string(), "fetch(server)".to_string())), "{f:?}");
     }
 
     #[test]
