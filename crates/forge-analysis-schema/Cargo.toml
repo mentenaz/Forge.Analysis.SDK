@@ -3,6 +3,7 @@ name = "forge-analysis-schema"
 version.workspace = true
 edition.workspace = true
 publish.workspace = true
+license.workspace = true
 
 [dependencies]
 serde = { workspace = true, features = ["derive"] }

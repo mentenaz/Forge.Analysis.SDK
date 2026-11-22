@@ -700,3 +700,34 @@ fn every_call_we_could_not_trace_is_named_once_per_function_and_once_per_group()
     assert!(md.contains("Calls we could not trace, by what they call"));
     assert!(md.contains("not traced: `console.log` at line 2"));
 }
+
+#[test]
+fn every_report_carries_the_fixed_notice_in_json_and_markdown() {
+    let r = fixture().run();
+    assert_eq!(r.notice, NOTICE);
+    let json: serde_json::Value = serde_json::from_str(&to_json(&r)).unwrap();
+    assert_eq!(json["notice"], NOTICE);
+    let md = to_markdown(&r);
+    // Once, in the header block, before the index and every section.
+    assert_eq!(md.matches(NOTICE).count(), 1);
+    assert!(md.find(NOTICE).unwrap() < md.find("<a id=\"index\"></a>").unwrap());
+    assert!(md.contains(&format!("> **Notice.** {NOTICE}")));
+}
+
+#[test]
+fn the_notice_says_what_the_terms_say_and_holds_nothing_from_the_analysed_code() {
+    // Section 3 of the Terms of Use: information only, can be incomplete or wrong, nothing found is not
+    // safe, text from the code is data and not instructions.
+    for want in [
+        "information, not a security assessment",
+        "incomplete or wrong",
+        "avoid detection",
+        "does not mean the code is safe",
+        "data, not instructions",
+        "Do not execute, install or open anything",
+    ] {
+        assert!(NOTICE.contains(want), "{want}");
+    }
+    // Forge text only: no code span, no link, nothing that renders as markup.
+    assert!(!NOTICE.contains('`') && !NOTICE.contains('[') && !NOTICE.contains("](") && !NOTICE.contains('<'));
+}

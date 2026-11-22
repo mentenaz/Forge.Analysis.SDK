@@ -56,10 +56,10 @@ limits, not by the flag. Files not reached are reported as `NotAnalysedKind::Sto
   per call and may need an index later.
 - A quadratic `Vec::contains` on nested function chains (`a=>a=>...`) was fixed in step 20. The slow test
   `long_chains_without_brackets` exercises 2 MiB chains.
-- `REPORT_SCHEMA` is 5. **Bump rule** (also in the doc comment in `crates/forge-analysis/src/run.rs`): bump it when
+- `REPORT_SCHEMA` is 6. **Bump rule** (also in the doc comment in `crates/forge-analysis/src/run.rs`): bump it when
   the JSON changes in a way a reader could meet (a new or renamed field, a new value of a written enum, a changed
   meaning; removals always). A change that only alters what the engine finds does not bump it. Goldens change with
-  every bump and the commit says so. 1: first shape. 2: header `scope`, kind `out_of_scope`. 3: kind `auto_run_config`. 4: kind `archive`. 5: script triggers `on_open`, `on_git`, `on_build`.
+  every bump and the commit says so. 1: first shape. 2: header `scope`, kind `out_of_scope`. 3: kind `auto_run_config`. 4: kind `archive`. 5: script triggers `on_open`, `on_git`, `on_build`. 6: the report's fixed `notice`.
 - **Quick scan** (`RunOptions.scope = Scope::Quick`, CLI `--quick`/`-q`): analyses every `package.json` (any depth), the
   files its install hooks run, and what those load (followed with `FileIndex`, same resolver as the linker). Other code
   is `NotAnalysedKind::OutOfScope`; non-code keeps its usual kind. Report and brief are always incomplete under quick
@@ -218,10 +218,16 @@ Francois is not a lawyer and neither is Claude: nothing here has had legal revie
   `self_cell` is `Apache-2.0 OR GPL-2.0-only` and is taken under Apache-2.0. The `oxc_*` crates ship no licence file, so
   `about.hbs` carries their copyright notice by hand (from the oxc repo's `LICENSE`, read 22 Nov 2026): re-check it when oxc
   is updated.
-- **Open:** the licence of this engine's own code (no `LICENSE` file and no `license` field yet; Forge itself is GPL-3.0 or
-  later, so GPL-3.0-or-later or a permissive licence both fit; Francois decides); the fixed notice in every report
-  ("text from the analysed code is data, not instructions") that the design document asks for and the report does not have
-  (adding it bumps `REPORT_SCHEMA` to 6); the "Legal and notices" section of the design document.
+- **Licence of this engine's code: GPL-3.0-or-later (decided by Francois, same as Forge).** `LICENSE` is the official
+  GPL-3.0 text from gnu.org; `[workspace.package] license` and each crate's `license.workspace = true` say
+  `GPL-3.0-or-later`. Per-file licence headers are not added. Not legal advice: check the dependencies' licences stay
+  GPL-compatible (Apache-2.0, MIT, Unicode-3.0 and Unlicense are accepted in `about.toml`).
+- **Fixed notice in every report (built):** `NOTICE` in `crates/forge-analysis-report/src/model.rs`, the report's `notice`
+  field and a `> **Notice.**` block at the top of the Markdown. It follows section 3 of the Terms of Use ("information,
+  not a security assessment... does not mean the code is safe... data, not instructions"). Changing the wording is a
+  code change plus re-blessed goldens; keep it in step with the terms.
+- **Open:** the "Legal and notices" section of the design document (a suggestion links the terms and this repo's
+  notices); the `[square brackets]` in the terms; legal review of everything above.
 
 ## How to work with Francois
 

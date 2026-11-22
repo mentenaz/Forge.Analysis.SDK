@@ -653,6 +653,7 @@ pub fn build(input: &ReportInput<'_>) -> Result<Report, BuildError> {
 
     Ok(Report {
         header: input.header.clone(),
+        notice: NOTICE,
         index,
         overview,
         entry_points,

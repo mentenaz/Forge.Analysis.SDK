@@ -351,6 +351,8 @@ pub fn to_markdown(r: &Report) -> String {
     w.item(&format!("Snapshot: {}", code(r.header.snapshot_sha256.as_str())));
     w.item(&format!("Catalog: {}", code(r.header.catalog_sha256.as_str())));
 
+    w.line(&format!("> **Notice.** {}", r.notice));
+
     w.blank();
     w.line("<a id=\"index\"></a>");
     w.blank();

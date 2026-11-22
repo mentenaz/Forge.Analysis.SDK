@@ -29,7 +29,7 @@ forge-analysis <folder> --brief --out <dir>     # also writes report.json, repor
 
 ```json
 {
-  "report_schema": 5,
+  "report_schema": 6,
   "snapshot_sha256": "<64 hex characters>",
   "verdict": "review",
   "scope": "full",
