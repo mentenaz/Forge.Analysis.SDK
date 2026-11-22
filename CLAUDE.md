@@ -161,8 +161,15 @@ Waiting on the owner: sign off Milestone 1, and the full (slow) test run if he w
    **Decided by Francois: AI-agent *instruction* files** (`CLAUDE.md`, `AGENTS.md`, `.cursorrules`, Copilot
    instructions) are a prompt-injection vector, not a command, and are deliberately **excluded**: not flagged, not
    listed as a kind. (The agent *config* files that name commands, `.claude/settings.json`, MCP files,
-   `.codex/config.toml`, `.gemini/settings.json`, are read.) Following `node x.js` inside these commands, and
-   following imported `.targets` files, is not done. `config.rs` is still large; only the TOML part was split out.
+   `.codex/config.toml`, `.gemini/settings.json`, are read.)
+   **`node <file>` in these commands is followed** (like a `package.json` script): `Cf::command` runs
+   `interpret_command`, turns `Node` actions into `EntryWant`s (`ConfigAnalysis::entries`) and `run.rs` feeds them to
+   the linker and, in a quick scan, to the follower. Commands run from the folder above a dot folder (`.vscode`,
+   `.claude`, `.git`, `.cargo`, `.devcontainer`, `.cursor`, `.gemini`, `.codex`), else from the file's own folder
+   (`base_folder`); `${workspaceFolder}`, `$CLAUDE_PROJECT_DIR` and the like count as that folder. A command that is
+   only `node <file>` is not also "not followed"; anything else in it still is. For MSBuild the file is a guess
+   (`optional`). Not done: following imported `.targets` files; `npm run` inside these commands. `config.rs` is
+   still large; only the TOML part was split out.
    Still to do per ecosystem: confirm the list against the canary test. Built from what Forge's panels really run and what the canary test showed:
    - .NET: `Directory.Build.props` and `.targets` (their targets run during a plain `dotnet list package`
      scan, high priority), `global.json`, `nuget.config`.
