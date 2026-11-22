@@ -118,6 +118,8 @@ jobs:
       - name: Install cargo-about
         if: steps.about-cache.outputs.cache-hit != 'true'
         run: cargo install cargo-about --locked --version 0.8.2
+      - name: Download the locked dependencies (so the offline generation below can see them)
+        run: cargo fetch --locked
       - name: Generate and compare
         run: |
           cargo about generate --workspace --offline about.hbs -o "$RUNNER_TEMP/notices.md"
