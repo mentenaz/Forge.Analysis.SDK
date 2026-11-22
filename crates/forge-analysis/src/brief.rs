@@ -57,11 +57,16 @@ pub struct Reason {
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct Brief {
+    /// The `REPORT_SCHEMA` of the report this brief was made from.
+    pub report_schema: u32,
+    /// The hash of the folder as it was read. A verdict belongs to exactly this content: if the folder
+    /// is hashed again later and differs, the verdict no longer applies.
+    pub snapshot_sha256: String,
     pub verdict: Verdict,
     pub scope: Scope,
     /// True when nothing that should have been read was left unread.
     pub complete: bool,
-    /// At most five, most serious first.
+    /// At most `MAX_REASONS`, most serious first.
     pub reasons: Vec<Reason>,
     /// Files that are not code we read as code. Always shown, even when zero.
     pub not_examined: u32,
@@ -194,6 +199,8 @@ pub fn brief(report: &Report) -> Brief {
     };
 
     Brief {
+        report_schema: report.header.schema,
+        snapshot_sha256: report.header.snapshot_sha256.as_str().to_string(),
         verdict,
         scope: report.header.scope,
         complete,
@@ -495,6 +502,72 @@ mod tests {
             assert_eq!(b.reasons.iter().find(|r| r.kind == ReasonKind::ArchiveNotOpened).unwrap().count, 2);
         }
     }
+
+    /// The name each value is written as. The `match` has no wildcard, so a new variant does not compile
+    /// until it is named here, and the test below then requires it in `docs/brief-contract.md`.
+    fn written(v: &Verdict) -> &'static str {
+        match v {
+            Verdict::NothingFound => "nothing_found",
+            Verdict::Review => "review",
+            Verdict::Incomplete => "incomplete",
+        }
+    }
+
+    fn written_kind(k: &ReasonKind) -> &'static str {
+        match k {
+            ReasonKind::DataReachesCode => "data_reaches_code",
+            ReasonKind::InstallScript => "install_script",
+            ReasonKind::InstallTimeEffect => "install_time_effect",
+            ReasonKind::AutomaticCommand => "automatic_command",
+            ReasonKind::AutoRunNotAnalysed => "auto_run_not_analysed",
+            ReasonKind::ArchiveNotOpened => "archive_not_opened",
+            ReasonKind::RunStopped => "run_stopped",
+            ReasonKind::QuickScope => "quick_scope",
+            ReasonKind::NotFullyRead => "not_fully_read",
+        }
+    }
+
+    #[test]
+    fn the_contract_document_names_every_verdict_scope_reason_and_field() {
+        let doc = include_str!("../../../docs/brief-contract.md");
+        let verdicts = [Verdict::NothingFound, Verdict::Review, Verdict::Incomplete];
+        let kinds = [
+            ReasonKind::DataReachesCode,
+            ReasonKind::InstallScript,
+            ReasonKind::InstallTimeEffect,
+            ReasonKind::AutomaticCommand,
+            ReasonKind::AutoRunNotAnalysed,
+            ReasonKind::ArchiveNotOpened,
+            ReasonKind::RunStopped,
+            ReasonKind::QuickScope,
+            ReasonKind::NotFullyRead,
+        ];
+        for v in &verdicts {
+            assert!(doc.contains(&format!("`{}`", written(v))), "{v:?} is not in the contract");
+            // What the code writes is what the table says.
+            assert_eq!(serde_json::to_string(v).unwrap(), format!("\"{}\"", written(v)));
+        }
+        for k in &kinds {
+            assert!(doc.contains(&format!("`{}`", written_kind(k))), "{k:?} is not in the contract");
+            assert_eq!(serde_json::to_string(k).unwrap(), format!("\"{}\"", written_kind(k)));
+        }
+        // Every reason kind can be in one brief, and the contract says how many that is.
+        assert_eq!(kinds.len(), MAX_REASONS);
+        assert!(doc.contains(&format!("At most {MAX_REASONS}")));
+        for scope in ["full", "quick"] {
+            assert!(doc.contains(&format!("`{scope}`")), "{scope}");
+        }
+        // Every field the brief writes is described.
+        let b = brief(&analyze_files(vec![file("index.js", "let a;\n")], &RunOptions::default()).unwrap());
+        let v: serde_json::Value = serde_json::to_value(&b).unwrap();
+        for field in v.as_object().unwrap().keys() {
+            assert!(doc.contains(&format!("`{field}`")), "field {field} is not in the contract");
+        }
+        assert_eq!(v["report_schema"], REPORT_SCHEMA_FOR_TEST);
+        assert!(doc.contains(&format!("\"report_schema\": {REPORT_SCHEMA_FOR_TEST}")), "the example in the contract is out of date");
+    }
+
+    const REPORT_SCHEMA_FOR_TEST: u32 = crate::REPORT_SCHEMA;
 
     #[test]
     fn every_reason_kind_fits_in_a_brief() {

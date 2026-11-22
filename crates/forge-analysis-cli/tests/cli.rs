@@ -36,16 +36,19 @@ fn fixture(name: &str) -> String {
 
 #[test]
 fn arguments_are_parsed() {
-    let run = |f: &str, o: Option<&str>| Command::Run { folder: PathBuf::from(f), out: o.map(PathBuf::from), quick: false };
+    let run = |f: &str, o: Option<&str>| Command::Run { folder: PathBuf::from(f), out: o.map(PathBuf::from), quick: false, brief: false };
     assert_eq!(parse_args(&args(&["a"])), Ok(run("a", None)));
     assert_eq!(parse_args(&args(&["a", "--out", "o"])), Ok(run("a", Some("o"))));
     assert_eq!(parse_args(&args(&["--out", "o", "a"])), Ok(run("a", Some("o"))));
     assert_eq!(parse_args(&args(&["-o", "o", "a"])), Ok(run("a", Some("o"))));
     assert_eq!(parse_args(&args(&["a", "--out=o"])), Ok(run("a", Some("o"))));
     assert_eq!(parse_args(&args(&["--", "-odd-name"])), Ok(run("-odd-name", None)));
-    let quick = Command::Run { folder: PathBuf::from("a"), out: None, quick: true };
+    let quick = Command::Run { folder: PathBuf::from("a"), out: None, quick: true, brief: false };
     assert_eq!(parse_args(&args(&["a", "--quick"])), Ok(quick.clone()));
     assert_eq!(parse_args(&args(&["-q", "a"])), Ok(quick));
+    let brief = Command::Run { folder: PathBuf::from("a"), out: None, quick: true, brief: true };
+    assert_eq!(parse_args(&args(&["a", "-q", "--brief"])), Ok(brief.clone()));
+    assert_eq!(parse_args(&args(&["-b", "-q", "a"])), Ok(brief));
     assert_eq!(parse_args(&args(&["-h"])), Ok(Command::Help));
     assert_eq!(parse_args(&args(&["a", "--help"])), Ok(Command::Help));
     assert_eq!(parse_args(&args(&["--version"])), Ok(Command::Version));
@@ -131,6 +134,47 @@ fn git_hooks_in_the_folder_are_reported_through_the_command_line() {
     assert!(md.contains(".git/hooks/pre-commit") && md.contains(".git/config"), "{md}");
     // The rest of `.git` is still counted as skipped.
     assert!(md.contains("Skipped: ignored folders"), "{md}");
+}
+
+#[test]
+fn brief_prints_only_one_line_of_json_and_writes_brief_json() {
+    let t = Temp::new("brief");
+    let dest = t.0.join("o");
+    let (code, out, err) = go(&[&fixture("canary"), "--brief", "--out", dest.to_str().unwrap()]);
+    assert_eq!(code, EXIT_OK, "{err}");
+    // Nothing but the brief on stdout, so a program can parse it.
+    assert_eq!(out.lines().count(), 1, "{out}");
+    let v: serde_json::Value = serde_json::from_str(out.trim()).unwrap();
+    assert_eq!(v["verdict"], "review");
+    assert_eq!(v["scope"], "full");
+    assert_eq!(v["complete"], false);
+    assert_eq!(v["report_schema"], 5);
+    let hash = v["snapshot_sha256"].as_str().unwrap();
+    assert!(hash.len() == 64 && hash.chars().all(|c| c.is_ascii_hexdigit()), "{hash}");
+    let kinds: Vec<&str> = v["reasons"].as_array().unwrap().iter().map(|r| r["kind"].as_str().unwrap()).collect();
+    for want in ["install_script", "automatic_command", "auto_run_not_analysed"] {
+        assert!(kinds.contains(&want), "{kinds:?}");
+    }
+    // The same text goes to `brief.json`, and the human messages went to stderr.
+    assert_eq!(std::fs::read_to_string(dest.join("brief.json")).unwrap().trim(), out.trim());
+    assert!(err.contains("Report written"), "{err}");
+    assert!(!out.contains("Report written") && !out.contains("Status:"));
+    // The hash is the same hash the report carries.
+    let report: serde_json::Value = serde_json::from_str(&std::fs::read_to_string(dest.join("report.json")).unwrap()).unwrap();
+    assert_eq!(report["header"]["snapshot_sha256"], v["snapshot_sha256"]);
+}
+
+#[test]
+fn a_quick_brief_is_never_nothing_found_and_a_missing_folder_prints_no_brief() {
+    let (code, out, _) = go(&[&fixture("clean"), "--brief", "--quick"]);
+    assert_eq!(code, EXIT_OK);
+    let v: serde_json::Value = serde_json::from_str(out.trim()).unwrap();
+    assert_eq!(v["scope"], "quick");
+    assert_ne!(v["verdict"], "nothing_found");
+    let (code, out, err) = go(&["no-such-folder-for-forge-tests", "--brief"]);
+    assert_eq!(code, EXIT_CANNOT_RUN);
+    assert!(out.is_empty(), "{out}");
+    assert!(err.contains("error:"));
 }
 
 #[test]

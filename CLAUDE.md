@@ -34,7 +34,7 @@ It still lacks steps 9 to 20 and a "Legal and notices" section.
 | `forge-analysis-core` | The analysis: parsing with oxc, `imports/` (visitor, call graph, flow, linker, package.json). Pure: no process, network or file access. |
 | `forge-analysis-report` | Builds the 11-section report model, then JSON and Markdown. Never drops an item: long sections are grouped. |
 | `forge-analysis` | **The library.** `analyze_folder`, `analyze_files`, `analyze_snapshot`, `RunOptions` (limits, time budget, cancel flag), `brief`. Owns `REPORT_SCHEMA`. |
-| `forge-analysis-cli` | Command line over the library. `analyze_folder` is a thin wrapper kept for the tests. |
+| `forge-analysis-cli` | Command line over the library (`--quick`, `--brief`, `--out`). `analyze_folder` is a thin wrapper kept for the tests. |
 
 Planned and not built: a fetch crate (registry downloads) and a research crate.
 
@@ -183,7 +183,12 @@ Waiting on the owner: sign off Milestone 1, and the full (slow) test run if he w
      does not run a rustc wrapper, but `cargo check` and `cargo build` do.
    - Node: `.npmrc`, install hooks. Python: a project-carried virtual-environment `python`.
 3. **Restricted Mode integration (Forge side, not here):** show the quick-scan result in the Restricted
-   Mode dialog. The panel trust gate itself is on Forge's `forge-panel-trust-gate` branch.
+   Mode dialog. The panel trust gate itself is on Forge's `forge-panel-trust-gate` branch. **Our side is done:**
+   `forge-analysis <folder> --brief [--quick]` prints exactly one line of JSON (the brief) on stdout, messages go to
+   stderr, `--out` also writes `brief.json`. The brief carries `report_schema` and `snapshot_sha256` (a verdict
+   belongs to that exact content). The contract for readers is `docs/brief-contract.md`; a test
+   (`the_contract_document_names_every_verdict_scope_reason_and_field`) fails if the code and the document drift
+   apart, so update the document whenever a verdict, scope, reason kind or brief field changes.
 4. Then: the findings layer, lockfile and advisory matching (OSV), the fetch crate, typed receivers,
    catalog breadth, a command catalog, write-destination
    resolution, and a written bump rule for `REPORT_SCHEMA`.

@@ -22,6 +22,5 @@ forge-analysis-catalog.workspace = true
 forge-analysis-intake = { path = "../forge-analysis-intake" }
 forge-analysis-core = { path = "../forge-analysis-core" }
 forge-analysis-report = { path = "../forge-analysis-report" }
-
-[dev-dependencies]
 serde_json.workspace = true
+

@@ -20,7 +20,7 @@ pub const EXIT_CANNOT_WRITE: i32 = 4;
 pub enum Command {
     Help,
     Version,
-    Run { folder: PathBuf, out: Option<PathBuf>, quick: bool },
+    Run { folder: PathBuf, out: Option<PathBuf>, quick: bool, brief: bool },
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -43,7 +43,7 @@ impl std::fmt::Display for ParseError {
 }
 
 pub fn usage() -> String {
-    "Usage: forge-analysis <folder> [--quick] [--out <dir>]\n\
+    "Usage: forge-analysis <folder> [--quick] [--brief] [--out <dir>]\n\
      \n\
      Reads <folder> and reports what its code does, without running any of it.\n\
      \n\
@@ -53,6 +53,8 @@ pub fn usage() -> String {
      \x20 -q, --quick      read only the files that run by themselves (install hooks and what\n\
      \x20                   they load). Every other file is counted as not examined, so a\n\
      \x20                   quick scan is always reported as incomplete.\n\
+     \x20 -b, --brief      print only the brief (verdict and reasons) as one line of JSON on stdout;\n\
+     \x20                   messages go to stderr. With --out, brief.json is written too. See docs/brief-contract.md\n\
      \x20 -h, --help        show this help\n\
      \x20 -V, --version     show the version\n\
      \n\
@@ -65,6 +67,7 @@ pub fn parse_args(args: &[String]) -> Result<Command, ParseError> {
     let mut folder: Option<PathBuf> = None;
     let mut out: Option<PathBuf> = None;
     let mut quick = false;
+    let mut brief = false;
     let mut only_positional = false;
     let mut i = 0;
     while i < args.len() {
@@ -81,6 +84,7 @@ pub fn parse_args(args: &[String]) -> Result<Command, ParseError> {
             "-h" | "--help" => return Ok(Command::Help),
             "-V" | "--version" => return Ok(Command::Version),
             "-q" | "--quick" => quick = true,
+            "-b" | "--brief" => brief = true,
             "-o" | "--out" => match args.get(i) {
                 Some(v) => {
                     out = Some(PathBuf::from(v));
@@ -96,7 +100,7 @@ pub fn parse_args(args: &[String]) -> Result<Command, ParseError> {
         }
     }
     match folder {
-        Some(folder) => Ok(Command::Run { folder, out, quick }),
+        Some(folder) => Ok(Command::Run { folder, out, quick, brief }),
         None => Err(ParseError::NoFolder),
     }
 }
@@ -166,7 +170,7 @@ pub fn run(args: &[String], out: &mut dyn Write, err: &mut dyn Write) -> i32 {
             let _ = writeln!(out, "forge-analysis {}", env!("CARGO_PKG_VERSION"));
             EXIT_OK
         }
-        Ok(Command::Run { folder, out: out_dir, quick }) => {
+        Ok(Command::Run { folder, out: out_dir, quick, brief }) => {
             if let Some(o) = &out_dir {
                 if out_is_inside(&folder, o) {
                     let _ = writeln!(err, "error: the output folder is inside the analysed folder; choose one outside it");
@@ -180,19 +184,31 @@ pub fn run(args: &[String], out: &mut dyn Write, err: &mut dyn Write) -> i32 {
                     return EXIT_CANNOT_RUN;
                 }
             };
-            let _ = write!(out, "{}", summary(&report));
+            // With --brief the only thing on stdout is the brief, as one line of JSON, so a program can
+            // read it. Everything else goes to stderr.
+            let brief_json = serde_json::to_string(&forge_analysis::brief(&report)).unwrap_or_default();
+            if brief {
+                let _ = writeln!(out, "{brief_json}");
+            } else {
+                let _ = write!(out, "{}", summary(&report));
+            }
             if let Some(dir) = out_dir {
                 let write_all = || -> std::io::Result<()> {
                     std::fs::create_dir_all(&dir)?;
                     std::fs::write(dir.join("report.json"), to_json(&report) + "\n")?;
                     std::fs::write(dir.join("report.md"), to_markdown(&report))?;
+                    std::fs::write(dir.join("brief.json"), brief_json.clone() + "\n")?;
                     Ok(())
                 };
                 if let Err(e) = write_all() {
                     let _ = writeln!(err, "error: could not write the report: {e}");
                     return EXIT_CANNOT_WRITE;
                 }
-                let _ = writeln!(out, "Report written to {}", dir.display());
+                if brief {
+                    let _ = writeln!(err, "Report written to {}", dir.display());
+                } else {
+                    let _ = writeln!(out, "Report written to {}", dir.display());
+                }
             }
             EXIT_OK
         }
