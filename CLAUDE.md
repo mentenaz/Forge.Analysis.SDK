@@ -1,3 +1,7 @@
+# CLAUDE.md
+
+This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+
 # Forge analysis engine
 
 A static-only code analyser written in Rust. It reads a project and reports what the code does from
@@ -68,7 +72,8 @@ limits, not by the flag. Files not reached are reported as `NotAnalysedKind::Sto
 ## CI
 
 `.github/workflows/ci.yml`: fast tests on Ubuntu and Windows, `cargo deny` on core, and the full release suite on pushes
-to master/main (not pull requests). Rust is pinned to 1.100.0. Only GitHub's own actions are used. Passed on its first run.
+to master/main (not pull requests), plus the `notices` job. Only GitHub's own actions are used. Passed on its first run
+(before the `notices` job existed: that job has not run on GitHub yet).
 
 ## Commands (PowerShell, from the workspace folder)
 
@@ -91,97 +96,48 @@ The full run is slow in debug (about 75 minutes at the last measure; 4 minutes i
 live in `crates/forge-analysis-cli/tests/golden` and `crates/forge-analysis-report/tests/golden`. Only
 re-bless them when the report is meant to change, and say so in the commit.
 
-The required toolchain is Rust 1.98 (oxc needs it). `rust-version` is commented out in the root `Cargo.toml`
-and there is no `rust-toolchain.toml`, so nothing enforces it. The sandbox used for steps 19 to 21 had 1.97 and
-needed `--ignore-rust-version`.
+**Toolchain:** oxc needs Rust 1.98 or newer; CI pins 1.100.0 (`ci.yml`). Nothing enforces it locally: `rust-version` is
+commented out in the root `Cargo.toml` and there is no `rust-toolchain.toml`. A sandbox with 1.97 needed
+`--ignore-rust-version`.
+
+## When you change X, also change Y
+
+- **The report JSON in a way a reader could meet:** bump `REPORT_SCHEMA` (rule below), re-bless the goldens, say so in the commit.
+- **A brief verdict, scope, reason kind or field:** update `docs/brief-contract.md` (a test fails if they drift).
+- **A file the config reader handles:** add it to `CONFIG` in `autorun.rs` (a test checks it).
+- **Any dependency:** regenerate `THIRD-PARTY-NOTICES.md` (command under Legal and notices) and run `cargo deny` on core.
+- **The `NOTICE` wording:** keep it in step with section 3 of the Terms of Use; it is a code change plus re-blessed goldens.
 
 ## Status
 
 Done: steps 1 to 21, up to the library crate with in-memory input, time budget, cancel and `brief`
 (step 21). Step 20 fixed the call-graph slowdown. Step 19 added tainted-callee flows.
-Steps 16 to 21 are committed and pushed (private repo `mentenaz/Forge.Analysis.SDK`, branch `master`).
-The stray `visitor.rs.bak` is gone. The fast workspace test passes on the owner's machine.
+Steps 16 to 21 are committed and pushed (private repo `mentenaz/Forge.Analysis.SDK`, branch `master`). The two
+licence commits after them (third-party notices `1a14876`, GPL licence and report notice `6ab4d2f`) are committed
+locally but **not pushed yet** (as of 22 Nov 2026, 10:52). The fast workspace test passed on the owner's machine before
+those two commits; it has not been re-run since.
 Waiting on the owner: sign off Milestone 1, and the full (slow) test run if he wants it confirmed.
 
 ## Next steps, in the agreed order
 
 1. ~~Quick mode for JS/TS~~ done (first slice, no cache). The fixed list lives in `analyze_snapshot`.
-2. **Per-ecosystem lists.** Slice A (list and flag, no parsing) is built, and the list is broad on purpose: everything
-   a tool, editor, AI agent, package manager or build system might act on by itself (.NET, editors and agent hooks
-   such as `.vscode/tasks.json`, `.claude/settings.json`, `.mcp.json`, git hooks, Python, Rust, Ruby, PHP, JVM,
-   Apple, C/C++ build files, `.env`, autorun/shortcut files). The one place to extend it is
-   `crates/forge-analysis-report/src/autorun.rs`: `CONFIG` (flagged, cannot parse yet: `NotAnalysedKind::AutoRunConfig`)
-   and `CODE_PREFIXES` (JS/TS tool config such as `webpack.config.js`, `.eslintrc.cjs`: **a quick scan reads these as
-   code**). Widening the table does not change the report shape, so it does not bump `REPORT_SCHEMA`. The brief reason
-   is `AutoRunNotAnalysed`; an unread auto-run file makes the brief `incomplete` in either scope (`review` still wins).
-   The list comes from tool documentation and known abuse and is **not yet checked against the canary test**; the
-   entries say a file *can* act, not that it does. Project files (`.csproj` etc.) and several others match by
-   extension or folder, so "fixed list, not a pattern" is relaxed for them.
-   Intake makes one exception to "ignored folders are not entered": inside a `.git` folder (any depth) it reads
-   `config` and the active files in `hooks` (not `*.sample`), because git runs them by itself. `.git` is still
-   recorded once as ignored, so the rest of it stays counted; links are never followed; the in-memory path makes the
-   same exception. Archives (`.zip`, `.tgz`, `.jar`, `.whl`, `.vsix` and more) get `NotAnalysedKind::Archive` and the
-   brief reason `ArchiveNotOpened` (brief incomplete); they are **listed, not opened**. Known gaps: archives are not
-   opened (needs size, zip-bomb and path-traversal limits); content inside a file (a `plugins` entry in
-   `tsconfig.json`, a key that config.rs does not list) is not read; `.git/modules` and
-   `.git/info` are not read. Slice B is partly built (see above).
-   **Slice B, pieces 1 and 2 are built** (`crates/forge-analysis-core/src/imports/config.rs`): these files are now
-   *read*, not only listed: `.git/config`, `.vscode/tasks.json`, `.claude/settings.json` (+ `.local`), `.mcp.json`,
-   `.cursor/mcp.json`, `.vscode/mcp.json`, `devcontainer.json`, `composer.json`, `global.json` (`msbuild-sdks`). Each
-   command becomes a `LifecycleScript` fact with a trigger (`on_open`, `on_git`, `on_build`, or `install`/`hook`/`manual`)
-   plus an unresolved `ShellCommand` fact on the same text (quoted, not followed). Only commands that hang on an
-   automatic trigger are a brief reason (`AutomaticCommand`, gives `review`); a task that someone must start is listed
-   as `manual`. A read file with nothing automatic leaves the unread list; a file that does not parse gets
-   `ParseFailed` (brief incomplete). Repeated keys are flagged (`AmbiguousBinding`). Editor files that allow comments
-   use `json::parse_lenient`; the rest stay strict. Intake keeps the text of `.git/config`
-   (`Options::source_path_endings`). Files the reader handles must also be on the `CONFIG` table (a test checks it).
-   Command text is quoted in the report, so a secret written inside a command (a credential helper) would show.
-   **Piece 3 (MSBuild XML and `nuget.config`) is built too**, with our own strict XML reader (`imports/xml.rs`: spans,
-   4 MiB / 64-deep limits; a DOCTYPE, unknown entity or repeated attribute is refused; nothing expands). It reads
-   `Directory.Build/Solution/Packages.*`, `*.csproj/.fsproj/.vbproj/.vcxproj/.proj` and any `*.props`/`*.targets`:
-   targets that run by themselves (BeforeTargets/AfterTargets, InitialTargets/DefaultTargets, plus what they
-   DependsOn or CallTarget), `Exec` (a command fact), `DownloadFile`, tasks we cannot see into (`Unzip`, the `MSBuild`
-   task, tasks from a `UsingTask`), inline task code, Pre/PostBuildEvent, analyzers, SDKs from NuGet (Microsoft's are
-   not reported), tool-path redirects (`CscToolPath`...), restore-source properties and non-standard `Import`s. Plain
-   file tasks (Copy, Delete, WriteLinesToFile) and `PackageReference`s are NOT reported. `nuget.config`: any source
-   other than nuget.org, `repositoryPath`/`globalPackagesFolder`, and the presence (never the values) of
-   credentials. No schema change, so `REPORT_SCHEMA` stays 5.
-   **Piece 4 (TOML) is built too** (`imports/config/tomlcfg.rs`, read with `toml_edit`, pinned `=0.22.27`, no default
-   features; core's only new dependency; `cargo deny` still passes; TOML forbids repeated keys so they are a
-   `ParseFailed`). Reads `.cargo/config.toml` (rustc wrappers, linker/runner, credential helpers, link-arg rustflags,
-   dangerous `[env]` names, aliases as manual; source replacement, registries, http proxy as "not analysed"),
-   `Cargo.toml` (only listed as not analysed: build script, proc-macro, `[patch]`/`[replace]`, git or alternative
-   registry dependencies; a build script is not a command because `build.rs` is already flagged unread),
-   `rust-toolchain(.toml)` (`toolchain.path`; a bare channel name is fine), `pyproject.toml` (`backend-path`, custom
-   hatch hooks, pdm pre/post scripts are `on_build`; a build backend or requirement not on the fixed allowlists
-   `KNOWN_BACKENDS`/`KNOWN_REQUIRES`, direct URL requirements, poetry/uv package indexes and pytest `-p` are "not
-   analysed"), `mise.toml` (hooks, `_.source`, `exec(` templates, plugins, tool postinstall; tasks are manual),
-   `.codex/config.toml` (MCP server commands, `notify`) and `.gemini/settings.json` (MCP servers, like the other
-   agent files). No schema change. Intake keeps the text of all `.toml` files.
-   **Decided by Francois: AI-agent *instruction* files** (`CLAUDE.md`, `AGENTS.md`, `.cursorrules`, Copilot
-   instructions) are a prompt-injection vector, not a command, and are deliberately **excluded**: not flagged, not
-   listed as a kind. (The agent *config* files that name commands, `.claude/settings.json`, MCP files,
-   `.codex/config.toml`, `.gemini/settings.json`, are read.)
-   **`node <file>` in these commands is followed** (like a `package.json` script): `Cf::command` runs
-   `interpret_command`, turns `Node` actions into `EntryWant`s (`ConfigAnalysis::entries`) and `run.rs` feeds them to
-   the linker and, in a quick scan, to the follower. Commands run from the folder above a dot folder (`.vscode`,
-   `.claude`, `.git`, `.cargo`, `.devcontainer`, `.cursor`, `.gemini`, `.codex`), else from the file's own folder
-   (`base_folder`); `${workspaceFolder}`, `$CLAUDE_PROJECT_DIR` and the like count as that folder. A command that is
-   only `node <file>` is not also "not followed"; anything else in it still is. For MSBuild the file is a guess
-   (`optional`). Not done: following imported `.targets` files; `npm run` inside these commands. `config.rs` is
-   still large; only the TOML part was split out.
-   **Checked against the canary test** (`I:\canary-test`, 2026-11-22): its four vectors (npm `preinstall`, Cargo
-   `rustc-wrapper`, MSBuild `InitialTargets` + `Exec`, a project-carried `.venv\Scripts\python.exe` + `pyvenv.cfg`) are
-   all reported, in a quick and a full scan. The fixture `crates/forge-analysis-cli/tests/fixtures/canary` replicates
-   that layout with relative paths and a stub `.exe` (test `every_vector_in_the_canary_test_is_reported`); keep it
-   passing. Note the canary's `requirements.txt` is empty: a real one can name `--index-url`, `-e` or `git+` sources,
-   and is only listed as an other file (a possible gap). Still to do per ecosystem: new rows as Forge's panels learn
-   to run more. Built from what Forge's panels really run and what the canary test showed:
-   - .NET: `Directory.Build.props` and `.targets` (their targets run during a plain `dotnet list package`
-     scan, high priority), `global.json`, `nuget.config`.
-   - Rust: `.cargo/config.toml`, `rust-toolchain.toml`, `build.rs`. Note that `cargo metadata --no-deps`
-     does not run a rustc wrapper, but `cargo check` and `cargo build` do.
-   - Node: `.npmrc`, install hooks. Python: a project-carried virtual-environment `python`.
+2. **Per-ecosystem lists.** Slices A and B are built (history and detail: `docs/ecosystem-lists.md`). Rules a reader of the
+   code cannot see:
+   - The one place to extend the list of files that can act by themselves is `crates/forge-analysis-report/src/autorun.rs`:
+     `CONFIG` (flagged, `NotAnalysedKind::AutoRunConfig`) and `CODE_PREFIXES` (JS/TS tool config; **a quick scan reads
+     these as code**). Widening the table does not bump `REPORT_SCHEMA`.
+   - A file the reader in `imports/config.rs` handles must also be on `CONFIG` (a test checks it). An unread auto-run
+     file makes the brief `incomplete` in either scope (`review` still wins); only commands on an automatic trigger give
+     `review`; archives are listed, not opened (`ArchiveNotOpened`).
+   - Intake reads `config` and active hooks inside any `.git` folder; everything else in `.git` stays counted as ignored.
+   - **Decided by Francois:** AI-agent *instruction* files (`CLAUDE.md`, `AGENTS.md`, `.cursorrules`, Copilot instructions)
+     are deliberately excluded (prompt injection, not a command). Agent *config* files that name commands are read.
+   - `node <file>` in a read command is followed like a `package.json` script. `npm run` inside these commands and
+     imported `.targets` files are not.
+   - Command text is quoted in the report, so a secret written inside a command would show.
+   - Keep the canary fixture (`crates/forge-analysis-cli/tests/fixtures/canary`, test
+     `every_vector_in_the_canary_test_is_reported`) passing. Possible gap: a real `requirements.txt` can name
+     `--index-url`, `-e` or `git+` sources and is only listed.
 3. **Restricted Mode integration (Forge side, not here):** show the quick-scan result in the Restricted
    Mode dialog. The panel trust gate itself is on Forge's `forge-panel-trust-gate` branch. **Our side is done:**
    `forge-analysis <folder> --brief [--quick]` prints exactly one line of JSON (the brief) on stdout, messages go to
@@ -209,8 +165,15 @@ Francois is not a lawyer and neither is Claude: nothing here has had legal revie
 - **Forge Terms of Use (draft v0.1)** live in the main repo `E:\zed_Source` (`mentenaz/mentenaz.Forge.Super`), file
   `legal/forge-terms.md`, on branch `forge-terms-draft` (not merged yet):
   https://github.com/mentenaz/mentenaz.Forge.Super/blob/forge-terms-draft/legal/forge-terms.md . Link to it; do not copy
-  it here. The other files in that `legal/` folder are Zed Industries' own and are left as upstream has them. Its
-  `[square brackets]` are still to fill in (publisher, licence name, liability limit, governing law, contact).
+  it here. The other files in that `legal/` folder are Zed Industries' own and are left as upstream has them.
+  **State on 22 Nov 2026 (found in `E:\zed_Source`, local only; `origin/forge-terms-draft` still has just the first
+  draft `d44cccd`):** `forge-terms-draft` is 5 commits ahead: publisher named, contact (mentenaz@outlook.de), licence
+  statement from the crates' `Cargo.toml` (GPL-3.0-or-later 214, Apache-2.0 74, MIT 1 (`gpui_flow`); the 8 without one
+  now GPL), "free and at your own risk" (section 5), liability capped at what the user paid, i.e. nothing (section 6).
+  Branch `forge-crate-licences` gives those 8 crates `GPL-3.0-or-later`; the terms text is accurate only once it is
+  merged with `forge-terms-draft`. Neither branch is merged or pushed. Still in `[square brackets]`: version date,
+  governing law and courts, the sign-off choice (DCO or not), and three "[Lawyer to confirm]" notes (liability limit,
+  licence statement in section 7).
 - **Third-party notices:** `THIRD-PARTY-NOTICES.md` is generated, never edited by hand:
   `cargo about generate --workspace about.hbs -o THIRD-PARTY-NOTICES.md` (cargo-about 0.8.2, settings in `about.toml`).
   CI (`notices` job) regenerates it and fails if it differs. `.gitattributes` stores it byte for byte (some licence texts
