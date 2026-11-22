@@ -36,11 +36,14 @@ impl Default for Options {
             max_files: 50_000,
             max_depth: 64,
             ignored_dirs: vec!["node_modules".into(), ".git".into()],
-            source_extensions: ["js", "mjs", "cjs", "ts", "tsx", "jsx", "json"]
+            source_extensions: [
+                "js", "mjs", "cjs", "ts", "tsx", "jsx", "json", "csproj", "fsproj", "vbproj", "vcxproj", "proj", "props",
+                "targets",
+            ]
                 .iter()
                 .map(|s| s.to_string())
                 .collect(),
-            source_path_endings: vec![".git/config".to_string()],
+            source_path_endings: vec![".git/config".to_string(), "nuget.config".to_string()],
         }
     }
 }

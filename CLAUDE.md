@@ -136,8 +136,18 @@ Waiting on the owner: sign off Milestone 1, and the full (slow) test run if he w
    use `json::parse_lenient`; the rest stay strict. Intake keeps the text of `.git/config`
    (`Options::source_path_endings`). Files the reader handles must also be on the `CONFIG` table (a test checks it).
    Command text is quoted in the report, so a secret written inside a command (a credential helper) would show.
-   Not built yet: piece 3 (MSBuild XML: `Directory.Build.*`, `.csproj`, `nuget.config`) and piece 4 (TOML:
-   `.cargo/config.toml`, `pyproject.toml`, `.mise.toml`). Following `node x.js` inside these commands is not done.
+   **Piece 3 (MSBuild XML and `nuget.config`) is built too**, with our own strict XML reader (`imports/xml.rs`: spans,
+   4 MiB / 64-deep limits; a DOCTYPE, unknown entity or repeated attribute is refused; nothing expands). It reads
+   `Directory.Build/Solution/Packages.*`, `*.csproj/.fsproj/.vbproj/.vcxproj/.proj` and any `*.props`/`*.targets`:
+   targets that run by themselves (BeforeTargets/AfterTargets, InitialTargets/DefaultTargets, plus what they
+   DependsOn or CallTarget), `Exec` (a command fact), `DownloadFile`, tasks we cannot see into (`Unzip`, the `MSBuild`
+   task, tasks from a `UsingTask`), inline task code, Pre/PostBuildEvent, analyzers, SDKs from NuGet (Microsoft's are
+   not reported), tool-path redirects (`CscToolPath`...), restore-source properties and non-standard `Import`s. Plain
+   file tasks (Copy, Delete, WriteLinesToFile) and `PackageReference`s are NOT reported. `nuget.config`: any source
+   other than nuget.org, `repositoryPath`/`globalPackagesFolder`, and the presence (never the values) of
+   credentials. No schema change, so `REPORT_SCHEMA` stays 5.
+   Not built yet: piece 4 (TOML: `.cargo/config.toml`, `pyproject.toml`, `.mise.toml`). Following `node x.js` inside
+   these commands, and following imported `.targets` files, is not done.
    Still to do per ecosystem: confirm the list against the canary test. Built from what Forge's panels really run and what the canary test showed:
    - .NET: `Directory.Build.props` and `.targets` (their targets run during a plain `dotnet list package`
      scan, high priority), `global.json`, `nuget.config`.

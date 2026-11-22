@@ -26,6 +26,7 @@ mod exports;
 mod link;
 pub use link::{link as link_files, ExportName, ExportTarget, Exports, ExtCall, ExtRef, ImportEdge, ImportKind, LinkFile, LinkInfo, LocalEdges, PropCall, PropTag, PropUse, PropValue};
 mod config;
+mod xml;
 mod json;
 mod package;
 

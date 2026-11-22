@@ -199,6 +199,8 @@ const CFG_CORPUS: &[(&str, &str)] = &[
     (".devcontainer/devcontainer.json", "{ // c\n \"initializeCommand\": \"a\", \"postCreateCommand\": { \"x\": \"b\", \"y\": [\"c\", \"d\"] }, \"features\": { \"f:1\": {} }, }"),
     ("composer.json", "{\"scripts\":{\"post-install-cmd\":[\"@php a\",\"b\"],\"x\":\"y\"}}"),
     ("global.json", "{ /* c */ \"sdk\": {\"version\": \"8\"}, \"msbuild-sdks\": {\"A.Sdk\": \"1.0.0\"} }"),
+    ("Directory.Build.targets", "<Project Sdk=\"X.Sdk/1.0\"><!-- c --><Target Name=\"A\" BeforeTargets=\"Restore\" DependsOnTargets=\"B\"><Exec Command=\"x &amp; y\" /><DownloadFile SourceUrl=\"u\" /></Target><Target Name=\"B\"><CallTarget Targets=\"A\" /></Target><UsingTask TaskName=\"T\" AssemblyFile=\"a.dll\" /><PropertyGroup><PostBuildEvent>p</PostBuildEvent></PropertyGroup><Import Project=\"x.targets\" /></Project>"),
+    ("nuget.config", "<configuration><packageSources><add key=\"a\" value=\"http://x\" /></packageSources><packageSourceCredentials><a><add key=\"k\" value=\"v\" /></a></packageSourceCredentials></configuration>"),
     (".git/config", "[core]\n\tfsmonitor = \"sh x\" # c\n\thooksPath = .h\n[remote \"origin\"]\n\turl = u\n[filter \"l\"]\n\tclean = c \\\n  d\n[alias]\n\tx = !y\n[include]\n\tpath = p\n[url \"b\"]\n\tinsteadOf = a\n"),
 ];
 
@@ -348,6 +350,17 @@ fn deep_and_long_config_input_ends_in_an_answer() {
             ),
         ),
         (".claude/settings.json", format!("{{{}}}", "\"hooks\":{},".repeat(20_000).trim_end_matches(','))),
+        // XML: very many attributes on one element, many siblings, a long chain of targets, deep nesting.
+        ("a.csproj", format!("<Project {}/>", (0..20_000).map(|i| format!("a{i}=\"v\"")).collect::<Vec<_>>().join(" "))),
+        ("a.targets", format!("<Project>{}</Project>", "<Target Name=\"t\" AfterTargets=\"B\"><Exec Command=\"c\" /></Target>".repeat(5_000))),
+        (
+            "a.targets",
+            format!(
+                "<Project>{}</Project>",
+                (0..5_000).map(|i| format!("<Target Name=\"t{i}\" AfterTargets=\"B\" DependsOnTargets=\"t{}\"/>", i + 1)).collect::<String>()
+            ),
+        ),
+        ("a.props", format!("{}{}", "<a>".repeat(100_000), "</a>".repeat(100_000))),
     ];
     std::thread::Builder::new()
         .stack_size(8 * 1024 * 1024)

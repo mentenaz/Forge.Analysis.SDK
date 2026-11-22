@@ -377,14 +377,13 @@ mod tests {
     }
 
     #[test]
-    fn build_files_that_run_by_themselves_make_the_brief_incomplete_in_either_scope() {
+    fn build_files_that_run_by_themselves_are_read_and_a_hooked_exec_is_a_review_in_either_scope() {
         for opts in [RunOptions::default(), quick()] {
             let b = brief(&analyze_files(dotnet_project(), &opts).unwrap());
-            assert_eq!(b.verdict, Verdict::Incomplete, "{:?}", opts.scope);
-            assert!(!b.complete);
-            let r = b.reasons.iter().find(|r| r.kind == ReasonKind::AutoRunNotAnalysed).unwrap();
-            // Program.cs is not one of them, and `global.json` holds nothing automatic, so it was read.
-            assert_eq!(r.count, 4);
+            // Every file here is read now. The `Exec` in a target hooked before `Restore` runs by itself.
+            assert_eq!(b.verdict, Verdict::Review, "{:?}", opts.scope);
+            assert_eq!(b.reasons.iter().find(|r| r.kind == ReasonKind::AutomaticCommand).unwrap().count, 1);
+            assert!(b.reasons.iter().all(|r| r.kind != ReasonKind::AutoRunNotAnalysed));
         }
     }
 
@@ -395,7 +394,7 @@ mod tests {
         let b = brief(&analyze_files(files, &RunOptions::default()).unwrap());
         assert_eq!(b.verdict, Verdict::Review);
         let kinds: Vec<_> = b.reasons.iter().map(|r| r.kind).collect();
-        assert!(kinds.contains(&ReasonKind::InstallScript) && kinds.contains(&ReasonKind::AutoRunNotAnalysed));
+        assert!(kinds.contains(&ReasonKind::InstallScript) && kinds.contains(&ReasonKind::AutomaticCommand));
     }
 
     #[test]

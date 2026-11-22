@@ -284,6 +284,13 @@ mod tests {
             ".devcontainer.json",
             "composer.json",
             "global.json",
+            "Directory.Build.props",
+            "Directory.Build.targets",
+            "Directory.Packages.props",
+            "src/App/App.csproj",
+            "build/common.props",
+            "build/tasks.targets",
+            "nuget.config",
         ] {
             assert!(is_config_manifest(p), "{p}");
             assert!(is_auto_run_config(p), "{p} is read but not on the auto-run table");

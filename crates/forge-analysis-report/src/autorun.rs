@@ -48,6 +48,10 @@ const CONFIG: &[Pat] = &[
     Ext("csproj"),
     Ext("fsproj"),
     Ext("vbproj"),
+    Ext("vcxproj"),
+    Ext("proj"),
+    Ext("props"), // imported by projects: their targets and tasks run in the build
+    Ext("targets"),
     Ext("sln"),
     Ext("slnx"),
     // ---- Editors and AI coding agents: acted on when a folder is opened or a session starts.

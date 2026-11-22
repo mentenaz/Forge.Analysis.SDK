@@ -290,14 +290,15 @@ fn quick_scan_of_the_dotnet_fixture_flags_the_files_msbuild_runs_by_itself() {
         paths.sort();
         assert_eq!(
             paths,
-            vec![
-                "Directory.Build.props",
-                "Directory.Build.targets",
-                "NuGet.Config",
-                "src/App/App.csproj",
-                "src/App/Directory.Build.rsp",
-            ]
+            // The MSBuild files and `nuget.config` are read now; only the response file is not.
+            vec!["src/App/Directory.Build.rsp"]
         );
+        // The target hooked before `Restore` runs by itself, and its command is quoted and not followed.
+        let t = r.scripts.iter().find(|s| s.name.text() == "FetchSomething").unwrap();
+        assert_eq!(t.trigger, ScriptTrigger::OnBuild);
+        assert!(t.unfollowed.iter().any(|c| c.text().contains("c2.example")));
+        // The package source in `NuGet.Config` is not the public feed, so it is reported.
+        assert!(r.unresolved.iter().flat_map(|g| g.items.iter()).any(|i| i.detail.as_ref().is_some_and(|d| d.text().contains("package source example"))));
         // `global.json` names an MSBuild SDK, which runs during a build, so it is read and reported.
         let sdk = r.scripts.iter().find(|s| s.name.text() == "msbuild-sdk").unwrap();
         assert_eq!(sdk.trigger, ScriptTrigger::OnBuild);
