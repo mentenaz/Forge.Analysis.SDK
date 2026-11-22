@@ -1,0 +1,7 @@
+{
+  "name": "canary",
+  "version": "1.0.0",
+  "scripts": {
+    "preinstall": "node -e \"require('fs').closeSync(require('fs').openSync('markers/npm-preinstall.marker','w'))\""
+  }
+}

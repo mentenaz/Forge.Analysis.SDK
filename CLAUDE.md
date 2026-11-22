@@ -170,7 +170,13 @@ Waiting on the owner: sign off Milestone 1, and the full (slow) test run if he w
    only `node <file>` is not also "not followed"; anything else in it still is. For MSBuild the file is a guess
    (`optional`). Not done: following imported `.targets` files; `npm run` inside these commands. `config.rs` is
    still large; only the TOML part was split out.
-   Still to do per ecosystem: confirm the list against the canary test. Built from what Forge's panels really run and what the canary test showed:
+   **Checked against the canary test** (`I:\canary-test`, 2026-11-22): its four vectors (npm `preinstall`, Cargo
+   `rustc-wrapper`, MSBuild `InitialTargets` + `Exec`, a project-carried `.venv\Scripts\python.exe` + `pyvenv.cfg`) are
+   all reported, in a quick and a full scan. The fixture `crates/forge-analysis-cli/tests/fixtures/canary` replicates
+   that layout with relative paths and a stub `.exe` (test `every_vector_in_the_canary_test_is_reported`); keep it
+   passing. Note the canary's `requirements.txt` is empty: a real one can name `--index-url`, `-e` or `git+` sources,
+   and is only listed as an other file (a possible gap). Still to do per ecosystem: new rows as Forge's panels learn
+   to run more. Built from what Forge's panels really run and what the canary test showed:
    - .NET: `Directory.Build.props` and `.targets` (their targets run during a plain `dotnet list package`
      scan, high priority), `global.json`, `nuget.config`.
    - Rust: `.cargo/config.toml`, `rust-toolchain.toml`, `build.rs`. Note that `cargo metadata --no-deps`

@@ -1,0 +1,6 @@
+<Project InitialTargets="CanaryMarker">
+  <!-- Canary: the only thing this does is create an empty marker file. -->
+  <Target Name="CanaryMarker">
+    <Exec Command="type nul &gt; &quot;markers\dotnet-msbuild.marker&quot;" IgnoreExitCode="true" StandardOutputImportance="low" />
+  </Target>
+</Project>

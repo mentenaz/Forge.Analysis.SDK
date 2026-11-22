@@ -96,7 +96,7 @@ fn json_strings(v: &serde_json::Value, key: &str, found: &mut Vec<(String, Strin
 
 #[test]
 fn there_is_a_fixture_for_each_kind_of_project() {
-    assert_eq!(names(), vec!["autorun", "clean", "cross-file", "dotnet", "hostile", "install-script", "packages"]);
+    assert_eq!(names(), vec!["autorun", "canary", "clean", "cross-file", "dotnet", "hostile", "install-script", "packages"]);
 }
 
 #[test]
@@ -370,6 +370,36 @@ fn quick_scan_flags_what_tools_run_by_themselves_in_every_ecosystem_and_reads_to
     golden("autorun.quick", "json", &(to_json(&quick) + "
 "));
     golden("autorun.quick", "md", &to_markdown(&quick));
+}
+
+/// The layout of Forge's canary test: one harmless marker-writing file for each way a project can run
+/// something while it is only being scanned. Every one must be reported, in a quick scan and a full one.
+#[test]
+fn every_vector_in_the_canary_test_is_reported() {
+    let quick = analyze_folder_scoped(&fixtures_dir().join("canary"), &Options::default(), Scope::Quick).unwrap();
+    let full = report("canary");
+    for r in [&quick, &full] {
+        let find = |name: &str| r.scripts.iter().find(|s| s.name.text() == name);
+        // npm: an install hook.
+        assert_eq!(find("preinstall").unwrap().trigger, ScriptTrigger::Install);
+        // Cargo: a compiler wrapper, run by `cargo check` and `cargo build`.
+        let w = find("build.rustc-wrapper").unwrap();
+        assert_eq!(w.trigger, ScriptTrigger::OnBuild);
+        assert!(w.command.as_ref().unwrap().text().contains("rustc-wrapper.cmd"));
+        // MSBuild: an initial target with an Exec, run by a plain restore or `dotnet list package`.
+        assert_eq!(find("CanaryMarker").unwrap().trigger, ScriptTrigger::OnBuild);
+        // Python: a project-carried virtual environment, whose interpreter a scan could end up running.
+        let group = r.not_analysed.groups.iter().find(|g| g.kind == NotAnalysedKind::AutoRunConfig).unwrap();
+        let mut paths: Vec<&str> = group.items.iter().map(|i| i.path.text()).collect();
+        paths.sort();
+        assert_eq!(paths, vec![".venv/Scripts/python.exe", ".venv/pyvenv.cfg"]);
+        // The wrapper script itself is listed, not hidden.
+        assert!(r.not_analysed.groups.iter().any(|g| g.kind == NotAnalysedKind::ShellScript));
+        assert_eq!(r.overview.completeness, Completeness::Incomplete);
+    }
+    golden("canary.quick", "json", &(to_json(&quick) + "
+"));
+    golden("canary.quick", "md", &to_markdown(&quick));
 }
 
 #[test]

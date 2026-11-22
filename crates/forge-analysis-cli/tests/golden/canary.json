@@ -1,0 +1,460 @@
+{
+  "header": {
+    "schema": 5,
+    "engine": "forge-analysis 0.0.1",
+    "catalog_sha256": "661ff253d0997c290715b16d7de935041072e290e1efd30a82fa0c75eed0949b",
+    "snapshot_sha256": "e72ed51efe91cabe4adc7990d8a8049c1b251b14d86332dea5a2d2fb2f3d7eca",
+    "mode": "static_only",
+    "scope": "full"
+  },
+  "index": [
+    {
+      "section": "overview",
+      "number": 1,
+      "title": "Overview",
+      "explanation": "What was analysed, whether the picture is complete, and one count for everything we could not see.",
+      "count": null,
+      "anchor": "overview"
+    },
+    {
+      "section": "entry_points",
+      "number": 2,
+      "title": "Entry points",
+      "explanation": "What runs first: runtime and install entry files, and declared entries that do not match any analysed file.",
+      "count": 0,
+      "anchor": "entry-points"
+    },
+    {
+      "section": "timeline",
+      "number": 3,
+      "title": "Execution timeline",
+      "explanation": "When code runs: which functions run immediately, later, repeatedly, on events, at exit or at install, and every timer.",
+      "count": 0,
+      "anchor": "execution-timeline"
+    },
+    {
+      "section": "effects",
+      "number": 4,
+      "title": "Effects",
+      "explanation": "What the code does to the outside world: files, network, processes, environment and loading of code, each with its location.",
+      "count": 0,
+      "anchor": "effects"
+    },
+    {
+      "section": "flows",
+      "number": 5,
+      "title": "Data flows",
+      "explanation": "Data from the network or a file that can reach code execution or a command, from where it enters to where it is used.",
+      "count": 0,
+      "anchor": "data-flows"
+    },
+    {
+      "section": "scripts",
+      "number": 6,
+      "title": "Install scripts and shell commands",
+      "explanation": "Every command a project file asks a tool or package manager to run (package.json scripts, editor tasks, agent hooks, git settings and more): when it runs, and the commands inside it that we could not follow.",
+      "count": 3,
+      "anchor": "install-scripts-and-shell-commands"
+    },
+    {
+      "section": "dependencies",
+      "number": 7,
+      "title": "Dependencies",
+      "explanation": "Every declared dependency with where its code comes from: registry, git, URL, local path or bundled.",
+      "count": 0,
+      "anchor": "dependencies"
+    },
+    {
+      "section": "unresolved",
+      "number": 8,
+      "title": "Unresolved",
+      "explanation": "Places where static analysis cannot say what happens (computed code, dynamic loads, shell commands). Each one hides behaviour.",
+      "count": 3,
+      "anchor": "unresolved"
+    },
+    {
+      "section": "unlinked",
+      "number": 9,
+      "title": "Unlinked imports",
+      "explanation": "Imports we could not follow to their source: packages, missing files and names that are not exported.",
+      "count": 0,
+      "anchor": "unlinked-imports"
+    },
+    {
+      "section": "not_analysed",
+      "number": 10,
+      "title": "Not analysed",
+      "explanation": "Files and folders that were not read as code, by kind, and anything skipped by a limit.",
+      "count": 5,
+      "anchor": "not-analysed"
+    },
+    {
+      "section": "functions",
+      "number": 11,
+      "title": "Function index",
+      "explanation": "Every function with its lanes, effects, callers and the facts inside it.",
+      "count": 0,
+      "anchor": "function-index"
+    }
+  ],
+  "overview": {
+    "files_analysed": 0,
+    "files_not_analysed": 5,
+    "functions": 0,
+    "facts": 6,
+    "links_made": 0,
+    "unresolved_cleared_by_links": 0,
+    "completeness": "incomplete",
+    "coverage": [
+      {
+        "section": "unresolved",
+        "label": "places where static analysis cannot say what happens",
+        "count": 3
+      },
+      {
+        "section": "unlinked",
+        "label": "imports not followed to their source",
+        "count": 0
+      },
+      {
+        "section": "entry_points",
+        "label": "declared entry points that match no analysed file",
+        "count": 0
+      },
+      {
+        "section": "not_analysed",
+        "label": "files or folders not read as code",
+        "count": 5
+      },
+      {
+        "section": "dependencies",
+        "label": "dependencies whose own code and install scripts were not analysed",
+        "count": 0
+      },
+      {
+        "section": "functions",
+        "label": "calls whose target we could not see (no function followed, no fact)",
+        "count": 0
+      }
+    ],
+    "fact_counts": [
+      {
+        "kind": "entry",
+        "count": 0
+      },
+      {
+        "kind": "import",
+        "count": 0
+      },
+      {
+        "kind": "call",
+        "count": 0
+      },
+      {
+        "kind": "effect",
+        "count": 0
+      },
+      {
+        "kind": "timer",
+        "count": 0
+      },
+      {
+        "kind": "lifecycle_script",
+        "count": 3
+      },
+      {
+        "kind": "dependency",
+        "count": 0
+      },
+      {
+        "kind": "unresolved",
+        "count": 3
+      },
+      {
+        "kind": "flow",
+        "count": 0
+      }
+    ],
+    "mirrored_output": [],
+    "unreached_functions": 0
+  },
+  "entry_points": {
+    "basis": "roots",
+    "runtime": [],
+    "install": [],
+    "issues": []
+  },
+  "timeline": {
+    "lanes": [],
+    "timers": []
+  },
+  "effects": [],
+  "flows": [],
+  "scripts": [
+    {
+      "id": "fact:cbee98650c81c664",
+      "at": {
+        "file": {
+          "text": "package.json",
+          "truncated": false,
+          "original_len": 12,
+          "sha256": "7ae45ad102eab3b6d7e7896acd08c427a9b25b346470d7bc6507b6481575d519"
+        },
+        "start_line": 5,
+        "end_line": 5,
+        "start_byte": 77,
+        "end_byte": 175
+      },
+      "name": {
+        "text": "preinstall",
+        "truncated": false,
+        "original_len": 10,
+        "sha256": "1be0f0d730468640f53b1bf26efacf5e26e75162d12ebe32f6c2ffe3eab2c4b7"
+      },
+      "trigger": "install",
+      "command": {
+        "text": "node -e \"require('fs').closeSync(require('fs').openSync('markers/npm-preinstall.marker','w'))\"",
+        "truncated": false,
+        "original_len": 94,
+        "sha256": "c3499a20adf19657f7ed590ac51793a210cec98b35bc4048d95ca5ea679886d4"
+      },
+      "unfollowed": [
+        {
+          "text": "node -e",
+          "truncated": false,
+          "original_len": 7,
+          "sha256": "2111c3471ae4c814aa669109800819c6f85881854e4e2212f74bc906b5aed4a9"
+        }
+      ]
+    },
+    {
+      "id": "fact:a04181f5200f625f",
+      "at": {
+        "file": {
+          "text": ".cargo/config.toml",
+          "truncated": false,
+          "original_len": 18,
+          "sha256": "9a4f3e4537ebb7474452d131b0d969d89a51286f4269aac5ef268e712be17268"
+        },
+        "start_line": 2,
+        "end_line": 2,
+        "start_byte": 24,
+        "end_byte": 49
+      },
+      "name": {
+        "text": "build.rustc-wrapper",
+        "truncated": false,
+        "original_len": 19,
+        "sha256": "78496f8827771f19cc0861483eeb8b8b1f678400af18ecb2e297cb170dee26e5"
+      },
+      "trigger": "on_build",
+      "command": {
+        "text": "tools/rustc-wrapper.cmd",
+        "truncated": false,
+        "original_len": 23,
+        "sha256": "f3b2b996fe423f0e75b4b98a82e3231a4c590d8995bffb9cca858c2f72f94b1d"
+      },
+      "unfollowed": [
+        {
+          "text": "tools/rustc-wrapper.cmd",
+          "truncated": false,
+          "original_len": 23,
+          "sha256": "f3b2b996fe423f0e75b4b98a82e3231a4c590d8995bffb9cca858c2f72f94b1d"
+        }
+      ]
+    },
+    {
+      "id": "fact:afbf207a3d7ed2b8",
+      "at": {
+        "file": {
+          "text": "dotnet/Directory.Build.targets",
+          "truncated": false,
+          "original_len": 30,
+          "sha256": "614662f2ca14ed6eef6d0f851aeac006add6a73db7ecfec9933ef278757efdff"
+        },
+        "start_line": 4,
+        "end_line": 4,
+        "start_byte": 166,
+        "end_byte": 221
+      },
+      "name": {
+        "text": "CanaryMarker",
+        "truncated": false,
+        "original_len": 12,
+        "sha256": "c7d6414596cde2bf551037b53d0961f14d7a427d363cb9a743541980ed9eff83"
+      },
+      "trigger": "on_build",
+      "command": {
+        "text": "type nul > \"markers\\dotnet-msbuild.marker\"",
+        "truncated": false,
+        "original_len": 42,
+        "sha256": "111ae9d93e94c9c369e5fe390fdb30cd917e1264d284e6cae4aad668bf0e4fe3"
+      },
+      "unfollowed": [
+        {
+          "text": "type nul > \"markers\\dotnet-msbuild.marker\"",
+          "truncated": false,
+          "original_len": 42,
+          "sha256": "111ae9d93e94c9c369e5fe390fdb30cd917e1264d284e6cae4aad668bf0e4fe3"
+        }
+      ]
+    }
+  ],
+  "dependencies": [],
+  "unresolved": [
+    {
+      "reason": "shell_command",
+      "items": [
+        {
+          "id": "fact:056f27b679d6e54b",
+          "at": {
+            "file": {
+              "text": ".cargo/config.toml",
+              "truncated": false,
+              "original_len": 18,
+              "sha256": "9a4f3e4537ebb7474452d131b0d969d89a51286f4269aac5ef268e712be17268"
+            },
+            "start_line": 2,
+            "end_line": 2,
+            "start_byte": 24,
+            "end_byte": 49
+          },
+          "detail": {
+            "text": "tools/rustc-wrapper.cmd",
+            "truncated": false,
+            "original_len": 23,
+            "sha256": "f3b2b996fe423f0e75b4b98a82e3231a4c590d8995bffb9cca858c2f72f94b1d"
+          },
+          "in_fn": null,
+          "lanes": [],
+          "reachable": null
+        },
+        {
+          "id": "fact:e29758d1aec39b33",
+          "at": {
+            "file": {
+              "text": "dotnet/Directory.Build.targets",
+              "truncated": false,
+              "original_len": 30,
+              "sha256": "614662f2ca14ed6eef6d0f851aeac006add6a73db7ecfec9933ef278757efdff"
+            },
+            "start_line": 4,
+            "end_line": 4,
+            "start_byte": 166,
+            "end_byte": 221
+          },
+          "detail": {
+            "text": "type nul > \"markers\\dotnet-msbuild.marker\"",
+            "truncated": false,
+            "original_len": 42,
+            "sha256": "111ae9d93e94c9c369e5fe390fdb30cd917e1264d284e6cae4aad668bf0e4fe3"
+          },
+          "in_fn": null,
+          "lanes": [],
+          "reachable": null
+        },
+        {
+          "id": "fact:f723b966c3ff7bc6",
+          "at": {
+            "file": {
+              "text": "package.json",
+              "truncated": false,
+              "original_len": 12,
+              "sha256": "7ae45ad102eab3b6d7e7896acd08c427a9b25b346470d7bc6507b6481575d519"
+            },
+            "start_line": 5,
+            "end_line": 5,
+            "start_byte": 77,
+            "end_byte": 175
+          },
+          "detail": {
+            "text": "node -e",
+            "truncated": false,
+            "original_len": 7,
+            "sha256": "2111c3471ae4c814aa669109800819c6f85881854e4e2212f74bc906b5aed4a9"
+          },
+          "in_fn": null,
+          "lanes": [],
+          "reachable": null
+        }
+      ]
+    }
+  ],
+  "unlinked": [],
+  "package_calls": [],
+  "not_analysed": {
+    "groups": [
+      {
+        "kind": "auto_run_config",
+        "items": [
+          {
+            "path": {
+              "text": ".venv/Scripts/python.exe",
+              "truncated": false,
+              "original_len": 24,
+              "sha256": "5fef5a71daec1274dadf7b627a85bc48dfb99ab420fa9a45650bcabb3d3ad526"
+            },
+            "size": 22,
+            "kind": "auto_run_config"
+          },
+          {
+            "path": {
+              "text": ".venv/pyvenv.cfg",
+              "truncated": false,
+              "original_len": 16,
+              "sha256": "3829b5fda9433cfc9f7231d93e78f9d140eadaffbbda7ddcb5f98e69a5fb234f"
+            },
+            "size": 0,
+            "kind": "auto_run_config"
+          }
+        ]
+      },
+      {
+        "kind": "shell_script",
+        "items": [
+          {
+            "path": {
+              "text": "tools/rustc-wrapper.cmd",
+              "truncated": false,
+              "original_len": 23,
+              "sha256": "f3b2b996fe423f0e75b4b98a82e3231a4c590d8995bffb9cca858c2f72f94b1d"
+            },
+            "size": 62,
+            "kind": "shell_script"
+          }
+        ]
+      },
+      {
+        "kind": "other_file",
+        "items": [
+          {
+            "path": {
+              "text": "requirements.txt",
+              "truncated": false,
+              "original_len": 16,
+              "sha256": "4d7c51b1efe9043e44439a949dfd92e5827321b34082903477fd04876edb7552"
+            },
+            "size": 0,
+            "kind": "other_file"
+          },
+          {
+            "path": {
+              "text": "src/main.rs",
+              "truncated": false,
+              "original_len": 11,
+              "sha256": "42cb6807ad74b3e201c5a7ca98b911c5fa08380e942be6e4ac5807f8377f87fc"
+            },
+            "size": 13,
+            "kind": "other_file"
+          }
+        ]
+      }
+    ],
+    "unrecorded": 0
+  },
+  "functions": {
+    "functions": [],
+    "untraced_by_callee": [],
+    "unplaced_facts": []
+  }
+}
