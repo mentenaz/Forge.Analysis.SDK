@@ -58,7 +58,8 @@ forge-analysis <folder> --brief --out <dir>     # also writes report.json, repor
 - `incomplete`: nothing on the review list was found, but part of what should have been read was not (see the
   reasons). **Not a clean result.**
 - `nothing_found`: nothing on the review list was found in what was read, and all of it was read. It means what
-  it says. It does not mean the code is safe. A quick scan can never give it.
+  it says. It does not mean the code is safe: the code was never run, and running it is at the reader's own risk.
+  A quick scan can never give it.
 
 A program that does not know a verdict value must treat it as `review`.
 

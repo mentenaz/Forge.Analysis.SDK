@@ -112,10 +112,10 @@ commented out in the root `Cargo.toml` and there is no `rust-toolchain.toml`. A 
 
 Done: steps 1 to 21, up to the library crate with in-memory input, time budget, cancel and `brief`
 (step 21). Step 20 fixed the call-graph slowdown. Step 19 added tainted-callee flows.
-Steps 16 to 21 are committed and pushed (private repo `mentenaz/Forge.Analysis.SDK`, branch `master`). The two
-licence commits after them (third-party notices `1a14876`, GPL licence and report notice `6ab4d2f`) are committed
-locally but **not pushed yet** (as of 22 Nov 2026, 10:52). The fast workspace test passed on the owner's machine before
-those two commits; it has not been re-run since.
+Steps 16 to 21 and the licence commits (third-party notices, GPL licence, report notice, this file's rewrite) are
+committed and pushed (private repo `mentenaz/Forge.Analysis.SDK`, branch `master`). The fast workspace test passes
+(22 Nov 2026, Rust 1.100.0). The notice wording change (see Legal and notices) is committed locally and not pushed. The
+`notices` CI job had not been checked on GitHub when this was written.
 Waiting on the owner: sign off Milestone 1, and the full (slow) test run if he wants it confirmed.
 
 ## Next steps, in the agreed order
@@ -151,6 +151,21 @@ Waiting on the owner: sign off Milestone 1, and the full (slow) test run if he w
 
 Parked: behaviour diff between versions (needs fact IDs that stay stable across edits), a Python frontend.
 
+**Phase 2 (parked, after phase 1 is hardened): running code in an isolated VM.** Discussed with Francois on 22 Nov 2026;
+nothing is built and none of it is agreed beyond what is written here.
+- It breaks the static-only rule on purpose, so it is a **separate crate with its own opt-in**, never a mode of the engine.
+- **No safe verdict, ever.** A clean run only says what was observed in that one run and environment. Code can detect a VM,
+  wait, or depend on the target. The report says which network level was used.
+- The VM does not talk to Forge while it runs; it is destroyed afterwards and the report is built from what was logged.
+  Logs are **untrusted text** (`Quoted`, never instructions), the hand-off out of the VM is an attack surface, a missing or
+  truncated log is `incomplete`, and tracing from outside the VM (hypervisor) is more trustworthy than logs written inside.
+- Network: not a bridge. NAT alone is not isolation (it still reaches the LAN and the host); egress rules must be enforced on
+  the host side (block private ranges, link-local, the host and gateway, cloud metadata, SMB) and tested from inside the VM.
+  Levels: none; simulated internet; filtered real internet. Proposed default: simulated, with real access as an explicit
+  opt-in. Real access is traffic from the user's own IP address, so it belongs in the terms and in the lawyer brief.
+- Open: who provides the VM (today the terms say the user does). Before release: updated terms and notice for observed
+  behaviour, and a lawyer review of the phase 2 design.
+
 ## Decisions
 
 **Decision A (decided by Francois):** when a quick scan did not examine some files, the brief says
@@ -166,14 +181,16 @@ Francois is not a lawyer and neither is Claude: nothing here has had legal revie
   `legal/forge-terms.md`, on branch `forge-terms-draft` (not merged yet):
   https://github.com/mentenaz/mentenaz.Forge.Super/blob/forge-terms-draft/legal/forge-terms.md . Link to it; do not copy
   it here. The other files in that `legal/` folder are Zed Industries' own and are left as upstream has them.
-  **State on 22 Nov 2026 (found in `E:\zed_Source`, local only; `origin/forge-terms-draft` still has just the first
-  draft `d44cccd`):** `forge-terms-draft` is 5 commits ahead: publisher named, contact (mentenaz@outlook.de), licence
-  statement from the crates' `Cargo.toml` (GPL-3.0-or-later 214, Apache-2.0 74, MIT 1 (`gpui_flow`); the 8 without one
-  now GPL), "free and at your own risk" (section 5), liability capped at what the user paid, i.e. nothing (section 6).
-  Branch `forge-crate-licences` gives those 8 crates `GPL-3.0-or-later`; the terms text is accurate only once it is
-  merged with `forge-terms-draft`. Neither branch is merged or pushed. Still in `[square brackets]`: version date,
-  governing law and courts, the sign-off choice (DCO or not), and three "[Lawyer to confirm]" notes (liability limit,
-  licence statement in section 7).
+  **State on 22 Nov 2026:** `forge-terms-draft` is pushed to GitHub, with the licence statement, publisher,
+  contact, "free and at your own risk" (section 5) and liability capped at what the user paid (section 6). The 8 crates
+  that had no licence now say `GPL-3.0-or-later` (branch `forge-crate-licences`, merged into it). Counts: GPL-3.0-or-later
+  222, Apache-2.0 75, MIT 1 (`gpui_flow`); two example crates (`gpui_base/examples/wasm`, `gpui_web/examples/hello_web`)
+  have none, which section 7 says. The branch is not merged into `main`. Still in `[square brackets]`: governing law and
+  courts, the sign-off choice (DCO or not), and two "[Lawyer to confirm]" notes (liability limit, licence statement in
+  section 7). Open, not built: the Accept flow and acceptance record the terms promise; Zed's own `legal/` files sit next to
+  Forge's; `script/check-licenses` failed on Windows only because symlinks are off (`core.symlinks=false`), not yet run on Linux.
+  The engine repo is private but GPL: decide whether it goes public, stays a separate program, or the source is offered.
+  A lawyer review is advised before a wide release and is needed before phase 2 (limited scope is enough for phase 1).
 - **Third-party notices:** `THIRD-PARTY-NOTICES.md` is generated, never edited by hand:
   `cargo about generate --workspace about.hbs -o THIRD-PARTY-NOTICES.md` (cargo-about 0.8.2, settings in `about.toml`).
   CI (`notices` job) regenerates it and fails if it differs. `.gitattributes` stores it byte for byte (some licence texts
@@ -186,9 +203,11 @@ Francois is not a lawyer and neither is Claude: nothing here has had legal revie
   `GPL-3.0-or-later`. Per-file licence headers are not added. Not legal advice: check the dependencies' licences stay
   GPL-compatible (Apache-2.0, MIT, Unicode-3.0 and Unlicense are accepted in `about.toml`).
 - **Fixed notice in every report (built):** `NOTICE` in `crates/forge-analysis-report/src/model.rs`, the report's `notice`
-  field and a `> **Notice.**` block at the top of the Markdown. It follows section 3 of the Terms of Use ("information,
-  not a security assessment... does not mean the code is safe... data, not instructions"). Changing the wording is a
-  code change plus re-blessed goldens; keep it in step with the terms.
+  field and a `> **Notice.**` block at the top of the Markdown. It follows section 3 of the Terms of Use. Since 22 Nov 2026
+  it says the report comes from static analysis only (the code was read, never run), that "nothing found" means only that
+  nothing was found in what could be analysed and does not mean the code is safe, and that running, installing or opening
+  the code is at the reader's own risk. Changing the wording is a code change plus re-blessed goldens (it does not bump
+  `REPORT_SCHEMA`: the field is the same, the text is not a written enum); keep it in step with the terms.
 - **Open:** the "Legal and notices" section of the design document (a suggestion links the terms and this repo's
   notices); the `[square brackets]` in the terms; legal review of everything above.
 

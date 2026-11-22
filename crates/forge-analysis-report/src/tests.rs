@@ -724,7 +724,10 @@ fn the_notice_says_what_the_terms_say_and_holds_nothing_from_the_analysed_code()
         "avoid detection",
         "does not mean the code is safe",
         "data, not instructions",
-        "Do not execute, install or open anything",
+        "static analysis only",
+        "never run",
+        "nothing was found in what could be analysed",
+        "at your own risk",
     ] {
         assert!(NOTICE.contains(want), "{want}");
     }
