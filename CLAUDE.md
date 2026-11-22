@@ -116,7 +116,11 @@ Steps 16 to 21 and the licence commits (third-party notices, GPL licence, report
 committed and pushed (private repo `mentenaz/Forge.Analysis.SDK`, branch `master`). The fast workspace test passes
 (22 Nov 2026, Rust 1.100.0). The notice wording change (see Legal and notices) is committed locally and not pushed. The
 `notices` CI job had not been checked on GitHub when this was written.
-Waiting on the owner: sign off Milestone 1, and the full (slow) test run if he wants it confirmed.
+**Milestone 1 signed off by Francois on 22 Nov 2026** (engineering sign-off, not legal sign-off), after the full workspace
+test passed in release mode on Rust 1.100.0 (`cargo test --workspace --release`, slow robustness suite 232 s, no failures).
+Scope as agreed: JS/TS static analysis plus the auto-run config readers, report, brief, library and CLI; the rules and known
+limits in this file stand. Not confirmed at sign-off: the GitHub CI run (including the `notices` job) and a run on real
+projects, not only fixtures.
 
 ## Next steps, in the agreed order
 
