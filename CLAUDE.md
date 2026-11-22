@@ -158,8 +158,10 @@ Waiting on the owner: sign off Milestone 1, and the full (slow) test run if he w
    analysed"), `mise.toml` (hooks, `_.source`, `exec(` templates, plugins, tool postinstall; tasks are manual),
    `.codex/config.toml` (MCP server commands, `notify`) and `.gemini/settings.json` (MCP servers, like the other
    agent files). No schema change. Intake keeps the text of all `.toml` files.
-   Not built yet: AI-agent *instruction* files (`CLAUDE.md`, `AGENTS.md`, `.cursorrules`, Copilot instructions) are a
-   prompt-injection vector, not a command, and are not flagged. Following `node x.js` inside these commands, and
+   **Decided by Francois: AI-agent *instruction* files** (`CLAUDE.md`, `AGENTS.md`, `.cursorrules`, Copilot
+   instructions) are a prompt-injection vector, not a command, and are deliberately **excluded**: not flagged, not
+   listed as a kind. (The agent *config* files that name commands, `.claude/settings.json`, MCP files,
+   `.codex/config.toml`, `.gemini/settings.json`, are read.) Following `node x.js` inside these commands, and
    following imported `.targets` files, is not done. `config.rs` is still large; only the TOML part was split out.
    Still to do per ecosystem: confirm the list against the canary test. Built from what Forge's panels really run and what the canary test showed:
    - .NET: `Directory.Build.props` and `.targets` (their targets run during a plain `dotnet list package`
