@@ -1,0 +1,2 @@
+# Stored exactly as generated: some licence texts inside carry their own line endings, and CI compares bytes.
+THIRD-PARTY-NOTICES.md -text

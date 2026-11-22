@@ -97,3 +97,29 @@ jobs:
           restore-keys: full-${{ env.RUST_TOOLCHAIN }}-
       - name: Test everything
         run: cargo test --locked --release --workspace
+
+  # THIRD-PARTY-NOTICES.md is generated from the dependency list. Fail if it is out of date, so a new or
+  # updated dependency cannot ship without its licence, and one under a licence we have not accepted
+  # (see about.toml) stops the build until a person has looked at it.
+  notices:
+    name: third-party notices are current
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install Rust
+        run: |
+          rustup toolchain install "$RUST_TOOLCHAIN" --profile minimal --no-self-update
+          rustup default "$RUST_TOOLCHAIN"
+      - uses: actions/cache@v4
+        id: about-cache
+        with:
+          path: ~/.cargo/bin/cargo-about
+          key: cargo-about-0.8.2-${{ env.RUST_TOOLCHAIN }}
+      - name: Install cargo-about
+        if: steps.about-cache.outputs.cache-hit != 'true'
+        run: cargo install cargo-about --locked --version 0.8.2
+      - name: Generate and compare
+        run: |
+          cargo about generate --workspace --offline about.hbs -o "$RUNNER_TEMP/notices.md"
+          diff -u THIRD-PARTY-NOTICES.md "$RUNNER_TEMP/notices.md" \
+            || { echo "THIRD-PARTY-NOTICES.md is out of date. Run: cargo about generate --workspace about.hbs -o THIRD-PARTY-NOTICES.md"; exit 1; }

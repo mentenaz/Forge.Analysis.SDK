@@ -1,0 +1,45 @@
+# Third-party notices
+
+The Forge analysis engine includes the open-source software listed below, each under its own licence.
+This file is generated from the dependency list (`cargo about`), not written by hand. See `about.toml`.
+
+Forge is not affiliated with, endorsed by or sponsored by the authors of this software.
+
+## Licences used
+
+{{#each overview}}
+- {{name}} ({{count}})
+{{/each}}
+
+## Licence texts
+
+{{#each licenses}}
+### {{name}}
+
+Used by:
+
+{{#each used_by}}
+- [{{crate.name}} {{crate.version}}]({{#if crate.repository}}{{crate.repository}}{{else}}https://crates.io/crates/{{crate.name}}{{/if}})
+{{/each}}
+
+```text
+{{{text}}}
+```
+
+---
+
+{{/each}}
+## Copyright notices missing from published packages
+
+The published `oxc_*` packages (the JavaScript and TypeScript parser and its supporting crates) are MIT-licensed
+but ship no licence file, so the generic MIT text above has no copyright line for them. The copyright notice of
+the oxc project, from the `LICENSE` file in its repository (https://github.com/oxc-project/oxc, read on 22 Nov
+2026), is:
+
+```text
+Copyright (c) 2024-present VoidZero Inc. & Contributors
+Copyright (c) 2023 Boshen
+```
+
+This section is written by hand in `about.hbs`. When oxc is updated, check that its repository's `LICENSE` still
+says the same.

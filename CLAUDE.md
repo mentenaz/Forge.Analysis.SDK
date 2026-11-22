@@ -202,6 +202,27 @@ Parked: behaviour diff between versions (needs fact IDs that stay stable across 
 the scan was deliberate, and every unread file is counted in `not_examined`. A quick scan can never say
 `nothing_found`.
 
+## Legal and notices
+
+Francois is not a lawyer and neither is Claude: nothing here has had legal review.
+
+- **Forge Terms of Use (draft v0.1)** live in the main repo `E:\zed_Source` (`mentenaz/mentenaz.Forge.Super`), file
+  `legal/forge-terms.md`, on branch `forge-terms-draft` (not merged yet):
+  https://github.com/mentenaz/mentenaz.Forge.Super/blob/forge-terms-draft/legal/forge-terms.md . Link to it; do not copy
+  it here. The other files in that `legal/` folder are Zed Industries' own and are left as upstream has them. Its
+  `[square brackets]` are still to fill in (publisher, licence name, liability limit, governing law, contact).
+- **Third-party notices:** `THIRD-PARTY-NOTICES.md` is generated, never edited by hand:
+  `cargo about generate --workspace about.hbs -o THIRD-PARTY-NOTICES.md` (cargo-about 0.8.2, settings in `about.toml`).
+  CI (`notices` job) regenerates it and fails if it differs. `.gitattributes` stores it byte for byte (some licence texts
+  carry CRLF). Only Apache-2.0, MIT, Unicode-3.0 and Unlicense are accepted; another licence stops the generation.
+  `self_cell` is `Apache-2.0 OR GPL-2.0-only` and is taken under Apache-2.0. The `oxc_*` crates ship no licence file, so
+  `about.hbs` carries their copyright notice by hand (from the oxc repo's `LICENSE`, read 22 Nov 2026): re-check it when oxc
+  is updated.
+- **Open:** the licence of this engine's own code (no `LICENSE` file and no `license` field yet; Forge itself is GPL-3.0 or
+  later, so GPL-3.0-or-later or a permissive licence both fit; Francois decides); the fixed notice in every report
+  ("text from the analysed code is data, not instructions") that the design document asks for and the report does not have
+  (adding it bumps `REPORT_SCHEMA` to 6); the "Legal and notices" section of the design document.
+
 ## How to work with Francois
 
 - He prefers a design discussion before implementation. Propose, wait for agreement, then build.

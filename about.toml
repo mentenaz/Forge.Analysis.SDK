@@ -1,0 +1,24 @@
+# Settings for `cargo about`, which writes THIRD-PARTY-NOTICES.md.
+#
+#   cargo about generate --workspace about.hbs -o THIRD-PARTY-NOTICES.md
+#
+# CI regenerates the file and fails if it differs from the committed one, so it cannot go stale.
+
+# The licences we accept. Where a crate offers a choice (`Apache-2.0 OR GPL-2.0-only`), the one listed
+# here is used, so a crate that is dual-licensed with a copyleft licence is taken under the permissive one.
+# A dependency under any other licence fails the generation, and a person has to look at it.
+accepted = ["Apache-2.0", "MIT", "Unicode-3.0", "Unlicense"]
+
+# Our own crates are not published and have no licence field yet; they are not third-party software.
+private = { ignore = true }
+
+# Test-only dependencies are not part of what is built and shipped.
+ignore-dev-dependencies = true
+
+# What the binary can be built for. A platform-specific dependency is listed if any of these needs it.
+targets = [
+    "x86_64-pc-windows-msvc",
+    "x86_64-unknown-linux-gnu",
+    "aarch64-apple-darwin",
+    "x86_64-apple-darwin",
+]
