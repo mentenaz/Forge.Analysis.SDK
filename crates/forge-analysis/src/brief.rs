@@ -11,7 +11,7 @@ use forge_analysis_schema::{Effect, Lane, ScriptTrigger, UnresolvedReason};
 use serde::Serialize;
 
 /// A brief never lists more reasons than this.
-pub const MAX_REASONS: usize = 9;
+pub const MAX_REASONS: usize = 11;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "snake_case")]
@@ -45,6 +45,11 @@ pub enum ReasonKind {
     RunStopped,
     /// A quick scan: code that a full run would read was left unread on purpose.
     QuickScope,
+    /// No code file was read at all, so there was nothing to find anything in.
+    NoCodeRead,
+    /// An entry point the project declares (`main`, `bin`, `exports`, a script's file) that matches no
+    /// file we read, so code that should run is not where the project says it is.
+    EntryPointMissing,
     /// Files skipped by a limit, unreadable files, or code that could not be parsed.
     NotFullyRead,
 }
@@ -71,6 +76,10 @@ pub struct Brief {
     /// Files that are not code we read as code. Always shown, even when zero.
     pub not_examined: u32,
     pub files_analysed: u32,
+    /// Places where static analysis cannot say what happens (a computed `require`, a call whose target
+    /// is unknown). Always shown, even when zero. It does not change the verdict: almost every real
+    /// project has some, and each one is listed in the report.
+    pub untraced: u32,
 }
 
 fn count(n: usize) -> u32 {
@@ -168,6 +177,21 @@ pub fn brief(report: &Report) -> Brief {
         .map(|g| g.items.len())
         .sum();
 
+    let entry_missing = report.entry_points.issues.len();
+    // A quick scan is incomplete for its own stated reason, so it does not also say nothing was read.
+    let no_code = !quick && report.overview.files_analysed == 0;
+    let untraced: usize = report
+        .unresolved
+        .iter()
+        .filter(|g| {
+            !matches!(
+                g.reason,
+                UnresolvedReason::ParseFailed | UnresolvedReason::TooDeeplyNested | UnresolvedReason::UnsupportedSyntax
+            )
+        })
+        .map(|g| g.items.len())
+        .sum();
+
     let mut reasons: Vec<Reason> = Vec::new();
     for (kind, n) in [
         (ReasonKind::DataReachesCode, flows),
@@ -178,6 +202,8 @@ pub fn brief(report: &Report) -> Brief {
         (ReasonKind::ArchiveNotOpened, archives),
         (ReasonKind::RunStopped, stopped),
         (ReasonKind::QuickScope, out_of_scope),
+        (ReasonKind::NoCodeRead, usize::from(no_code)),
+        (ReasonKind::EntryPointMissing, entry_missing),
         (ReasonKind::NotFullyRead, skipped.saturating_add(unparsed)),
     ] {
         if n > 0 {
@@ -188,7 +214,8 @@ pub fn brief(report: &Report) -> Brief {
 
     // A quick scan never says it is complete: it left code unread on purpose, and only the files
     // that run by themselves were looked at.
-    let complete = !quick && stopped == 0 && skipped == 0 && unparsed == 0 && auto_run == 0 && archives == 0;
+    let complete = !quick && stopped == 0 && skipped == 0 && unparsed == 0 && auto_run == 0 && archives == 0
+        && entry_missing == 0 && !no_code;
     let review = flows > 0 || install_scripts > 0 || install_effects > 0 || automatic_commands > 0;
     let verdict = if review {
         Verdict::Review
@@ -207,6 +234,7 @@ pub fn brief(report: &Report) -> Brief {
         reasons,
         not_examined: report.overview.files_not_analysed,
         files_analysed: report.overview.files_analysed,
+        untraced: count(untraced),
     }
 }
 
@@ -232,6 +260,49 @@ mod tests {
         assert!(b.complete);
         assert!(b.reasons.is_empty());
         assert_eq!(b.files_analysed, 1);
+    }
+
+    #[test]
+    fn a_scan_that_read_no_code_is_incomplete_not_nothing_found() {
+        // The `fnm/site` case found on a real project: a manifest whose `main` matches no file, and a data file.
+        let b = run(
+            vec![file("package.json", r#"{"name":"x","main":"index.js"}"#), file("vercel.json", "{}")],
+            &RunOptions::default(),
+        );
+        assert_eq!(b.verdict, Verdict::Incomplete);
+        assert!(!b.complete);
+        assert_eq!(b.files_analysed, 0);
+        let kinds: Vec<_> = b.reasons.iter().map(|r| r.kind).collect();
+        assert!(kinds.contains(&ReasonKind::NoCodeRead));
+        assert!(kinds.contains(&ReasonKind::EntryPointMissing));
+    }
+
+    #[test]
+    fn a_declared_entry_point_that_matches_no_file_makes_the_brief_incomplete() {
+        let b = run(
+            vec![file("package.json", r#"{"name":"x","main":"dist/index.js"}"#), file("src/a.js", "let a = 1;
+")],
+            &RunOptions::default(),
+        );
+        assert_eq!(b.verdict, Verdict::Incomplete);
+        assert!(!b.complete);
+        assert!(b.reasons.iter().any(|r| r.kind == ReasonKind::EntryPointMissing && r.count >= 1));
+        assert!(!b.reasons.iter().any(|r| r.kind == ReasonKind::NoCodeRead));
+    }
+
+    #[test]
+    fn untraced_places_are_counted_in_the_brief_but_do_not_change_the_verdict() {
+        let b = run(vec![file("index.js", "const m = process.argv[2];
+require(m);
+")], &RunOptions::default());
+        assert!(b.untraced > 0, "a computed require is an untraced place");
+        assert_eq!(b.verdict, Verdict::NothingFound);
+        assert!(b.complete);
+        let clean = run(vec![file("index.js", "console.log(1 + 1);
+")], &RunOptions::default());
+        assert_eq!(clean.untraced, 0);
+        // Always written, even when zero.
+        assert_eq!(serde_json::to_value(&clean).unwrap()["untraced"], 0);
     }
 
     #[test]
@@ -523,6 +594,8 @@ mod tests {
             ReasonKind::ArchiveNotOpened => "archive_not_opened",
             ReasonKind::RunStopped => "run_stopped",
             ReasonKind::QuickScope => "quick_scope",
+            ReasonKind::NoCodeRead => "no_code_read",
+            ReasonKind::EntryPointMissing => "entry_point_missing",
             ReasonKind::NotFullyRead => "not_fully_read",
         }
     }
@@ -540,6 +613,8 @@ mod tests {
             ReasonKind::ArchiveNotOpened,
             ReasonKind::RunStopped,
             ReasonKind::QuickScope,
+            ReasonKind::NoCodeRead,
+            ReasonKind::EntryPointMissing,
             ReasonKind::NotFullyRead,
         ];
         for v in &verdicts {
@@ -572,7 +647,7 @@ mod tests {
     #[test]
     fn every_reason_kind_fits_in_a_brief() {
         // The list in `brief` has one entry per kind; a cap below that would drop reasons silently.
-        assert!(MAX_REASONS >= 9);
+        assert!(MAX_REASONS >= 11);
     }
 
     #[test]

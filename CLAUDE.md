@@ -60,10 +60,10 @@ limits, not by the flag. Files not reached are reported as `NotAnalysedKind::Sto
   per call and may need an index later.
 - A quadratic `Vec::contains` on nested function chains (`a=>a=>...`) was fixed in step 20. The slow test
   `long_chains_without_brackets` exercises 2 MiB chains.
-- `REPORT_SCHEMA` is 6. **Bump rule** (also in the doc comment in `crates/forge-analysis/src/run.rs`): bump it when
+- `REPORT_SCHEMA` is 7. **Bump rule** (also in the doc comment in `crates/forge-analysis/src/run.rs`): bump it when
   the JSON changes in a way a reader could meet (a new or renamed field, a new value of a written enum, a changed
   meaning; removals always). A change that only alters what the engine finds does not bump it. Goldens change with
-  every bump and the commit says so. 1: first shape. 2: header `scope`, kind `out_of_scope`. 3: kind `auto_run_config`. 4: kind `archive`. 5: script triggers `on_open`, `on_git`, `on_build`. 6: the report's fixed `notice`.
+  every bump and the commit says so. 1: first shape. 2: header `scope`, kind `out_of_scope`. 3: kind `auto_run_config`. 4: kind `archive`. 5: script triggers `on_open`, `on_git`, `on_build`. 6: the report's fixed `notice`. 7: the brief's `untraced` count and reasons `no_code_read`, `entry_point_missing`.
 - **Quick scan** (`RunOptions.scope = Scope::Quick`, CLI `--quick`/`-q`): analyses every `package.json` (any depth), the
   files its install hooks run, and what those load (followed with `FileIndex`, same resolver as the linker). Other code
   is `NotAnalysedKind::OutOfScope`; non-code keeps its usual kind. Report and brief are always incomplete under quick
@@ -176,6 +176,18 @@ nothing is built and none of it is agreed beyond what is written here.
 `incomplete`. There is no separate quick state. The report carries `scope: quick` so the reader sees
 the scan was deliberate, and every unread file is counted in `not_examined`. A quick scan can never say
 `nothing_found`.
+
+**Decision B (decided by Francois, 22 Nov 2026, after running real projects):** the brief's `complete` is narrower than the
+report's completeness on purpose. Untraced places (a computed `require`, an unknown call target) do **not** make a brief
+`incomplete`: nearly every real project has them (`Forge.Lite`: about 287,000 lines). They are counted in the brief's `untraced`
+field and listed in the report, so they are never hidden. A scan that read no code (`no_code_read`) or has a declared entry point
+matching no file (`entry_point_missing`) is `incomplete`.
+
+**Real-project run (22 Nov 2026, release build, full scan):** `forge-demo` 1 s; `fnm/site` under 1 s; `gpui-component/website` 3 s;
+`Forge.Lite` (VS Code scale, about 27,000 JS/TS files) 826 s, reached the intake limit (9,613 files skipped and listed), report.json
+1.9 GB and report.md 259 MB, almost all of it the Unresolved section. Open from that run: grouping of long untraced lists; a likely
+false positive where `new XMLHttpRequest` itself counts as network data (5 `data_reaches_code` on a built vitepress bundle; `flow.rs`
+not yet read to confirm); no `--time-budget` flag on the CLI.
 
 ## Legal and notices
 

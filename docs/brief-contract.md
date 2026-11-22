@@ -29,14 +29,15 @@ forge-analysis <folder> --brief --out <dir>     # also writes report.json, repor
 
 ```json
 {
-  "report_schema": 6,
+  "report_schema": 7,
   "snapshot_sha256": "<64 hex characters>",
   "verdict": "review",
   "scope": "full",
   "complete": false,
   "reasons": [ { "kind": "install_script", "count": 1 }, { "kind": "automatic_command", "count": 2 } ],
   "not_examined": 7,
-  "files_analysed": 0
+  "files_analysed": 0,
+  "untraced": 0
 }
 ```
 
@@ -47,9 +48,10 @@ forge-analysis <folder> --brief --out <dir>     # also writes report.json, repor
 | `verdict` | `nothing_found`, `review` or `incomplete`. See below. |
 | `scope` | `full` (every file we can read as code) or `quick` (only the files that run by themselves). |
 | `complete` | True only when nothing that should have been read was left unread. Never true for a quick scan. |
-| `reasons` | At most 9, most serious first. Each is a `kind` and a `count`. A kind appears only when its count is above zero. |
+| `reasons` | At most 11, most serious first. Each is a `kind` and a `count`. A kind appears only when its count is above zero. |
 | `not_examined` | Files that were not read as code (documents, images, binaries, archives, build files not read yet, and in a quick scan every code file left out). Always present, even when zero. |
 | `files_analysed` | Code files that were read. |
+| `untraced` | Places where static analysis cannot say what happens (a computed `require`, a call whose target is unknown). Always present, even when zero. **It does not change the verdict**: almost every real project has some, and every one is listed in the report. Read it as a size: 3 and 300,000 are different projects. |
 
 ## The verdict
 
@@ -75,7 +77,9 @@ A program that does not know a verdict value must treat it as `review`.
 | `archive_not_opened` | Archives and packages whose contents are unseen. | no, `incomplete` |
 | `run_stopped` | The run was stopped (time budget or cancel) before every file was read. | no, `incomplete` |
 | `quick_scope` | A quick scan: code a full run would read was left unread on purpose. | no, `incomplete` |
-| `not_fully_read` | Files skipped by a limit, unreadable files, code that could not be parsed, and places the analysis cannot follow. | no, `incomplete` |
+| `no_code_read` | Not a quick scan, and no code file was read at all, so there was nothing to find anything in. | no, `incomplete` |
+| `entry_point_missing` | Entry points the project declares (`main`, `bin`, `exports`, a script's file) that match no file we read. | no, `incomplete` |
+| `not_fully_read` | Files skipped by a limit, unreadable files, and code that could not be parsed. Places the analysis cannot follow are counted in `untraced`, not here. | no, `incomplete` |
 
 Counts are of items, not of files. The reasons list is a summary: the report has every item, with its place.
 A program that does not know a `kind` should show it generically and not drop it.

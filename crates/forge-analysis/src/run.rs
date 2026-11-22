@@ -27,7 +27,8 @@ use std::time::{Duration, Instant};
 /// 1: first shape. 2: header gains `scope`; not-analysed kinds gain `out_of_scope`.
 /// 3: not-analysed kinds gain `auto_run_config`. 4: not-analysed kinds gain `archive`.
 /// 5: script triggers gain `on_open`, `on_git` and `on_build`. 6: the report gains `notice`.
-pub const REPORT_SCHEMA: u32 = 6;
+/// 7: the brief gains `untraced` and the reasons `no_code_read` and `entry_point_missing`.
+pub const REPORT_SCHEMA: u32 = 7;
 
 /// Lets another thread stop a run. The run looks at it between files, so one very large file is
 /// bounded by the size limits, not by this flag.
