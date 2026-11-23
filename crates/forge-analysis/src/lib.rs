@@ -13,4 +13,4 @@ pub use run::{
 };
 
 pub use forge_analysis_intake::{MemFile, Options as Limits};
-pub use forge_analysis_report::{to_json, to_markdown, Completeness, Report};
+pub use forge_analysis_report::{to_json, to_markdown, to_markdown_parts, Completeness, MarkdownParts, Report, FUNCTIONS_FILE};

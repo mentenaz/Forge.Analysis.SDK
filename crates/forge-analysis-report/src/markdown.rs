@@ -17,6 +17,21 @@ use std::fmt::Write;
 /// A group with more items than this is collapsed.
 pub const COLLAPSE_AT: usize = 25;
 
+/// A report with more functions than this is written as two documents: the report, and the function index
+/// in a file of its own (`report.functions.md`). Smaller reports stay one document.
+pub const SPLIT_FUNCTIONS_AT: usize = 2000;
+
+/// The Markdown report, as one or two documents. Nothing is left out: when `functions` is `Some`, the
+/// function index is there and `main` points to it.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct MarkdownParts {
+    pub main: String,
+    pub functions: Option<String>,
+}
+
+/// File name of the function index when it is written on its own.
+pub const FUNCTIONS_FILE: &str = "report.functions.md";
+
 fn code(s: &str) -> String {
     if s.is_empty() {
         return "(empty)".to_string();
@@ -279,6 +294,8 @@ fn size_text(n: Option<u64>) -> String {
 
 struct W {
     out: String,
+    /// Where "Back to the index" goes: this document, or the main report when the section is in its own file.
+    back_to: &'static str,
 }
 
 impl W {
@@ -305,7 +322,8 @@ impl W {
         if !self.out.ends_with("\n\n") {
             self.blank();
         }
-        self.line("[Back to the index](#index)");
+        let target = self.back_to;
+        self.line(&format!("[Back to the index]({target})"));
     }
     /// A group of items, collapsed when long. `body` writes the items.
     fn group(&mut self, title: &str, note: &str, count: usize, body: impl FnOnce(&mut W)) {
@@ -334,9 +352,23 @@ impl W {
 }
 
 pub fn to_markdown(r: &Report) -> String {
-    let mut w = W { out: String::new() };
-    w.line("# Forge analysis report");
-    w.blank();
+    document(r, false)
+}
+
+/// The report as one document, or two when the function index is very large (more than
+/// `SPLIT_FUNCTIONS_AT` functions). The same inputs always give the same layout.
+pub fn to_markdown_parts(r: &Report) -> MarkdownParts {
+    to_markdown_parts_at(r, SPLIT_FUNCTIONS_AT)
+}
+
+pub(crate) fn to_markdown_parts_at(r: &Report, split_above: usize) -> MarkdownParts {
+    if r.functions.functions.len() <= split_above {
+        return MarkdownParts { main: document(r, false), functions: None };
+    }
+    MarkdownParts { main: document(r, true), functions: Some(functions_document(r)) }
+}
+
+fn header_block(w: &mut W, r: &Report) {
     let mode = match r.header.mode {
         Mode::StaticOnly => "static only (no code was run)",
         Mode::WithRun => "static analysis plus a sandboxed run",
@@ -353,6 +385,29 @@ pub fn to_markdown(r: &Report) -> String {
     w.item(&format!("Catalog: {}", code(r.header.catalog_sha256.as_str())));
 
     w.line(&format!("> **Notice.** {}", r.notice));
+}
+
+/// The function index written as a document of its own. It carries the same header and notice as the
+/// report and the same snapshot hash, so the two files cannot be taken for another run's.
+fn functions_document(r: &Report) -> String {
+    let mut w = W { out: String::new(), back_to: "report.md#index" };
+    w.line("# Forge analysis report: function index");
+    w.blank();
+    header_block(&mut w, r);
+    w.blank();
+    w.line(&format!(
+        "This is section 11 of the report in `report.md`, written on its own because it is very large ({} functions). It is part of the same report: the snapshot above is the same. [Back to the report](report.md#index)",
+        r.functions.functions.len()
+    ));
+    functions(&mut w, r);
+    w.out
+}
+
+fn document(r: &Report, functions_apart: bool) -> String {
+    let mut w = W { out: String::new(), back_to: "#index" };
+    w.line("# Forge analysis report");
+    w.blank();
+    header_block(&mut w, r);
 
     w.blank();
     w.line("<a id=\"index\"></a>");
@@ -374,8 +429,23 @@ pub fn to_markdown(r: &Report) -> String {
     unresolved(&mut w, r);
     unlinked(&mut w, r);
     not_analysed(&mut w, r);
-    functions(&mut w, r);
+    if functions_apart {
+        functions_pointer(&mut w, r);
+    } else {
+        functions(&mut w, r);
+    }
     w.out
+}
+
+/// Section 11 when the function index is in its own file: where it is, and that nothing was left out.
+fn functions_pointer(w: &mut W, r: &Report) {
+    w.heading(&SectionId::Functions);
+    w.line(&format!(
+        "The function index has {} functions, so it is written in its own file: [{FUNCTIONS_FILE}]({FUNCTIONS_FILE}). It lists every function, in full, for the same snapshot as this report. Keep the two files together.",
+        r.functions.functions.len()
+    ));
+    w.blank();
+    w.back();
 }
 
 fn overview(w: &mut W, r: &Report) {

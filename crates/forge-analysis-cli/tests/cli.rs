@@ -178,6 +178,29 @@ fn a_quick_brief_is_never_nothing_found_and_a_missing_folder_prints_no_brief() {
 }
 
 #[test]
+fn a_very_large_function_index_is_written_to_its_own_file_and_a_stale_one_is_removed() {
+    let t = Temp::new("split");
+    let project = t.0.join("p");
+    std::fs::create_dir_all(&project).unwrap();
+    let mut src = String::new();
+    for n in 0..2100 {
+        src.push_str(&format!("function f{n}() {{ return {n}; }}\n"));
+    }
+    std::fs::write(project.join("index.js"), src).unwrap();
+    let dest = t.0.join("o");
+    let (code, _out, err) = go(&[project.to_str().unwrap(), "--out", dest.to_str().unwrap()]);
+    assert_eq!(code, EXIT_OK, "{err}");
+    let main = std::fs::read_to_string(dest.join("report.md")).unwrap();
+    let functions = std::fs::read_to_string(dest.join("report.functions.md")).unwrap();
+    assert!(main.contains("report.functions.md"));
+    assert!(!main.contains("`f1500`") && functions.contains("`f1500`"));
+    // A small project into the same folder removes the old function file, so the folder is one run.
+    let (code, _o, err) = go(&[&fixture("clean"), "--out", dest.to_str().unwrap()]);
+    assert_eq!(code, EXIT_OK, "{err}");
+    assert!(!dest.join("report.functions.md").exists());
+}
+
+#[test]
 fn with_out_it_writes_both_reports_and_creates_the_folder() {
     let t = Temp::new("out");
     let dest = t.0.join("deep").join("er");

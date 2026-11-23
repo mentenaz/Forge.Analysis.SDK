@@ -738,6 +738,47 @@ fn every_call_we_could_not_trace_is_named_once_per_function_and_once_per_group()
 }
 
 #[test]
+fn a_small_report_is_one_document() {
+    let r = fixture().run();
+    let parts = to_markdown_parts(&r);
+    assert!(parts.functions.is_none());
+    assert_eq!(parts.main, to_markdown(&r));
+}
+
+#[test]
+fn a_report_with_a_very_large_function_index_is_two_documents_and_nothing_is_left_out() {
+    let r = fixture().run();
+    let whole = to_markdown(&r);
+    // The fixture has three functions; split above two.
+    let parts = crate::markdown::to_markdown_parts_at(&r, 2);
+    let functions = parts.functions.expect("split");
+    // The index still counts the section, and points to the file.
+    assert!(parts.main.contains("[Function index](#function-index) (3)"));
+    assert!(parts.main.contains(&format!("[{FUNCTIONS_FILE}]({FUNCTIONS_FILE})")));
+    assert!(parts.main.contains("<a id=\"function-index\"></a>"));
+    // Every function is in the second file and none is in the first.
+    for f in &r.functions.functions {
+        let line = format!("at line {}: ", f.at.start_line);
+        assert!(functions.contains(&line), "{line}");
+        assert!(!parts.main.contains(&line), "{line}");
+    }
+    assert!(functions.contains("Calls we could not trace, by what they call"));
+    // Both carry the fixed notice and the same snapshot, so they cannot be mixed up with another run.
+    for doc in [&parts.main, &functions] {
+        assert_eq!(doc.matches(NOTICE).count(), 1);
+        assert!(doc.contains(r.header.snapshot_sha256.as_str()));
+    }
+    // The second file goes back to the report, not to an index that is not in it.
+    assert!(functions.contains("[Back to the index](report.md#index)"));
+    assert!(!functions.contains("[Back to the index](#index)"));
+    // Same content as the single document: every line of the whole is in one of the two.
+    for line in whole.lines().filter(|l| l.starts_with("- ") || l.starts_with("  - ")) {
+        assert!(parts.main.contains(line) || functions.contains(line), "missing: {line}");
+    }
+    assert_eq!(parts.main, crate::markdown::to_markdown_parts_at(&r, 2).main, "deterministic");
+}
+
+#[test]
 fn every_report_carries_the_fixed_notice_in_json_and_markdown() {
     let r = fixture().run();
     assert_eq!(r.notice, NOTICE);

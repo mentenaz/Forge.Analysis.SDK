@@ -14,6 +14,7 @@ does. A brief never says "safe".
 forge-analysis <folder> --brief                 # full scan; stdout is the brief
 forge-analysis <folder> --brief --quick         # quick scan of the files that run by themselves
 forge-analysis <folder> --brief --out <dir>     # also writes report.json, report.md and brief.json into <dir>
+                                               # (report.functions.md too when the function index is very large)
 ```
 
 - With `--brief`, **stdout holds exactly one line: the brief as JSON.** Human messages go to stderr.

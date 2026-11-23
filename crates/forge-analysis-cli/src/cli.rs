@@ -2,7 +2,7 @@
 
 use crate::pipeline::{analyze_folder_scoped, RunError};
 use forge_analysis_intake::Options;
-use forge_analysis_report::{to_json, to_markdown, Completeness, Report};
+use forge_analysis_report::{to_json, to_markdown_parts, Completeness, Report, FUNCTIONS_FILE};
 use forge_analysis_schema::Scope;
 use std::io::Write;
 use std::path::{Path, PathBuf};
@@ -49,6 +49,7 @@ pub fn usage() -> String {
      \n\
      Options:\n\
      \x20 -o, --out <dir>   write report.json and report.md into <dir>\n\
+     \x20                   (a very large function index goes in report.functions.md)\n\
      \x20                   (never inside the analysed folder)\n\
      \x20 -q, --quick      read only the files that run by themselves (install hooks and what\n\
      \x20                   they load). Every other file is counted as not examined, so a\n\
@@ -196,7 +197,17 @@ pub fn run(args: &[String], out: &mut dyn Write, err: &mut dyn Write) -> i32 {
                 let write_all = || -> std::io::Result<()> {
                     std::fs::create_dir_all(&dir)?;
                     std::fs::write(dir.join("report.json"), to_json(&report) + "\n")?;
-                    std::fs::write(dir.join("report.md"), to_markdown(&report))?;
+                    let parts = to_markdown_parts(&report);
+                    std::fs::write(dir.join("report.md"), parts.main)?;
+                    // A very large function index is its own file. A file left from an earlier run in the same
+                    // folder is removed, so the folder never mixes two runs.
+                    match parts.functions {
+                        Some(f) => std::fs::write(dir.join(FUNCTIONS_FILE), f)?,
+                        None => match std::fs::remove_file(dir.join(FUNCTIONS_FILE)) {
+                            Err(e) if e.kind() != std::io::ErrorKind::NotFound => return Err(e),
+                            _ => {}
+                        },
+                    }
                     std::fs::write(dir.join("brief.json"), brief_json.clone() + "\n")?;
                     Ok(())
                 };

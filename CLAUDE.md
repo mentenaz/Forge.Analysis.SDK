@@ -191,13 +191,16 @@ whose BODY contained `new XMLHttpRequest` counted as network data, and that spre
 what it fetched (`const load = () => fetch(u)`) still gives a flow (tests cover both). Grouping, first layer built (Markdown only, no schema change): an Unresolved group of more than 25 items is written by file,
 then function, then line, so no path repeats; every item is still listed. Measured on `Forge.Lite` (813 s): Unresolved 83 MB ->
 36 MB (2.3x, not the 10-40x first estimated: the code text of each item stays), report.md 259 -> 212 MB. Function index 169 MB
-(about 516,000 functions; spread over many line types, so regrouping alone will not shrink it much). report.json is 1.89 GB:
+(348,796 functions - an earlier note said about 516,000, which counted other list lines; spread over many line types, so regrouping alone will not shrink it much). report.json is 1.89 GB:
 functions list 987 MB, `functions.untraced_by_callee` 508 MB (a copy of each function's `untraced_calls`), unresolved 363 MB,
 everything else about 30 MB. Second layer built (schema 8): the Function index prose is shorter (`runs` joins the function line,
 "other calls", one `not traced` line per function) and the JSON copy `untraced_by_callee[].sites` is gone. Measured on `Forge.Lite`
 (793 s): report.md 212 -> 183 MB (Function index 169 -> 140 MB, less than the 45-55 MB first estimated), report.json 1.89 GB ->
 1.43 GB (`untraced_by_callee` 508 -> 51 MB). Since the start: md 259 -> 183 MB, json 1.89 -> 1.43 GB. Still open: the report is
-huge at this scale (516,000 functions); a separate file for the Function index, a files table in the JSON, and a `--time-budget`
+huge at this scale (348,796 functions). Third layer built: a report with more than 2,000 functions (`SPLIT_FUNCTIONS_AT`) is written as `report.md`
+(sections 1-10, section 11 is a pointer) plus `report.functions.md` (same header, notice and snapshot, links back); the CLI removes
+a stale `report.functions.md` from the output folder; library `to_markdown_parts`, `to_markdown` is still one document. Measured:
+report.md 183 -> 43 MB + report.functions.md 140 MB. Still open: a files table in the JSON (1.43 GB), and a `--time-budget`
 flag on the CLI.
 
 ## Legal and notices
