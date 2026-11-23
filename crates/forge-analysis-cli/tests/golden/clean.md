@@ -1,7 +1,7 @@
 # Forge analysis report
 
 - Engine: `forge-analysis 0.0.1`
-- Schema: 7
+- Schema: 8
 - Mode: static only (no code was run)
 - Scope: full (every file we can read as code)
 - Snapshot: `cba6ce1d98dfe0b5012bf70cc0e5f73700b73588bc6c75ae16a5b38c530e52b5`
@@ -22,7 +22,7 @@
 8. [Unresolved](#unresolved) (0) — Places where static analysis cannot say what happens (computed code, dynamic loads, shell commands). Each one hides behaviour.
 9. [Unlinked imports](#unlinked-imports) (0) — Imports we could not follow to their source: packages, missing files and names that are not exported.
 10. [Not analysed](#not-analysed) (0) — Files and folders that were not read as code, by kind, and anything skipped by a limit.
-11. [Function index](#function-index) (3) — Every function with its lanes, effects, callers and the facts inside it.
+11. [Function index](#function-index) (3) — Every function with its lanes, effects, callers and the facts inside it. "Other calls" counts calls that are not to a function in the same file: followed across files (through an import or a prop), matched to a fact, or not traced.
 
 <a id="overview"></a>
 
@@ -169,22 +169,19 @@ None found.
 
 ## 11. Function index
 
-Every function with its lanes, effects, callers and the facts inside it.
+Every function with its lanes, effects, callers and the facts inside it. "Other calls" counts calls that are not to a function in the same file: followed across files (through an import or a prop), matched to a fact, or not traced.
 
 ### `index.js` (1)
 
-- top level at line 1
-  - runs: immediate
-  - calls to something other than a function in this file: 3 (1 followed through an import or a prop, 2 matched to a fact, 0 not traced to any code)
+- top level at line 1: runs immediate
+  - other calls: 3 (1 followed across files, 2 matched to a fact, 0 not traced)
   - followed call at line 2 to `add` in `util.js` line 1 (through `./util`, export `add`)
   - facts: `fact:20fc86e92cbfc568`, `fact:69c0146d02a28261`, `fact:85fc4adfeb497561`
 
 ### `util.js` (2)
 
-- top level at line 1
-  - runs: immediate
-- `add` at line 1
-  - runs: immediate; also used as a value, so it may run from elsewhere
+- top level at line 1: runs immediate
+- `add` at line 1: runs immediate; also used as a value, so it may run from elsewhere
   - called through an import or a prop from: top level in `index.js`
 
 [Back to the index](#index)

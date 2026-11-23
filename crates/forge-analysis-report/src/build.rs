@@ -6,7 +6,7 @@ use forge_analysis_schema::{
     DependencySource, Effect, FactId, FactKind, FlowSink, FnId, FnRef, FunctionSummary, Header, Lane, Linked,
     LinkedFn, Quoted, ScriptTrigger, Span, StaticFact, UnlinkedReason, UnresolvedReason,
 };
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 
 /// What the analysis found in one file. `Linked::files[i]` goes with `files[i]`.
 pub struct FileInput<'a> {
@@ -504,7 +504,7 @@ pub fn build(input: &ReportInput<'_>) -> Result<Report, BuildError> {
         }
     }
     let mut not_traced_total = 0u32;
-    let mut untraced_groups: BTreeMap<(String, String), UntracedGroup> = BTreeMap::new();
+    let mut untraced_groups: BTreeMap<(String, String), (UntracedGroup, BTreeSet<(String, u32)>)> = BTreeMap::new();
     let mut function_items: Vec<FunctionItem> = Vec::new();
     for (r, s) in &cx.summaries {
         let l = cx.linked_fns.get(r);
@@ -529,16 +529,11 @@ pub fn build(input: &ReportInput<'_>) -> Result<Report, BuildError> {
                     start_byte: site.start_byte,
                     end_byte: site.end_byte,
                 });
-                let g = untraced_groups
+                let (g, fns) = untraced_groups
                     .entry(quoted_key(&callee))
-                    .or_insert_with(|| UntracedGroup { callee, count: 0, sites: Vec::new() });
+                    .or_insert_with(|| (UntracedGroup { callee, count: 0, functions: 0, files: 0 }, BTreeSet::new()));
                 g.count += 1;
-                g.sites.push(UntracedSite {
-                    in_fn: cx.fn_loc(r.file, r.func),
-                    line,
-                    start_byte: site.start_byte,
-                    end_byte: site.end_byte,
-                });
+                fns.insert((linked.files[r.file as usize].as_quoted().text().to_string(), r.func.0));
             }
         }
         not_traced_total += untraced;
@@ -578,10 +573,14 @@ pub fn build(input: &ReportInput<'_>) -> Result<Report, BuildError> {
         });
     }
     unplaced.sort();
-    let mut untraced_by_callee: Vec<UntracedGroup> = untraced_groups.into_values().collect();
-    for g in &mut untraced_by_callee {
-        g.sites.sort_by_key(|x| (x.in_fn.file.as_quoted().text().to_string(), x.in_fn.func, x.start_byte, x.end_byte));
-    }
+    let mut untraced_by_callee: Vec<UntracedGroup> = untraced_groups
+        .into_values()
+        .map(|(mut g, fns)| {
+            g.functions = u32::try_from(fns.len()).unwrap_or(u32::MAX);
+            g.files = u32::try_from(fns.iter().map(|(f, _)| f).collect::<BTreeSet<_>>().len()).unwrap_or(u32::MAX);
+            g
+        })
+        .collect();
     untraced_by_callee.sort_by(|a, c| c.count.cmp(&a.count).then_with(|| quoted_key(&a.callee).cmp(&quoted_key(&c.callee))));
     let functions = FunctionsSection { functions: function_items, untraced_by_callee, unplaced_facts: unplaced };
 

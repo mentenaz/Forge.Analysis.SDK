@@ -1,7 +1,7 @@
 # Forge analysis report
 
 - Engine: `forge-analysis 0.0.1`
-- Schema: 7
+- Schema: 8
 - Mode: static only (no code was run)
 - Scope: full (every file we can read as code)
 - Snapshot: `d44f12d7976ed85c78472e2e037262cf742ebbc1ff3a7abd01cb3dfe62cd0884`
@@ -22,7 +22,7 @@
 8. [Unresolved](#unresolved) (0) — Places where static analysis cannot say what happens (computed code, dynamic loads, shell commands). Each one hides behaviour.
 9. [Unlinked imports](#unlinked-imports) (2) — Imports we could not follow to their source: packages, missing files and names that are not exported.
 10. [Not analysed](#not-analysed) (0) — Files and folders that were not read as code, by kind, and anything skipped by a limit.
-11. [Function index](#function-index) (3) — Every function with its lanes, effects, callers and the facts inside it.
+11. [Function index](#function-index) (3) — Every function with its lanes, effects, callers and the facts inside it. "Other calls" counts calls that are not to a function in the same file: followed across files (through an import or a prop), matched to a fact, or not traced.
 
 <a id="overview"></a>
 
@@ -187,23 +187,20 @@ None found.
 
 ## 11. Function index
 
-Every function with its lanes, effects, callers and the facts inside it.
+Every function with its lanes, effects, callers and the facts inside it. "Other calls" counts calls that are not to a function in the same file: followed across files (through an import or a prop), matched to a fact, or not traced.
 
 ### `app.js` (3)
 
-- top level at line 1
-  - runs: immediate
-  - calls to something other than a function in this file: 2 (0 followed through an import or a prop, 2 matched to a fact, 0 not traced to any code)
+- top level at line 1: runs immediate
+  - other calls: 2 (0 followed across files, 2 matched to a fact, 0 not traced)
   - calls into packages we did not analyse: `ink` ×1
   - facts: `fact:0e8974d2e99a81f2`, `fact:da328684252dd3ea`, `fact:aec0e42933347a43`, `fact:3e38faf0f57d911d`, `fact:aea167d1093d7fd1`
-- `view` at line 4
-  - runs: immediate
-  - calls to something other than a function in this file: 1 (0 followed through an import or a prop, 1 matched to a fact, 0 not traced to any code)
+- `view` at line 4: runs immediate
+  - other calls: 1 (0 followed across files, 1 matched to a fact, 0 not traced)
   - calls into packages we did not analyse: `react` ×1
   - facts: `fact:ddc7df3b7874275e`
-- `state` at line 5
-  - runs: none (not reached from an entry)
-  - calls to something other than a function in this file: 1 (0 followed through an import or a prop, 1 matched to a fact, 0 not traced to any code)
+- `state` at line 5: not reached from an entry
+  - other calls: 1 (0 followed across files, 1 matched to a fact, 0 not traced)
   - calls into packages we did not analyse: `react` ×1
   - facts: `fact:09cbef54f86a6978`
 

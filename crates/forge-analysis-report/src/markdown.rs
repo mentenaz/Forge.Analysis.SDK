@@ -719,11 +719,7 @@ fn functions(w: &mut W, r: &Report) {
             total,
             |w| {
                 for g in &r.functions.untraced_by_callee {
-                    let mut fns: Vec<(String, u32)> = g.sites.iter().map(|s| (q(s.in_fn.file.as_quoted()), s.in_fn.func.0)).collect();
-                    fns.sort();
-                    fns.dedup();
-                    let files: std::collections::BTreeSet<&String> = fns.iter().map(|(f, _)| f).collect();
-                    w.item(&format!("{} ×{} in {} function(s) across {} file(s)", q(&g.callee), g.count, fns.len(), files.len()));
+                    w.item(&format!("{} ×{} in {} function(s) across {} file(s)", q(&g.callee), g.count, g.functions, g.files));
                 }
             },
         );
@@ -737,9 +733,13 @@ fn functions(w: &mut W, r: &Report) {
                     (None, FnId(0)) => "top level".to_string(),
                     (None, _) => "anonymous".to_string(),
                 };
-                w.item(&format!("{} at line {}", name, f.at.start_line));
-                let lanes = if f.lanes.is_empty() { "none (not reached from an entry)".to_string() } else { lanes_text(&f.lanes) };
-                w.line(&format!("  - runs: {lanes}{}", if f.escapes { "; also used as a value, so it may run from elsewhere" } else { "" }));
+                let runs = if f.lanes.is_empty() { "not reached from an entry".to_string() } else { format!("runs {}", lanes_text(&f.lanes)) };
+                w.item(&format!(
+                    "{} at line {}: {runs}{}",
+                    name,
+                    f.at.start_line,
+                    if f.escapes { "; also used as a value, so it may run from elsewhere" } else { "" }
+                ));
                 if !f.transitive_effects.is_empty() {
                     let e: Vec<&str> = f.transitive_effects.iter().map(|e| effect_word(*e)).collect();
                     w.line(&format!("  - can reach: {}", e.join(", ")));
@@ -750,7 +750,7 @@ fn functions(w: &mut W, r: &Report) {
                 }
                 if f.unfollowed_calls > 0 {
                     w.line(&format!(
-                        "  - calls to something other than a function in this file: {} ({} followed through an import or a prop, {} matched to a fact, {} not traced to any code)",
+                        "  - other calls: {} ({} followed across files, {} matched to a fact, {} not traced)",
                         f.unfollowed_calls, f.calls_followed_across_files, f.calls_matched_to_a_fact, f.calls_not_traced
                     ));
                 }
@@ -763,10 +763,15 @@ fn functions(w: &mut W, r: &Report) {
                             None => by_label.push((l, vec![u.line])),
                         }
                     }
-                    for (label, lines) in by_label {
-                        let ls: Vec<String> = lines.iter().map(|l| l.to_string()).collect();
-                        w.line(&format!("  - not traced: {} at line {}", label, ls.join(", ")));
-                    }
+                    // One line per function: `a at line 1, 2; b at line 3`.
+                    let parts: Vec<String> = by_label
+                        .into_iter()
+                        .map(|(label, lines)| {
+                            let ls: Vec<String> = lines.iter().map(|l| l.to_string()).collect();
+                            format!("{} at line {}", label, ls.join(", "))
+                        })
+                        .collect();
+                    w.line(&format!("  - not traced: {}", parts.join("; ")));
                 }
                 for c in &f.followed_calls {
                     let target = match (&c.to.name, c.to.func) {

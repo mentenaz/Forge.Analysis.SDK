@@ -1,7 +1,7 @@
 # Forge analysis report
 
 - Engine: `forge-analysis 0.0.1`
-- Schema: 7
+- Schema: 8
 - Mode: static only (no code was run)
 - Scope: full (every file we can read as code)
 - Snapshot: `286395761548dfa7a3ee02e6d3ca3534abb33f5af2b50ba052982489a296c0d9`
@@ -22,7 +22,7 @@
 8. [Unresolved](#unresolved) (3) — Places where static analysis cannot say what happens (computed code, dynamic loads, shell commands). Each one hides behaviour.
 9. [Unlinked imports](#unlinked-imports) (3) — Imports we could not follow to their source: packages, missing files and names that are not exported.
 10. [Not analysed](#not-analysed) (0) — Files and folders that were not read as code, by kind, and anything skipped by a limit.
-11. [Function index](#function-index) (7) — Every function with its lanes, effects, callers and the facts inside it.
+11. [Function index](#function-index) (7) — Every function with its lanes, effects, callers and the facts inside it. "Other calls" counts calls that are not to a function in the same file: followed across files (through an import or a prop), matched to a fact, or not traced.
 
 <a id="overview"></a>
 
@@ -215,47 +215,40 @@ None found.
 
 ## 11. Function index
 
-Every function with its lanes, effects, callers and the facts inside it.
+Every function with its lanes, effects, callers and the facts inside it. "Other calls" counts calls that are not to a function in the same file: followed across files (through an import or a prop), matched to a fact, or not traced.
 
 ### `helper.js` (2)
 
-- top level at line 1
-  - runs: immediate
-- `helper` at line 1
-  - runs: none (not reached from an entry); also used as a value, so it may run from elsewhere
+- top level at line 1: runs immediate
+- `helper` at line 1: not reached from an entry; also used as a value, so it may run from elsewhere
 
 ### `main.js` (2)
 
-- top level at line 1
-  - runs: immediate
+- top level at line 1: runs immediate
   - can reach: starts other programs
-  - calls to something other than a function in this file: 2 (1 followed through an import or a prop, 1 matched to a fact, 0 not traced to any code)
+  - other calls: 2 (1 followed across files, 1 matched to a fact, 0 not traced)
   - followed call at line 5 to `run` in `runner.js` line 2 (through `./runner.js`, export `run`)
   - facts: `fact:9e3950ebcee45faf`, `fact:e5ba01ae63ea9ccd`, `fact:3aad1bf36a45fb26`, `fact:da767f241ea70a1d`, `fact:5fff27dfd029eb22`, `fact:b16b8df71b81b888`, `fact:0aaa5afc057b9479`
-- anonymous at line 6
-  - runs: deferred
+- anonymous at line 6: runs deferred
   - unresolved inside: Module our catalog does not cover
-  - calls to something other than a function in this file: 1 (0 followed through an import or a prop, 1 matched to a fact, 0 not traced to any code)
+  - other calls: 1 (0 followed across files, 1 matched to a fact, 0 not traced)
   - facts: `fact:6406d7e97408dbf1`
 
 ### `orphan.js` (1)
 
-- top level at line 1
-  - runs: none (not reached from an entry)
+- top level at line 1: not reached from an entry
   - can reach: deletes files
-  - calls to something other than a function in this file: 2 (0 followed through an import or a prop, 2 matched to a fact, 0 not traced to any code)
+  - other calls: 2 (0 followed across files, 2 matched to a fact, 0 not traced)
   - facts: `fact:6f61be9e7537cc5e`, `fact:604213d2ac79fa54`, `fact:6f8704b8ffefc0bd`
 
 ### `runner.js` (2)
 
-- top level at line 1
-  - runs: immediate
+- top level at line 1: runs immediate
   - facts: `fact:923cd4856da564c7`
-- `run` at line 2
-  - runs: immediate; also used as a value, so it may run from elsewhere
+- `run` at line 2: runs immediate; also used as a value, so it may run from elsewhere
   - can reach: starts other programs
   - unresolved inside: Computed property access
-  - calls to something other than a function in this file: 1 (0 followed through an import or a prop, 1 matched to a fact, 0 not traced to any code)
+  - other calls: 1 (0 followed across files, 1 matched to a fact, 0 not traced)
   - called through an import or a prop from: top level in `main.js`
   - facts: `fact:5d6d958f4743937b`, `fact:c90798328b471b56`, `fact:d87af0f9b1320a05`
 

@@ -22,7 +22,7 @@
 8. [Unresolved](#unresolved) (3) — Places where static analysis cannot say what happens (computed code, dynamic loads, shell commands). Each one hides behaviour.
 9. [Unlinked imports](#unlinked-imports) (3) — Imports we could not follow to their source: packages, missing files and names that are not exported.
 10. [Not analysed](#not-analysed) (5) — Files and folders that were not read as code, by kind, and anything skipped by a limit.
-11. [Function index](#function-index) (3) — Every function with its lanes, effects, callers and the facts inside it.
+11. [Function index](#function-index) (3) — Every function with its lanes, effects, callers and the facts inside it. "Other calls" counts calls that are not to a function in the same file: followed across files (through an import or a prop), matched to a fact, or not traced.
 
 <a id="overview"></a>
 
@@ -228,7 +228,7 @@ Another 3 skipped items were counted but not listed, because the intake record l
 
 ## 11. Function index
 
-Every function with its lanes, effects, callers and the facts inside it.
+Every function with its lanes, effects, callers and the facts inside it. "Other calls" counts calls that are not to a function in the same file: followed across files (through an import or a prop), matched to a fact, or not traced.
 
 ### Calls we could not trace, by what they call (3)
 
@@ -239,22 +239,18 @@ Nothing in the analysis says what these run. The label is made from names only; 
 
 ### `a.js` (2)
 
-- top level at line 1
-  - runs: immediate
-  - calls to something other than a function in this file: 2 (0 followed through an import or a prop, 0 matched to a fact, 2 not traced to any code)
-  - not traced: `console.log` at line 2
-  - not traced: `(..).then` at line 2
+- top level at line 1: runs immediate
+  - other calls: 2 (0 followed across files, 0 matched to a fact, 2 not traced)
+  - not traced: `console.log` at line 2; `(..).then` at line 2
   - facts: `fact:06589c8cb711bcba`, `fact:f1890ba685587673`, `fact:eb1d7990b2535690`
-- `helper` at line 4
-  - runs: deferred
-  - calls to something other than a function in this file: 1 (0 followed through an import or a prop, 0 matched to a fact, 1 not traced to any code)
+- `helper` at line 4: runs deferred
+  - other calls: 1 (0 followed across files, 0 matched to a fact, 1 not traced)
   - not traced: `console.log` at line 5
   - facts: `fact:09823b8c596fb089`, `fact:d5303add7d613da5`, `fact:cf3143cf54501e93`, `fact:173633518a7cb701`
 
 ### `b.js` (1)
 
-- top level at line 1
-  - runs: none (not reached from an entry)
+- top level at line 1: not reached from an entry
   - facts: `fact:03a802737548469f`
 
 [Back to the index](#index)

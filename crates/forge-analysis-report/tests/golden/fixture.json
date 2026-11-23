@@ -93,7 +93,7 @@
       "section": "functions",
       "number": 11,
       "title": "Function index",
-      "explanation": "Every function with its lanes, effects, callers and the facts inside it.",
+      "explanation": "Every function with its lanes, effects, callers and the facts inside it. \"Other calls\" counts calls that are not to a function in the same file: followed across files (through an import or a prop), matched to a fact, or not traced.",
       "count": 3,
       "anchor": "function-index"
     }
@@ -969,45 +969,8 @@
           "sha256": "3b549ed051f07d14ca03241c68ed10f3e8647f5d0e18d315e47534f2ba5c1e3b"
         },
         "count": 2,
-        "sites": [
-          {
-            "in_fn": {
-              "file": {
-                "text": "a.js",
-                "truncated": false,
-                "original_len": 4,
-                "sha256": "dc5985b2a377c4ea735c99979da277be3bd24be88cf411c11b52b5c3f9570536"
-              },
-              "func": 0,
-              "name": null,
-              "line": 1
-            },
-            "line": 2,
-            "start_byte": 20,
-            "end_byte": 28
-          },
-          {
-            "in_fn": {
-              "file": {
-                "text": "a.js",
-                "truncated": false,
-                "original_len": 4,
-                "sha256": "dc5985b2a377c4ea735c99979da277be3bd24be88cf411c11b52b5c3f9570536"
-              },
-              "func": 1,
-              "name": {
-                "text": "helper",
-                "truncated": false,
-                "original_len": 6,
-                "sha256": "e81d3b0e9d82feaaf5f6e55bdff24731d7eee08632ffa63801e6397290c5d20a"
-              },
-              "line": 4
-            },
-            "line": 5,
-            "start_byte": 450,
-            "end_byte": 458
-          }
-        ]
+        "functions": 2,
+        "files": 1
       },
       {
         "callee": {
@@ -1017,24 +980,8 @@
           "sha256": "3397a2abdad2e6554789e2418e4708a38ec497b4b32f5c45d4acd8928c237a0c"
         },
         "count": 1,
-        "sites": [
-          {
-            "in_fn": {
-              "file": {
-                "text": "a.js",
-                "truncated": false,
-                "original_len": 4,
-                "sha256": "dc5985b2a377c4ea735c99979da277be3bd24be88cf411c11b52b5c3f9570536"
-              },
-              "func": 0,
-              "name": null,
-              "line": 1
-            },
-            "line": 2,
-            "start_byte": 30,
-            "end_byte": 38
-          }
-        ]
+        "functions": 1,
+        "files": 1
       }
     ],
     "unplaced_facts": []

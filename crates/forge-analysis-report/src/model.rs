@@ -110,7 +110,7 @@ impl SectionId {
                 "Files and folders that were not read as code, by kind, and anything skipped by a limit."
             }
             SectionId::Functions => {
-                "Every function with its lanes, effects, callers and the facts inside it."
+                "Every function with its lanes, effects, callers and the facts inside it. \"Other calls\" counts calls that are not to a function in the same file: followed across files (through an import or a prop), matched to a fact, or not traced."
             }
         }
     }
@@ -446,26 +446,22 @@ pub struct UntracedCall {
     pub end_byte: u32,
 }
 
-/// Every untraced call with the same callee label, across the project.
+/// Every untraced call with the same callee label, across the project. The calls themselves, with their
+/// lines, are in each function's `untraced_calls`: this only counts them, so they are not written twice.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct UntracedGroup {
     pub callee: Quoted,
     pub count: u32,
-    pub sites: Vec<UntracedSite>,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
-pub struct UntracedSite {
-    pub in_fn: FnLoc,
-    pub line: u32,
-    pub start_byte: u32,
-    pub end_byte: u32,
+    /// How many distinct functions make these calls.
+    pub functions: u32,
+    /// How many distinct files those functions are in.
+    pub files: u32,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct FunctionsSection {
     pub functions: Vec<FunctionItem>,
-    /// The same untraced calls as in each function's `untraced_calls`, grouped by what they
+    /// The same untraced calls as in each function's `untraced_calls`, counted by what they
     /// call, most common first. Their total is the coverage line's count.
     pub untraced_by_callee: Vec<UntracedGroup>,
     /// Facts the analysis did not place in any function. Listed, never dropped.

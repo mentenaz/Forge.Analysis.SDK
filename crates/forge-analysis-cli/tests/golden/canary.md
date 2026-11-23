@@ -1,7 +1,7 @@
 # Forge analysis report
 
 - Engine: `forge-analysis 0.0.1`
-- Schema: 7
+- Schema: 8
 - Mode: static only (no code was run)
 - Scope: full (every file we can read as code)
 - Snapshot: `e72ed51efe91cabe4adc7990d8a8049c1b251b14d86332dea5a2d2fb2f3d7eca`
@@ -22,7 +22,7 @@
 8. [Unresolved](#unresolved) (3) — Places where static analysis cannot say what happens (computed code, dynamic loads, shell commands). Each one hides behaviour.
 9. [Unlinked imports](#unlinked-imports) (0) — Imports we could not follow to their source: packages, missing files and names that are not exported.
 10. [Not analysed](#not-analysed) (5) — Files and folders that were not read as code, by kind, and anything skipped by a limit.
-11. [Function index](#function-index) (0) — Every function with its lanes, effects, callers and the facts inside it.
+11. [Function index](#function-index) (0) — Every function with its lanes, effects, callers and the facts inside it. "Other calls" counts calls that are not to a function in the same file: followed across files (through an import or a prop), matched to a fact, or not traced.
 
 <a id="overview"></a>
 
@@ -194,6 +194,6 @@ Not code we analyse (documents, images, data, unknown types). Listed so nothing 
 
 ## 11. Function index
 
-Every function with its lanes, effects, callers and the facts inside it.
+Every function with its lanes, effects, callers and the facts inside it. "Other calls" counts calls that are not to a function in the same file: followed across files (through an import or a prop), matched to a fact, or not traced.
 
 [Back to the index](#index)

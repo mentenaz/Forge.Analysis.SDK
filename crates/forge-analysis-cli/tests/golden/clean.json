@@ -1,6 +1,6 @@
 {
   "header": {
-    "schema": 7,
+    "schema": 8,
     "engine": "forge-analysis 0.0.1",
     "catalog_sha256": "661ff253d0997c290715b16d7de935041072e290e1efd30a82fa0c75eed0949b",
     "snapshot_sha256": "cba6ce1d98dfe0b5012bf70cc0e5f73700b73588bc6c75ae16a5b38c530e52b5",
@@ -93,7 +93,7 @@
       "section": "functions",
       "number": 11,
       "title": "Function index",
-      "explanation": "Every function with its lanes, effects, callers and the facts inside it.",
+      "explanation": "Every function with its lanes, effects, callers and the facts inside it. \"Other calls\" counts calls that are not to a function in the same file: followed across files (through an import or a prop), matched to a fact, or not traced.",
       "count": 3,
       "anchor": "function-index"
     }

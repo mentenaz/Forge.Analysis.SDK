@@ -725,7 +725,13 @@ fn every_call_we_could_not_trace_is_named_once_per_function_and_once_per_group()
         assert_eq!(f.untraced_calls.len() as u32, f.calls_not_traced);
     }
     let first = &r.functions.untraced_by_callee[0];
-    assert_eq!((first.callee.text(), first.count, first.sites.len()), ("console.log", 2, 2), "most common first");
+    assert_eq!((first.callee.text(), first.count, first.functions, first.files), ("console.log", 2, 2, 1), "most common first");
+    // The calls are written once, in each function; the grouped list only counts them.
+    let json: serde_json::Value = serde_json::from_str(&to_json(&r)).unwrap();
+    let g0 = &json["functions"]["untraced_by_callee"][0];
+    assert!(g0.get("sites").is_none(), "{g0}");
+    assert_eq!(g0["functions"], 2);
+    assert_eq!(g0["files"], 1);
     let md = to_markdown(&r);
     assert!(md.contains("Calls we could not trace, by what they call"));
     assert!(md.contains("not traced: `console.log` at line 2"));

@@ -1,7 +1,7 @@
 # Forge analysis report
 
 - Engine: `forge-analysis 0.0.1`
-- Schema: 7
+- Schema: 8
 - Mode: static only (no code was run)
 - Scope: full (every file we can read as code)
 - Snapshot: `9ce6978007195f638eeee5bbb73f818d77aa1370dbd1aa0b2d698984b2b370ce`
@@ -22,7 +22,7 @@
 8. [Unresolved](#unresolved) (3) — Places where static analysis cannot say what happens (computed code, dynamic loads, shell commands). Each one hides behaviour.
 9. [Unlinked imports](#unlinked-imports) (4) — Imports we could not follow to their source: packages, missing files and names that are not exported.
 10. [Not analysed](#not-analysed) (0) — Files and folders that were not read as code, by kind, and anything skipped by a limit.
-11. [Function index](#function-index) (5) — Every function with its lanes, effects, callers and the facts inside it.
+11. [Function index](#function-index) (5) — Every function with its lanes, effects, callers and the facts inside it. "Other calls" counts calls that are not to a function in the same file: followed across files (through an import or a prop), matched to a fact, or not traced.
 
 <a id="overview"></a>
 
@@ -213,43 +213,38 @@ None found.
 
 ## 11. Function index
 
-Every function with its lanes, effects, callers and the facts inside it.
+Every function with its lanes, effects, callers and the facts inside it. "Other calls" counts calls that are not to a function in the same file: followed across files (through an import or a prop), matched to a fact, or not traced.
 
 ### `![img](http).js` (1)
 
-- top level at line 1
-  - runs: none (not reached from an entry)
+- top level at line 1: not reached from an entry
 
 ### `# Heading.js` (1)
 
-- top level at line 1
-  - runs: none (not reached from an entry)
-  - calls to something other than a function in this file: 1 (0 followed through an import or a prop, 1 matched to a fact, 0 not traced to any code)
+- top level at line 1: not reached from an entry
+  - other calls: 1 (0 followed across files, 1 matched to a fact, 0 not traced)
   - facts: `fact:54b2f2f39b301dbf`
 
 ### `[x](y).js` (1)
 
-- top level at line 1
-  - runs: none (not reached from an entry)
+- top level at line 1: not reached from an entry
   - can reach: starts other programs
-  - calls to something other than a function in this file: 2 (0 followed through an import or a prop, 2 matched to a fact, 0 not traced to any code)
+  - other calls: 2 (0 followed across files, 2 matched to a fact, 0 not traced)
   - facts: `fact:e078c00e036c3ef6`, `fact:d41303d2534a00e2`, `fact:0dc788cce5405910`
 
 ### ````a`b``c```d.js```` (1)
 
-- top level at line 1
-  - runs: none (not reached from an entry)
+- top level at line 1: not reached from an entry
   - can reach: deletes files
-  - calls to something other than a function in this file: 2 (0 followed through an import or a prop, 2 matched to a fact, 0 not traced to any code)
+  - other calls: 2 (0 followed across files, 2 matched to a fact, 0 not traced)
   - facts: `fact:622a1b670134a722`, `fact:c72d9f3694dc5dad`, `fact:25fa64491e4b7574`
 
 ### `index.js` (1)
 
-- top level at line 1
-  - runs: immediate
+- top level at line 1: runs immediate
   - can reach: makes network requests, runs code built at run time
   - unresolved inside: Module chosen at run time
-  - calls to something other than a function in this file: 6 (0 followed through an import or a prop, 6 matched to a fact, 0 not traced to any code)
+  - other calls: 6 (0 followed across files, 6 matched to a fact, 0 not traced)
   - facts: `fact:30b3e36a93fa7104`, `fact:2604a0f4518977d8`, `fact:0eb079624129b4ca`, `fact:191e204c3cc8349d`, `fact:111dd675953354fd`, `fact:20e3d297317298b7`, `fact:97b7e410f9bf1d04`, `fact:cf001330d4cf0693`
 
 [Back to the index](#index)

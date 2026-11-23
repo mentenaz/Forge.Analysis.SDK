@@ -1,7 +1,7 @@
 # Forge analysis report
 
 - Engine: `forge-analysis 0.0.1`
-- Schema: 7
+- Schema: 8
 - Mode: static only (no code was run)
 - Scope: quick (only files that run by themselves; everything else is counted as not examined)
 - Snapshot: `21640997110fe94a814caf659f927b541631e8a6969533c39f962f6461898070`
@@ -22,7 +22,7 @@
 8. [Unresolved](#unresolved) (3) — Places where static analysis cannot say what happens (computed code, dynamic loads, shell commands). Each one hides behaviour.
 9. [Unlinked imports](#unlinked-imports) (0) — Imports we could not follow to their source: packages, missing files and names that are not exported.
 10. [Not analysed](#not-analysed) (5) — Files and folders that were not read as code, by kind, and anything skipped by a limit.
-11. [Function index](#function-index) (4) — Every function with its lanes, effects, callers and the facts inside it.
+11. [Function index](#function-index) (4) — Every function with its lanes, effects, callers and the facts inside it. "Other calls" counts calls that are not to a function in the same file: followed across files (through an import or a prop), matched to a fact, or not traced.
 
 <a id="overview"></a>
 
@@ -248,7 +248,7 @@ Code a full run would read. A quick scan reads only the files that run by themse
 
 ## 11. Function index
 
-Every function with its lanes, effects, callers and the facts inside it.
+Every function with its lanes, effects, callers and the facts inside it. "Other calls" counts calls that are not to a function in the same file: followed across files (through an import or a prop), matched to a fact, or not traced.
 
 ### Calls we could not trace, by what they call (3)
 
@@ -259,26 +259,22 @@ Nothing in the analysis says what these run. The label is made from names only; 
 
 ### `setup.js` (4)
 
-- top level at line 1
-  - runs: immediate, install
+- top level at line 1: runs immediate, install
   - can reach: writes files, deletes files, makes network requests, runs code built at run time
-  - calls to something other than a function in this file: 6 (0 followed through an import or a prop, 4 matched to a fact, 2 not traced to any code)
+  - other calls: 6 (0 followed across files, 4 matched to a fact, 2 not traced)
   - not traced: `(..).then` at line 3, 3
   - facts: `fact:c84dfdaf5bf34872`, `fact:056fe7f3c71e6b50`, `fact:7f1a8d20d9216e55`, `fact:4cc140adbcc4fc13`, `fact:4b45608f3cf8d81e`, `fact:8e90923ec4d7ab03`, `fact:38c761f4499498f8`
-- anonymous at line 3
-  - runs: immediate, install
-  - calls to something other than a function in this file: 1 (0 followed through an import or a prop, 0 matched to a fact, 1 not traced to any code)
+- anonymous at line 3: runs immediate, install
+  - other calls: 1 (0 followed across files, 0 matched to a fact, 1 not traced)
   - not traced: `r.text` at line 3
-- anonymous at line 3
-  - runs: immediate, install
+- anonymous at line 3: runs immediate, install
   - can reach: runs code built at run time
   - unresolved inside: Code built at run time
-  - calls to something other than a function in this file: 1 (0 followed through an import or a prop, 1 matched to a fact, 0 not traced to any code)
+  - other calls: 1 (0 followed across files, 1 matched to a fact, 0 not traced)
   - facts: `fact:4fb37decbb748c7f`, `fact:1d5d4970d0d178f7`, `fact:68df2048122e2fe3`, `fact:909a5c4ffb95808e`
-- anonymous at line 4
-  - runs: recurring
+- anonymous at line 4: runs recurring
   - can reach: writes files
-  - calls to something other than a function in this file: 1 (0 followed through an import or a prop, 1 matched to a fact, 0 not traced to any code)
+  - other calls: 1 (0 followed across files, 1 matched to a fact, 0 not traced)
   - facts: `fact:0becde626b3a9a5a`, `fact:0ab78a27a5c9fe51`
 
 [Back to the index](#index)

@@ -1,7 +1,7 @@
 # Forge analysis report
 
 - Engine: `forge-analysis 0.0.1`
-- Schema: 7
+- Schema: 8
 - Mode: static only (no code was run)
 - Scope: full (every file we can read as code)
 - Snapshot: `fc72c706ef0551e9255916d6803b48eb637da4260a8b5c0888a5504a409f42f3`
@@ -22,7 +22,7 @@
 8. [Unresolved](#unresolved) (9) — Places where static analysis cannot say what happens (computed code, dynamic loads, shell commands). Each one hides behaviour.
 9. [Unlinked imports](#unlinked-imports) (0) — Imports we could not follow to their source: packages, missing files and names that are not exported.
 10. [Not analysed](#not-analysed) (12) — Files and folders that were not read as code, by kind, and anything skipped by a limit.
-11. [Function index](#function-index) (2) — Every function with its lanes, effects, callers and the facts inside it.
+11. [Function index](#function-index) (2) — Every function with its lanes, effects, callers and the facts inside it. "Other calls" counts calls that are not to a function in the same file: followed across files (through an import or a prop), matched to a fact, or not traced.
 
 <a id="overview"></a>
 
@@ -228,21 +228,19 @@ Not code we analyse (documents, images, data, unknown types). Listed so nothing 
 
 ## 11. Function index
 
-Every function with its lanes, effects, callers and the facts inside it.
+Every function with its lanes, effects, callers and the facts inside it. "Other calls" counts calls that are not to a function in the same file: followed across files (through an import or a prop), matched to a fact, or not traced.
 
 ### `src/app.js` (1)
 
-- top level at line 1
-  - runs: immediate
-  - calls to something other than a function in this file: 1 (0 followed through an import or a prop, 1 matched to a fact, 0 not traced to any code)
+- top level at line 1: runs immediate
+  - other calls: 1 (0 followed across files, 1 matched to a fact, 0 not traced)
   - facts: `fact:f132ea3c3e397905`
 
 ### `webpack.config.js` (1)
 
-- top level at line 1
-  - runs: immediate
+- top level at line 1: runs immediate
   - can reach: starts other programs
-  - calls to something other than a function in this file: 2 (0 followed through an import or a prop, 2 matched to a fact, 0 not traced to any code)
+  - other calls: 2 (0 followed across files, 2 matched to a fact, 0 not traced)
   - facts: `fact:668cafc63fc08e1c`, `fact:baa3b1dceff07ff8`, `fact:4bced2e6cc590d2f`
 
 [Back to the index](#index)

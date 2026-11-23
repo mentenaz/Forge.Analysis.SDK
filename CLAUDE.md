@@ -60,10 +60,10 @@ limits, not by the flag. Files not reached are reported as `NotAnalysedKind::Sto
   per call and may need an index later.
 - A quadratic `Vec::contains` on nested function chains (`a=>a=>...`) was fixed in step 20. The slow test
   `long_chains_without_brackets` exercises 2 MiB chains.
-- `REPORT_SCHEMA` is 7. **Bump rule** (also in the doc comment in `crates/forge-analysis/src/run.rs`): bump it when
+- `REPORT_SCHEMA` is 8. **Bump rule** (also in the doc comment in `crates/forge-analysis/src/run.rs`): bump it when
   the JSON changes in a way a reader could meet (a new or renamed field, a new value of a written enum, a changed
   meaning; removals always). A change that only alters what the engine finds does not bump it. Goldens change with
-  every bump and the commit says so. 1: first shape. 2: header `scope`, kind `out_of_scope`. 3: kind `auto_run_config`. 4: kind `archive`. 5: script triggers `on_open`, `on_git`, `on_build`. 6: the report's fixed `notice`. 7: the brief's `untraced` count and reasons `no_code_read`, `entry_point_missing`.
+  every bump and the commit says so. 1: first shape. 2: header `scope`, kind `out_of_scope`. 3: kind `auto_run_config`. 4: kind `archive`. 5: script triggers `on_open`, `on_git`, `on_build`. 6: the report's fixed `notice`. 7: the brief's `untraced` count and reasons `no_code_read`, `entry_point_missing`. 8: `functions.untraced_by_callee[].sites` removed (a copy of each function's `untraced_calls`), replaced by `functions` and `files` counts.
 - **Quick scan** (`RunOptions.scope = Scope::Quick`, CLI `--quick`/`-q`): analyses every `package.json` (any depth), the
   files its install hooks run, and what those load (followed with `FileIndex`, same resolver as the linker). Other code
   is `NotAnalysedKind::OutOfScope`; non-code keeps its usual kind. Report and brief are always incomplete under quick
@@ -193,8 +193,12 @@ then function, then line, so no path repeats; every item is still listed. Measur
 36 MB (2.3x, not the 10-40x first estimated: the code text of each item stays), report.md 259 -> 212 MB. Function index 169 MB
 (about 516,000 functions; spread over many line types, so regrouping alone will not shrink it much). report.json is 1.89 GB:
 functions list 987 MB, `functions.untraced_by_callee` 508 MB (a copy of each function's `untraced_calls`), unresolved 363 MB,
-everything else about 30 MB. Open: the second layer (Function index wording, or a separate file for it), the JSON duplicate,
-no `--time-budget` flag on the CLI.
+everything else about 30 MB. Second layer built (schema 8): the Function index prose is shorter (`runs` joins the function line,
+"other calls", one `not traced` line per function) and the JSON copy `untraced_by_callee[].sites` is gone. Measured on `Forge.Lite`
+(793 s): report.md 212 -> 183 MB (Function index 169 -> 140 MB, less than the 45-55 MB first estimated), report.json 1.89 GB ->
+1.43 GB (`untraced_by_callee` 508 -> 51 MB). Since the start: md 259 -> 183 MB, json 1.89 -> 1.43 GB. Still open: the report is
+huge at this scale (516,000 functions); a separate file for the Function index, a files table in the JSON, and a `--time-budget`
+flag on the CLI.
 
 ## Legal and notices
 

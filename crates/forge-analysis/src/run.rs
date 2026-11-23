@@ -28,7 +28,9 @@ use std::time::{Duration, Instant};
 /// 3: not-analysed kinds gain `auto_run_config`. 4: not-analysed kinds gain `archive`.
 /// 5: script triggers gain `on_open`, `on_git` and `on_build`. 6: the report gains `notice`.
 /// 7: the brief gains `untraced` and the reasons `no_code_read` and `entry_point_missing`.
-pub const REPORT_SCHEMA: u32 = 7;
+/// 8: `functions.untraced_by_callee[].sites` is removed (a copy of each function's `untraced_calls`) and
+/// replaced by `functions` and `files` counts.
+pub const REPORT_SCHEMA: u32 = 8;
 
 /// Lets another thread stop a run. The run looks at it between files, so one very large file is
 /// bounded by the size limits, not by this flag.
