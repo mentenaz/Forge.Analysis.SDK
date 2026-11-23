@@ -188,8 +188,13 @@ matching no file (`entry_point_missing`) is `incomplete`.
 1.9 GB and report.md 259 MB, almost all of it the Unresolved section. Fixed since: the 5 `data_reaches_code` on the built vitepress bundle were a false positive, not XHR methods. A function
 whose BODY contained `new XMLHttpRequest` counted as network data, and that spread to anything calling it. Now (`flow.rs`,
 `Mentions`) a function value is network data only through what it returns, or when it is called on the spot; a helper that returns
-what it fetched (`const load = () => fetch(u)`) still gives a flow (tests cover both). Open from that run: grouping of long
-untraced lists; no `--time-budget` flag on the CLI.
+what it fetched (`const load = () => fetch(u)`) still gives a flow (tests cover both). Grouping, first layer built (Markdown only, no schema change): an Unresolved group of more than 25 items is written by file,
+then function, then line, so no path repeats; every item is still listed. Measured on `Forge.Lite` (813 s): Unresolved 83 MB ->
+36 MB (2.3x, not the 10-40x first estimated: the code text of each item stays), report.md 259 -> 212 MB. Function index 169 MB
+(about 516,000 functions; spread over many line types, so regrouping alone will not shrink it much). report.json is 1.89 GB:
+functions list 987 MB, `functions.untraced_by_callee` 508 MB (a copy of each function's `untraced_calls`), unresolved 363 MB,
+everything else about 30 MB. Open: the second layer (Function index wording, or a separate file for it), the JSON duplicate,
+no `--time-budget` flag on the CLI.
 
 ## Legal and notices
 

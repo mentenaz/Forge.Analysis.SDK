@@ -11,6 +11,7 @@ use forge_analysis_schema::{
     DepSection, DependencySource, Delay, Effect, EntryBasis, FactKind, FlowSink, FnId, Lane, Mode, Quoted,
     Scope, ScriptTrigger, Span, UnlinkedReason, UnresolvedReason, UrlValue,
 };
+use std::collections::HashMap;
 use std::fmt::Write;
 
 /// A group with more items than this is collapsed.
@@ -573,6 +574,10 @@ fn unresolved(w: &mut W, r: &Report) {
     for g in &r.unresolved {
         let (title, note) = unresolved_text(g.reason);
         w.group(title, note, g.items.len(), |w| {
+            if g.items.len() > COLLAPSE_AT {
+                unresolved_by_file(w, &g.items);
+                return;
+            }
             for i in &g.items {
                 let mut s = at_line(&i.at, &i.place);
                 if i.detail.is_some() {
@@ -583,6 +588,59 @@ fn unresolved(w: &mut W, r: &Report) {
         });
     }
     w.back();
+}
+
+/// A long group, written so that nothing is repeated: each file once, under it each function once with
+/// whether it runs, and under that every item with its line. Every item is still listed, in the order found.
+fn unresolved_by_file(w: &mut W, items: &[UnresolvedItem]) {
+    struct Fns {
+        file: String,
+        fns: Vec<(String, Vec<String>)>,
+    }
+    let mut files: Vec<Fns> = Vec::new();
+    let mut file_at: HashMap<String, usize> = HashMap::new();
+    let mut fn_at: HashMap<(usize, String), usize> = HashMap::new();
+    for i in items {
+        let file = q(i.at.file.as_quoted());
+        let fi = *file_at.entry(file.clone()).or_insert_with(|| {
+            files.push(Fns { file, fns: Vec::new() });
+            files.len() - 1
+        });
+        let head = match &i.place.in_fn {
+            Some(f) => {
+                let same_file = f.file == i.at.file;
+                let named = match (&f.name, f.func) {
+                    (Some(n), _) => q(n),
+                    (None, FnId(0)) => "top level".to_string(),
+                    (None, _) => "anonymous function".to_string(),
+                };
+                let line = f.line.map(|l| format!(" at line {l}")).unwrap_or_default();
+                let elsewhere = if same_file { String::new() } else { format!(" of {}", q(f.file.as_quoted())) };
+                let p = place_text(&i.place);
+                let p = if p.is_empty() { String::new() } else { format!(" ({p})") };
+                format!("in {named}{line}{elsewhere}{p}")
+            }
+            None => "outside any function".to_string(),
+        };
+        let fj = *fn_at.entry((fi, head.clone())).or_insert_with(|| {
+            files[fi].fns.push((head, Vec::new()));
+            files[fi].fns.len() - 1
+        });
+        let mut s = format!("line {}", i.at.start_line);
+        if i.detail.is_some() {
+            let _ = write!(s, ": {}", oq(&i.detail));
+        }
+        files[fi].fns[fj].1.push(s);
+    }
+    for f in &files {
+        w.item(&f.file);
+        for (head, lines) in &f.fns {
+            w.line(&format!("  - {head}"));
+            for l in lines {
+                w.line(&format!("    - {l}"));
+            }
+        }
+    }
 }
 
 fn unlinked(w: &mut W, r: &Report) {

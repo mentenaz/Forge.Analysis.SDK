@@ -263,6 +263,36 @@ fn unresolved_items_are_grouped_by_reason_most_worrying_first() {
 }
 
 #[test]
+fn a_long_unresolved_group_names_each_file_and_function_once_and_still_lists_every_item() {
+    let mut fx = fixture();
+    // 30 computed requires: 20 in function 1 of a.js, 10 in function 0 of b.js.
+    for n in 0..20u32 {
+        fx.facts_a.push(unresolved("a.js", 100 + n, 1000 + n * 10, UnresolvedReason::DynamicRequire, Some(1)));
+    }
+    for n in 0..10u32 {
+        fx.facts_b.push(unresolved("b.js", 200 + n, 2000 + n * 10, UnresolvedReason::DynamicRequire, Some(0)));
+    }
+    let r = fx.run();
+    let g = r.unresolved.iter().find(|g| g.reason == UnresolvedReason::DynamicRequire).unwrap();
+    assert_eq!(g.items.len(), 30);
+    let md = to_markdown(&r);
+    let section = md.split("Module chosen at run time (30)").nth(1).expect("the group is collapsed with its count");
+    let section = section.split("</details>").next().unwrap();
+    // Every item is there, with its line.
+    for n in 0..20 {
+        assert!(section.contains(&format!("line {}", 100 + n)), "a.js line {}", 100 + n);
+    }
+    for n in 0..10 {
+        assert!(section.contains(&format!("line {}", 200 + n)), "b.js line {}", 200 + n);
+    }
+    // The file and the function are written once, not once per item.
+    assert_eq!(section.matches("`a.js`").count(), 1, "{section}");
+    assert_eq!(section.matches("`b.js`").count(), 1, "{section}");
+    assert_eq!(section.matches("in `helper`").count(), 1, "{section}");
+    assert_eq!(section.matches("not reached from any entry").count() + section.matches("runs: ").count(), 2, "{section}");
+}
+
+#[test]
 fn a_script_lists_the_commands_we_did_not_follow() {
     let r = fixture().run();
     let s = &r.scripts[0];
