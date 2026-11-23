@@ -51,11 +51,15 @@ limits, not by the flag. Files not reached are reported as `NotAnalysedKind::Sto
 
 ## Analysis facts worth knowing
 
-- **Flows** (`flow.rs`): sources are network calls (fetch, https.get, XHR, WebSocket). Sinks are code
-  arguments (eval, Function, vm, exec/spawn, worker, timer string) and callee sinks (`FlowSink::Callee`:
-  a call on, or of, a value that came from the network). Propagation follows oxc symbols. A function value is tainted only by what it returns, not by what its body does.
-- **Known gap:** a remote object using a standard method name (`vuln.end()`, `send()`) is only reported
-  as an untraced call, not as a flow. Typed receivers would fix it.
+- **Flows** (`flow.rs`): sources are network calls (fetch, https.get, XHR, WebSocket). Sinks are code arguments (eval, Function,
+  vm, exec/spawn, worker, timer string) and callee sinks (`FlowSink::Callee`). Propagation follows oxc symbols. Each tainted value
+  has a kind (`Kind`): `Data` (carries network data: strings, parsed JSON, objects built from it, the result of a helper), `Maker`
+  (a function that hands back a handle), `Handle` (the network object itself: response, socket, request) and `Code` (the result of
+  running network data as code, or of a non-platform method on a handle). A callee flow fires only for a call on `Code`, or a
+  method on a `Handle` that is not the platform's own API. Data is never a callee: JSON cannot hold a function and an object built
+  from data runs your own code. A function value is tainted only through what it returns.
+- **Known gap:** the platform-method list for a `Handle` is one global list, not one per type (socket methods such as `setNoDelay`
+  can still be reported); `function` declarations are not tracked as values; `import()` of a network URL is not a source of `Code`.
 - **Call graph** (`callgraph.rs`): `Edges.seen_refs` keeps references unique. `Graph::owner` is O(functions)
   per call and may need an index later.
 - A quadratic `Vec::contains` on nested function chains (`a=>a=>...`) was fixed in step 20. The slow test

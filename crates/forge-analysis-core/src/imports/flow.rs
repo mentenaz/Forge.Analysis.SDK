@@ -31,7 +31,7 @@
 //! a map from call/new span to `Site`. This module knows nothing about the catalog.
 
 use oxc_ast::ast::{
-    Argument, ArrowFunctionExpression, AssignmentExpression, ExpressionStatement, VariableDeclaration, AssignmentTarget, BindingPattern,
+    Argument, ArrowFunctionBody, ArrowFunctionExpression, AssignmentExpression, ExpressionStatement, Statement, VariableDeclaration, AssignmentTarget, BindingPattern,
     CallExpression, Expression, FormalParameters, Function, IdentifierReference, NewExpression,
     VariableDeclarator,
 };
@@ -63,7 +63,31 @@ pub struct FlowHit {
 }
 
 type Sites = BTreeMap<(u32, u32), Site>;
-type Tainted = BTreeMap<SymbolId, Span>;
+/// What a tainted value IS, which decides whether calling something on it means "the server decides what
+/// runs". The order is the strength: a symbol only moves up.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+enum Kind {
+    /// Carries network data (a string, parsed JSON, an object built from it, the result of a helper). Calling
+    /// something on it is ordinary: JSON cannot hold a function, and an object that merely holds data runs
+    /// your own code.
+    Data,
+    /// A function that hands back a `Handle` (`() => fetch(u)`): calling it gives a `Handle`.
+    Maker,
+    /// The network object itself: a response, a socket, a request. Its own methods are the platform's API;
+    /// any other method name is not, so the one who answered the request chose what runs.
+    Handle,
+    /// The result of running network data as code (`eval`, `new Function`, `vm`) or of a call the server
+    /// chose. Anything called on it is remote code.
+    Code,
+}
+
+#[derive(Debug, Clone, Copy)]
+struct Taint {
+    origin: Span,
+    kind: Kind,
+}
+
+type Tainted = BTreeMap<SymbolId, Taint>;
 type FnParams = BTreeMap<SymbolId, Vec<SymbolId>>;
 
 /// Hard stop for the propagation loop. It always terminates (the tainted set only grows and
@@ -273,8 +297,8 @@ impl<'a> Visit<'a> for Mentions<'_> {
             return;
         }
         if let Some(sym) = symbol_of(self.scoping, it) {
-            if let Some(origin) = self.tainted.get(&sym) {
-                self.found = Some(*origin);
+            if let Some(t) = self.tainted.get(&sym) {
+                self.found = Some(t.origin);
             }
         }
     }
@@ -340,6 +364,170 @@ fn origin_of_arg(
     m.found
 }
 
+// ---- what kind of tainted value is this expression? ----
+
+/// Steps through the wrappers that do not change what a value is: parentheses, `await`, type casts.
+fn strip<'x, 'a>(mut e: &'x Expression<'a>) -> &'x Expression<'a> {
+    loop {
+        e = match e {
+            Expression::ParenthesizedExpression(p) => &p.expression,
+            Expression::AwaitExpression(a) => &a.argument,
+            Expression::TSAsExpression(a) => &a.expression,
+            Expression::TSNonNullExpression(a) => &a.expression,
+            Expression::TSSatisfiesExpression(a) => &a.expression,
+            Expression::TSTypeAssertion(a) => &a.expression,
+            _ => return e,
+        }
+    }
+}
+
+/// The values a function literal hands back: its expression body, or its `return` arguments (not those of
+/// functions inside it).
+fn returned<'x, 'a>(f: &'x Expression<'a>) -> Option<Vec<&'x Expression<'a>>> {
+    let mut out = Vec::new();
+    match f {
+        Expression::ArrowFunctionExpression(a) => {
+            if let Some(v) = a.body.as_expression() {
+                out.push(v);
+            } else if let ArrowFunctionBody::FunctionBody(b) = &a.body {
+                collect_returns(&b.statements, &mut out);
+            }
+        }
+        Expression::FunctionExpression(fe) => {
+            if let Some(b) = &fe.body {
+                collect_returns(&b.statements, &mut out);
+            }
+        }
+        _ => return None,
+    }
+    Some(out)
+}
+
+fn collect_returns<'x, 'a>(stmts: &'x [Statement<'a>], out: &mut Vec<&'x Expression<'a>>) {
+    for st in stmts {
+        match st {
+            Statement::ReturnStatement(r) => {
+                if let Some(a) = &r.argument {
+                    out.push(a);
+                }
+            }
+            Statement::BlockStatement(b) => collect_returns(&b.body, out),
+            Statement::IfStatement(i) => {
+                collect_returns(std::slice::from_ref(&i.consequent), out);
+                if let Some(alt) = &i.alternate {
+                    collect_returns(std::slice::from_ref(alt), out);
+                }
+            }
+            Statement::TryStatement(t) => {
+                collect_returns(&t.block.body, out);
+                if let Some(h) = &t.handler {
+                    collect_returns(&h.body.body, out);
+                }
+                if let Some(f) = &t.finalizer {
+                    collect_returns(&f.body, out);
+                }
+            }
+            Statement::ForStatement(f) => collect_returns(std::slice::from_ref(&f.body), out),
+            Statement::ForOfStatement(f) => collect_returns(std::slice::from_ref(&f.body), out),
+            Statement::ForInStatement(f) => collect_returns(std::slice::from_ref(&f.body), out),
+            Statement::WhileStatement(w) => collect_returns(std::slice::from_ref(&w.body), out),
+            Statement::DoWhileStatement(w) => collect_returns(std::slice::from_ref(&w.body), out),
+            Statement::LabeledStatement(l) => collect_returns(std::slice::from_ref(&l.body), out),
+            Statement::SwitchStatement(sw) => {
+                for c in &sw.cases {
+                    collect_returns(&c.consequent, out);
+                }
+            }
+            _ => {}
+        }
+    }
+}
+
+/// What the function literal `f` hands back, as a taint: `Maker` when it hands back a `Handle`, `Data` when it
+/// hands back anything else tainted.
+fn literal_returns(scoping: &Scoping, sites: &Sites, tainted: &Tainted, f: &Expression<'_>) -> Option<Taint> {
+    let mut best: Option<Taint> = None;
+    for r in returned(f)? {
+        if let Some(t) = classify(scoping, sites, tainted, r) {
+            let k = if t.kind >= Kind::Maker { Kind::Maker } else { Kind::Data };
+            if best.map_or(true, |b| k > b.kind) {
+                best = Some(Taint { origin: t.origin, kind: k });
+            }
+        }
+    }
+    best
+}
+
+fn is_source(sites: &Sites, at: Span) -> bool {
+    sites.get(&key(at)).is_some_and(|s| s.source)
+}
+
+fn is_sink(sites: &Sites, at: Span) -> bool {
+    sites.get(&key(at)).is_some_and(|s| s.sink)
+}
+
+/// The kind of tainted value `e` is, or None when it holds no network data. The forms that keep a value's
+/// identity (a source call, a name, `await`, a cast) keep its kind; a call on a `Handle` that is not the
+/// platform's own API gives `Code`; running network data as code gives `Code`; everything else that mentions
+/// network data is `Data`.
+fn classify(scoping: &Scoping, sites: &Sites, tainted: &Tainted, e: &Expression<'_>) -> Option<Taint> {
+    let e = strip(e);
+    match e {
+        Expression::Identifier(id) => symbol_of(scoping, id).and_then(|s| tainted.get(&s).copied()),
+        Expression::NewExpression(n) if is_source(sites, n.span) => Some(Taint { origin: n.span, kind: Kind::Handle }),
+        Expression::CallExpression(c) if is_source(sites, c.span) => Some(Taint { origin: c.span, kind: Kind::Handle }),
+        Expression::NewExpression(n) if is_sink(sites, n.span) => n
+            .arguments
+            .iter()
+            .find_map(|a| origin_of_arg(scoping, sites, tainted, a))
+            .map(|origin| Taint { origin, kind: Kind::Code }),
+        Expression::CallExpression(c) => {
+            if is_sink(sites, c.span) {
+                if let Some(origin) = c.arguments.iter().find_map(|a| origin_of_arg(scoping, sites, tainted, a)) {
+                    return Some(Taint { origin, kind: Kind::Code });
+                }
+            }
+            let callee = strip(&c.callee);
+            // A function literal called on the spot gives what it returns.
+            if let Some(t) = literal_returns(scoping, sites, tainted, callee) {
+                return Some(Taint { origin: t.origin, kind: if t.kind == Kind::Maker { Kind::Handle } else { Kind::Data } });
+            }
+            match callee {
+                Expression::Identifier(id) => {
+                    if let Some(t) = symbol_of(scoping, id).and_then(|s| tainted.get(&s).copied()) {
+                        match t.kind {
+                            Kind::Maker => return Some(Taint { origin: t.origin, kind: Kind::Handle }),
+                            Kind::Code => return Some(Taint { origin: t.origin, kind: Kind::Code }),
+                            _ => {}
+                        }
+                    }
+                }
+                Expression::StaticMemberExpression(m) => {
+                    if let Some(o) = classify(scoping, sites, tainted, &m.object) {
+                        let platform = is_standard_method(m.property.name.as_str());
+                        if o.kind == Kind::Code || (o.kind == Kind::Handle && !platform) {
+                            return Some(Taint { origin: o.origin, kind: Kind::Code });
+                        }
+                    }
+                }
+                Expression::ComputedMemberExpression(m) => {
+                    if let Some(o) = classify(scoping, sites, tainted, &m.object) {
+                        if o.kind >= Kind::Handle {
+                            return Some(Taint { origin: o.origin, kind: Kind::Code });
+                        }
+                    }
+                }
+                _ => {}
+            }
+            origin_of_expr(scoping, sites, tainted, e).map(|origin| Taint { origin, kind: Kind::Data })
+        }
+        Expression::ArrowFunctionExpression(_) | Expression::FunctionExpression(_) => {
+            literal_returns(scoping, sites, tainted, e)
+        }
+        other => origin_of_expr(scoping, sites, tainted, other).map(|origin| Taint { origin, kind: Kind::Data }),
+    }
+}
+
 // ---- propagation, repeated until nothing new is tainted ----
 
 struct Propagate<'s> {
@@ -355,21 +543,29 @@ impl Propagate<'_> {
         origin_of_expr(self.scoping, self.sites, &self.tainted, e)
     }
 
-    fn taint(&mut self, sym: SymbolId, origin: Span) {
-        if !self.tainted.contains_key(&sym) {
-            self.tainted.insert(sym, origin);
-            self.changed = true;
+    fn classify(&self, e: &Expression<'_>) -> Option<Taint> {
+        classify(self.scoping, self.sites, &self.tainted, e)
+    }
+
+    /// A symbol only moves up in kind, so the loop ends.
+    fn taint(&mut self, sym: SymbolId, t: Taint) {
+        match self.tainted.get(&sym) {
+            Some(old) if old.kind >= t.kind => {}
+            _ => {
+                self.tainted.insert(sym, t);
+                self.changed = true;
+            }
         }
     }
 
-    fn taint_all(&mut self, syms: Vec<SymbolId>, origin: Span) {
+    fn taint_all(&mut self, syms: Vec<SymbolId>, t: Taint) {
         for s in syms {
-            self.taint(s, origin);
+            self.taint(s, t);
         }
     }
 
     /// The parameters of a callback argument: a function literal, or a function named here.
-    fn taint_callback_arg(&mut self, arg: &Argument<'_>, origin: Span) {
+    fn taint_callback_arg(&mut self, arg: &Argument<'_>, t: Taint) {
         let syms = match arg {
             Argument::ArrowFunctionExpression(f) => param_symbols(&f.params),
             Argument::FunctionExpression(f) => param_symbols(&f.params),
@@ -378,17 +574,19 @@ impl Propagate<'_> {
                 .unwrap_or_default(),
             _ => Vec::new(),
         };
-        self.taint_all(syms, origin);
+        self.taint_all(syms, t);
     }
 }
 
 impl<'a> Visit<'a> for Propagate<'_> {
     fn visit_variable_declarator(&mut self, it: &VariableDeclarator<'a>) {
         if let Some(init) = &it.init {
-            if let Some(origin) = self.origin(init) {
+            if let Some(t) = self.classify(init) {
                 let mut syms = Vec::new();
                 collect_binding(&it.id, &mut syms);
-                self.taint_all(syms, origin);
+                // `const { a } = handle` takes pieces of it: those are data, not the object itself.
+                let t = if matches!(it.id, BindingPattern::BindingIdentifier(_)) { t } else { Taint { kind: Kind::Data, ..t } };
+                self.taint_all(syms, t);
             }
         }
         walk::walk_variable_declarator(self, it);
@@ -396,19 +594,21 @@ impl<'a> Visit<'a> for Propagate<'_> {
 
     fn visit_assignment_expression(&mut self, it: &AssignmentExpression<'a>) {
         // `a = <tainted>` and `a.b = <tainted>` taint `a`.
-        if let Some(origin) = self.origin(&it.right) {
+        if let Some(t) = self.classify(&it.right) {
             if let Some(sym) = target_root(&it.left).and_then(|id| symbol_of(self.scoping, id)) {
-                self.taint(sym, origin);
+                // Only `a = <value>` makes `a` that value; `a.b = <value>` makes `a` an object that holds data.
+                let direct = matches!(it.left, AssignmentTarget::AssignmentTargetIdentifier(_));
+                self.taint(sym, if direct { t } else { Taint { kind: Kind::Data, ..t } });
             }
         }
-        // `x.onmessage = e => ..` where `x` is tainted: the handler's parameters are tainted.
+        // `x.onmessage = e => ..` where `x` is tainted: the handler's parameters are data.
         if let Some(params) = literal_params(&it.right) {
             let owner = target_root(&it.left)
                 .and_then(|id| symbol_of(self.scoping, id))
                 .and_then(|s| self.tainted.get(&s).copied());
-            if let Some(origin) = owner {
+            if let Some(t) = owner {
                 let syms = param_symbols(params);
-                self.taint_all(syms, origin);
+                self.taint_all(syms, Taint { kind: Kind::Data, ..t });
             }
         }
         walk::walk_assignment_expression(self, it);
@@ -416,14 +616,22 @@ impl<'a> Visit<'a> for Propagate<'_> {
 
     fn visit_call_expression(&mut self, it: &CallExpression<'a>) {
         // A source call, or a method called on tainted data, hands tainted values to callbacks.
-        let carrier = if self.sites.get(&key(it.span)).is_some_and(|s| s.source) {
-            Some(it.span)
+        // Callbacks of a source call get the network object itself (`https.get(u, res => ..)`); so does the
+        // `then` of a response (`fetch(u).then(r => ..)`). Any other callback gets data.
+        let carrier = if is_source(self.sites, it.span) {
+            Some(Taint { origin: it.span, kind: Kind::Handle })
+        } else if let Expression::StaticMemberExpression(m) = strip(&it.callee) {
+            match self.classify(&m.object) {
+                Some(o) if m.property.name == "then" && o.kind == Kind::Handle => Some(o),
+                Some(o) => Some(Taint { kind: Kind::Data, ..o }),
+                None => None,
+            }
         } else {
-            self.origin(&it.callee)
+            self.origin(&it.callee).map(|origin| Taint { origin, kind: Kind::Data })
         };
-        if let Some(origin) = carrier {
+        if let Some(t) = carrier {
             for arg in &it.arguments {
-                self.taint_callback_arg(arg, origin);
+                self.taint_callback_arg(arg, t);
             }
         }
         walk::walk_call_expression(self, it);
@@ -455,30 +663,26 @@ impl SinkFinder<'_> {
 }
 
 impl SinkFinder<'_> {
-    /// Is the function being called network data, or looked up on network data?
+    /// Is what is being called remote code? That is: anything called on a `Code` value, and a method on a
+    /// `Handle` that is not the platform's own API. Data, and objects that merely hold data, are called
+    /// freely: JSON cannot hold a function, and such an object runs your own code.
     fn check_callee(&mut self, it: &CallExpression<'_>) {
-        let mut callee = &it.callee;
-        while let Expression::ParenthesizedExpression(p) = callee {
-            callee = &p.expression;
-        }
+        let callee = strip(&it.callee);
         let origin = match callee {
-            Expression::Identifier(id) => {
-                symbol_of(self.scoping, id).and_then(|s| self.tainted.get(&s).copied())
-            }
-            Expression::StaticMemberExpression(m) => {
-                if is_standard_method(m.property.name.as_str()) {
-                    None
-                } else {
-                    origin_of_expr(self.scoping, self.sites, self.tainted, &m.object)
-                }
-            }
-            Expression::ComputedMemberExpression(m) => {
-                origin_of_expr(self.scoping, self.sites, self.tainted, &m.object)
-            }
+            Expression::Identifier(id) => symbol_of(self.scoping, id)
+                .and_then(|s| self.tainted.get(&s).copied())
+                .filter(|t| t.kind == Kind::Code)
+                .map(|t| t.origin),
+            Expression::StaticMemberExpression(m) => classify(self.scoping, self.sites, self.tainted, &m.object)
+                .filter(|o| o.kind == Kind::Code || (o.kind == Kind::Handle && !is_standard_method(m.property.name.as_str())))
+                .map(|o| o.origin),
+            Expression::ComputedMemberExpression(m) => classify(self.scoping, self.sites, self.tainted, &m.object)
+                .filter(|o| o.kind >= Kind::Handle)
+                .map(|o| o.origin),
             // `new Function(d)()` and `eval(t)()`: the sink itself is already reported.
-            Expression::NewExpression(n) if self.sites.get(&key(n.span)).is_some_and(|x| x.sink) => None,
-            Expression::CallExpression(c) if self.sites.get(&key(c.span)).is_some_and(|x| x.sink) => None,
-            other => origin_of_expr(self.scoping, self.sites, self.tainted, other),
+            Expression::NewExpression(n) if is_sink(self.sites, n.span) => None,
+            Expression::CallExpression(c) if is_sink(self.sites, c.span) => None,
+            other => classify(self.scoping, self.sites, self.tainted, other).filter(|t| t.kind == Kind::Code).map(|t| t.origin),
         };
         if let Some(origin) = origin {
             self.hits.push(FlowHit { sink: it.span, origin, callee: true });
@@ -671,10 +875,48 @@ mod tests {
     }
 
     #[test]
-    fn calling_a_function_that_came_from_the_response_is_a_callee_flow() {
-        let f = callee_flows("const { run } = await (await fetch(u)).json(); run(1);");
+    fn calling_what_network_text_was_run_as_is_a_callee_flow() {
+        // The text became code, so what it hands back is remote code. (The `eval` itself is a code flow.)
+        let f = callee_flows("const run = eval(await (await fetch(u)).text()); run(1);");
         assert_eq!(f.len(), 1, "{f:?}");
         assert_eq!(f[0].0, "run(1)");
+    }
+
+    #[test]
+    fn parsed_json_cannot_hold_a_function_so_calling_into_it_is_not_a_callee_flow() {
+        let f = callee_flows("const { run } = await (await fetch(u)).json(); run(1);");
+        assert!(f.is_empty(), "{f:?}");
+    }
+
+    #[test]
+    fn calling_a_helper_that_returns_fetched_data_is_not_a_callee_flow_but_its_data_still_flows() {
+        // Found on a real project: `readPolicy()` was reported as "calls network data".
+        let src = "const read = async () => (await fetch(u)).json(); const first = await read(); read();";
+        assert!(callee_flows(src).is_empty());
+        let d = flows("const read = async () => (await fetch(u)).text(); eval(await read());");
+        assert_eq!(d.len(), 1, "{d:?}");
+    }
+
+    #[test]
+    fn an_object_built_from_a_request_helper_is_not_network_data() {
+        // Found on a real project: `new Client({ requestHandler })` where the handler used `fetch`, then
+        // every `client.createSession()` was reported.
+        let f = callee_flows(
+            "const fetchFn = (i) => fetch(i); const handler = new Handler({ fetchFn });              const client = new Client({ requestHandler: handler }); client.createSession(); client.disconnect();",
+        );
+        assert!(f.is_empty(), "{f:?}");
+    }
+
+    #[test]
+    fn a_helper_that_returns_the_network_object_still_gives_one() {
+        let f = callee_flows("const make = () => fetch(u); const r = make(); r.scan();");
+        assert!(f.contains(&("r.scan()".to_string(), "fetch(u)".to_string())), "{f:?}");
+    }
+
+    #[test]
+    fn what_a_non_platform_method_on_the_network_object_returns_is_remote_code() {
+        let f = callee_flows("const r = await fetch(u); const x = r.fetchPlugin(); x.run();");
+        assert_eq!(f.len(), 2, "{f:?}");
     }
 
     #[test]
