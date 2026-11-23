@@ -30,6 +30,7 @@
 //! The matcher decides what a source and a sink are (from the catalog) and hands this module
 //! a map from call/new span to `Site`. This module knows nothing about the catalog.
 
+use forge_analysis_catalog::{is_platform_method, HandleKind};
 use oxc_ast::ast::{
     Argument, ArrowFunctionBody, ArrowFunctionExpression, AssignmentExpression, ExpressionStatement, Statement, VariableDeclaration, AssignmentTarget, BindingPattern,
     CallExpression, Expression, FormalParameters, Function, IdentifierReference, NewExpression,
@@ -50,6 +51,8 @@ pub struct Site {
     /// When set, only this argument is the executed one (`setTimeout`'s callback); the
     /// other arguments (the delay) are not.
     pub arg: Option<u8>,
+    /// For a source: what kind of network object it gives back, which decides the platform's own methods.
+    pub handle: HandleKind,
 }
 
 /// Network data may reach `sink`; `origin` is where the data entered.
@@ -85,6 +88,8 @@ enum Kind {
 struct Taint {
     origin: Span,
     kind: Kind,
+    /// For a `Handle` (or a `Maker` of one): what kind of object, so which methods are the platform's.
+    ty: HandleKind,
 }
 
 type Tainted = BTreeMap<SymbolId, Taint>;
@@ -451,11 +456,21 @@ fn literal_returns(scoping: &Scoping, sites: &Sites, tainted: &Tainted, f: &Expr
         if let Some(t) = classify(scoping, sites, tainted, r) {
             let k = if t.kind >= Kind::Maker { Kind::Maker } else { Kind::Data };
             if best.map_or(true, |b| k > b.kind) {
-                best = Some(Taint { origin: t.origin, kind: k });
+                best = Some(Taint { origin: t.origin, kind: k, ty: t.ty });
             }
         }
     }
     best
+}
+
+/// A taint with no particular object type (data, code, or a handle whose type is not known).
+fn plain(origin: Span, kind: Kind) -> Taint {
+    Taint { origin, kind, ty: HandleKind::Unknown }
+}
+
+/// The network object a source call gives back.
+fn handle_at(sites: &Sites, at: Span) -> Taint {
+    Taint { origin: at, kind: Kind::Handle, ty: sites.get(&key(at)).map_or(HandleKind::Unknown, |s| s.handle) }
 }
 
 fn is_source(sites: &Sites, at: Span) -> bool {
@@ -474,57 +489,57 @@ fn classify(scoping: &Scoping, sites: &Sites, tainted: &Tainted, e: &Expression<
     let e = strip(e);
     match e {
         Expression::Identifier(id) => symbol_of(scoping, id).and_then(|s| tainted.get(&s).copied()),
-        Expression::NewExpression(n) if is_source(sites, n.span) => Some(Taint { origin: n.span, kind: Kind::Handle }),
-        Expression::CallExpression(c) if is_source(sites, c.span) => Some(Taint { origin: c.span, kind: Kind::Handle }),
+        Expression::NewExpression(n) if is_source(sites, n.span) => Some(handle_at(sites, n.span)),
+        Expression::CallExpression(c) if is_source(sites, c.span) => Some(handle_at(sites, c.span)),
         Expression::NewExpression(n) if is_sink(sites, n.span) => n
             .arguments
             .iter()
             .find_map(|a| origin_of_arg(scoping, sites, tainted, a))
-            .map(|origin| Taint { origin, kind: Kind::Code }),
+            .map(|origin| plain(origin, Kind::Code)),
         Expression::CallExpression(c) => {
             if is_sink(sites, c.span) {
                 if let Some(origin) = c.arguments.iter().find_map(|a| origin_of_arg(scoping, sites, tainted, a)) {
-                    return Some(Taint { origin, kind: Kind::Code });
+                    return Some(plain(origin, Kind::Code));
                 }
             }
             let callee = strip(&c.callee);
             // A function literal called on the spot gives what it returns.
             if let Some(t) = literal_returns(scoping, sites, tainted, callee) {
-                return Some(Taint { origin: t.origin, kind: if t.kind == Kind::Maker { Kind::Handle } else { Kind::Data } });
+                return Some(Taint { origin: t.origin, kind: if t.kind == Kind::Maker { Kind::Handle } else { Kind::Data }, ty: t.ty });
             }
             match callee {
                 Expression::Identifier(id) => {
                     if let Some(t) = symbol_of(scoping, id).and_then(|s| tainted.get(&s).copied()) {
                         match t.kind {
-                            Kind::Maker => return Some(Taint { origin: t.origin, kind: Kind::Handle }),
-                            Kind::Code => return Some(Taint { origin: t.origin, kind: Kind::Code }),
+                            Kind::Maker => return Some(Taint { kind: Kind::Handle, ..t }),
+                            Kind::Code => return Some(Taint { kind: Kind::Code, ..t }),
                             _ => {}
                         }
                     }
                 }
                 Expression::StaticMemberExpression(m) => {
                     if let Some(o) = classify(scoping, sites, tainted, &m.object) {
-                        let platform = is_standard_method(m.property.name.as_str());
+                        let platform = is_platform_method(o.ty, m.property.name.as_str());
                         if o.kind == Kind::Code || (o.kind == Kind::Handle && !platform) {
-                            return Some(Taint { origin: o.origin, kind: Kind::Code });
+                            return Some(plain(o.origin, Kind::Code));
                         }
                     }
                 }
                 Expression::ComputedMemberExpression(m) => {
                     if let Some(o) = classify(scoping, sites, tainted, &m.object) {
                         if o.kind >= Kind::Handle {
-                            return Some(Taint { origin: o.origin, kind: Kind::Code });
+                            return Some(plain(o.origin, Kind::Code));
                         }
                     }
                 }
                 _ => {}
             }
-            origin_of_expr(scoping, sites, tainted, e).map(|origin| Taint { origin, kind: Kind::Data })
+            origin_of_expr(scoping, sites, tainted, e).map(|origin| plain(origin, Kind::Data))
         }
         Expression::ArrowFunctionExpression(_) | Expression::FunctionExpression(_) => {
             literal_returns(scoping, sites, tainted, e)
         }
-        other => origin_of_expr(scoping, sites, tainted, other).map(|origin| Taint { origin, kind: Kind::Data }),
+        other => origin_of_expr(scoping, sites, tainted, other).map(|origin| plain(origin, Kind::Data)),
     }
 }
 
@@ -619,7 +634,7 @@ impl<'a> Visit<'a> for Propagate<'_> {
         // Callbacks of a source call get the network object itself (`https.get(u, res => ..)`); so does the
         // `then` of a response (`fetch(u).then(r => ..)`). Any other callback gets data.
         let carrier = if is_source(self.sites, it.span) {
-            Some(Taint { origin: it.span, kind: Kind::Handle })
+            Some(handle_at(self.sites, it.span))
         } else if let Expression::StaticMemberExpression(m) = strip(&it.callee) {
             match self.classify(&m.object) {
                 Some(o) if m.property.name == "then" && o.kind == Kind::Handle => Some(o),
@@ -627,7 +642,7 @@ impl<'a> Visit<'a> for Propagate<'_> {
                 None => None,
             }
         } else {
-            self.origin(&it.callee).map(|origin| Taint { origin, kind: Kind::Data })
+            self.origin(&it.callee).map(|origin| plain(origin, Kind::Data))
         };
         if let Some(t) = carrier {
             for arg in &it.arguments {
@@ -674,7 +689,7 @@ impl SinkFinder<'_> {
                 .filter(|t| t.kind == Kind::Code)
                 .map(|t| t.origin),
             Expression::StaticMemberExpression(m) => classify(self.scoping, self.sites, self.tainted, &m.object)
-                .filter(|o| o.kind == Kind::Code || (o.kind == Kind::Handle && !is_standard_method(m.property.name.as_str())))
+                .filter(|o| o.kind == Kind::Code || (o.kind == Kind::Handle && !is_platform_method(o.ty, m.property.name.as_str())))
                 .map(|o| o.origin),
             Expression::ComputedMemberExpression(m) => classify(self.scoping, self.sites, self.tainted, &m.object)
                 .filter(|o| o.kind >= Kind::Handle)
@@ -688,41 +703,6 @@ impl SinkFinder<'_> {
             self.hits.push(FlowHit { sink: it.span, origin, callee: true });
         }
     }
-}
-
-/// Methods that strings, arrays, objects, maps, promises, responses, headers, streams, event
-/// emitters, sockets and requests all have. Calling one on network data is ordinary handling
-/// of it, not the server choosing what runs.
-fn is_standard_method(name: &str) -> bool {
-    const STANDARD: &[&str] = &[
-        // strings
-        "at", "charAt", "charCodeAt", "codePointAt", "concat", "endsWith", "includes", "indexOf",
-        "lastIndexOf", "localeCompare", "match", "matchAll", "normalize", "padEnd", "padStart",
-        "repeat", "replace", "replaceAll", "search", "slice", "split", "startsWith", "substring",
-        "substr", "toLowerCase", "toUpperCase", "toLocaleLowerCase", "toLocaleUpperCase", "trim",
-        "trimStart", "trimEnd",
-        // arrays
-        "map", "filter", "forEach", "reduce", "reduceRight", "find", "findIndex", "findLast",
-        "findLastIndex", "some", "every", "flat", "flatMap", "join", "push", "pop", "shift",
-        "unshift", "splice", "sort", "reverse", "fill", "keys", "values", "entries", "copyWithin",
-        "toSorted", "toReversed", "toSpliced", "with",
-        // every object
-        "toString", "valueOf", "toJSON", "toLocaleString", "toFixed", "toPrecision",
-        "hasOwnProperty", "isPrototypeOf", "propertyIsEnumerable",
-        // maps, sets, headers
-        "get", "set", "has", "add", "delete", "clear", "append",
-        // promises
-        "then", "catch", "finally",
-        // fetch responses
-        "json", "text", "blob", "arrayBuffer", "formData", "bytes", "clone",
-        // streams, emitters, sockets, requests
-        "on", "once", "off", "addListener", "removeListener", "removeAllListeners", "emit",
-        "addEventListener", "removeEventListener", "pipe", "unpipe", "setEncoding", "setTimeout",
-        "pause", "resume", "destroy", "end", "write", "abort", "close", "send", "read", "cancel",
-        "getReader", "setHeader", "getHeader", "open", "setRequestHeader", "getResponseHeader",
-        "getAllResponseHeaders",
-    ];
-    STANDARD.contains(&name)
 }
 
 impl<'a> Visit<'a> for SinkFinder<'_> {
@@ -759,11 +739,19 @@ mod tests {
             &self.src[sp.start as usize..sp.end as usize]
         }
         fn classify(&self, callee: &str) -> Site {
-            let source = ["fetch", "https.get", "https.request", "XMLHttpRequest", "WebSocket"]
+            let source = ["fetch", "https.get", "https.request", "XMLHttpRequest", "WebSocket", "net.connect"]
                 .contains(&callee);
+            let handle = match callee {
+                "fetch" => HandleKind::Response,
+                "https.get" | "https.request" => HandleKind::Http,
+                "XMLHttpRequest" => HandleKind::Xhr,
+                "WebSocket" => HandleKind::WebSocket,
+                "net.connect" => HandleKind::Socket,
+                _ => HandleKind::Unknown,
+            };
             let sink = ["eval", "Function", "vm.runInThisContext", "exec", "spawn"]
                 .contains(&callee);
-            Site { source, sink, arg: None }
+            Site { source, sink, arg: None, handle }
         }
     }
 
@@ -905,6 +893,33 @@ mod tests {
             "const fetchFn = (i) => fetch(i); const handler = new Handler({ fetchFn });              const client = new Client({ requestHandler: handler }); client.createSession(); client.disconnect();",
         );
         assert!(f.is_empty(), "{f:?}");
+    }
+
+    #[test]
+    fn a_socket_has_its_own_methods() {
+        // Found on a real project: `socket.setNoDelay(true)` and `client.getPeerCertificate()`.
+        let f = callee_flows("const s = net.connect(o); s.setNoDelay(true); s.getPeerCertificate(); s.write(x); s.on('data', d => d);");
+        assert!(f.is_empty(), "{f:?}");
+        // ...and not a response's.
+        let g = callee_flows("const s = net.connect(o); s.json();");
+        assert_eq!(g.len(), 1, "{g:?}");
+    }
+
+    #[test]
+    fn a_response_with_a_standard_name_that_is_not_its_own_is_a_callee_flow() {
+        // The known gap, closed: `end()` is a method of streams, not of a response.
+        let f = callee_flows("const vuln = await fetch(server); vuln.end(); vuln.send(1);");
+        assert_eq!(f.len(), 2, "{f:?}");
+        let ok = callee_flows("const r = await fetch(u); await r.json(); await r.text(); r.clone();");
+        assert!(ok.is_empty(), "{ok:?}");
+    }
+
+    #[test]
+    fn a_websocket_and_a_request_object_have_their_own_methods() {
+        assert!(callee_flows("const ws = new WebSocket(u); ws.send(x); ws.close(); ws.addEventListener('message', m => m);").is_empty());
+        assert_eq!(callee_flows("const ws = new WebSocket(u); ws.open();").len(), 1);
+        assert!(callee_flows("const x = new XMLHttpRequest(); x.open('GET', u); x.send(); x.setRequestHeader('a', 'b');").is_empty());
+        assert!(callee_flows("https.get(u, res => { res.setEncoding('utf8'); res.on('data', d => d); res.pipe(out); });").is_empty());
     }
 
     #[test]
@@ -1103,7 +1118,7 @@ mod tests {
             fn visit_call_expression(&mut self, it: &CallExpression<'a>) {
                 let sp = it.callee.span();
                 if &self.0[sp.start as usize..sp.end as usize] == "T" {
-                    self.1.insert(key(it.span), Site { source: false, sink: true, arg: Some(0) });
+                    self.1.insert(key(it.span), Site { source: false, sink: true, arg: Some(0), handle: HandleKind::Unknown });
                 }
                 walk::walk_call_expression(self, it);
             }

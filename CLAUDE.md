@@ -58,8 +58,15 @@ limits, not by the flag. Files not reached are reported as `NotAnalysedKind::Sto
   running network data as code, or of a non-platform method on a handle). A callee flow fires only for a call on `Code`, or a
   method on a `Handle` that is not the platform's own API. Data is never a callee: JSON cannot hold a function and an object built
   from data runs your own code. A function value is tainted only through what it returns.
-- **Known gap:** the platform-method list for a `Handle` is one global list, not one per type (socket methods such as `setNoDelay`
-  can still be reported); `function` declarations are not tracked as values; `import()` of a network URL is not a source of `Code`.
+  Each network source has a `HandleKind` (Response, Http, Socket, WebSocket, Xhr; `forge-analysis-catalog` `handles.rs`, with the
+  platform's own methods per kind). A method on a typed handle is ordinary only if it is in that kind's table, so `fetch(u).end()` is a
+  callee flow and `socket.setNoDelay()` is not. A test fails if a network source in the catalog has no kind (`dns.lookup` is the one
+  listed exception: plain data).
+- **Known gap:** `function` declarations are not tracked as values; `import()` of a network URL is not a source of `Code`; a wrapper
+  class built from a response (`new Wrapper(await fetch(u)).run()`) is data, so only a code-argument flow would catch it.
+  Measured on `Forge.Lite`: flows 61 -> 2 (the brief said `data_reaches_code: 2`; the report could not be written because the disk was
+  full, so which two were not read, and a re-run was stopped for low memory). Expected: `new Function` on fetched extension code and
+  the call to the function it returns.
 - **Call graph** (`callgraph.rs`): `Edges.seen_refs` keeps references unique. `Graph::owner` is O(functions)
   per call and may need an index later.
 - A quadratic `Vec::contains` on nested function chains (`a=>a=>...`) was fixed in step 20. The slow test

@@ -5,6 +5,9 @@ use forge_analysis_schema::{Effect, Hash};
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeSet;
 
+mod handles;
+pub use handles::{handle_kind, is_platform_method, HandleKind};
+
 const NODE_DEFAULTS: &str = include_str!("../data/node.toml");
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]

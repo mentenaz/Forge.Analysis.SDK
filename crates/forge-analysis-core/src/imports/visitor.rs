@@ -567,6 +567,11 @@ impl<'s> Matcher<'s> {
                 Effect::CodeLoad | Effect::ProcessSpawn | Effect::DynamicLoad
             ),
             arg: None,
+            handle: if entry.category == Effect::NetOut && entry.role == Some(Role::Source) {
+                forge_analysis_catalog::handle_kind(&entry.id)
+            } else {
+                Default::default()
+            },
         };
         if site.source || site.sink {
             self.sites.insert(key(at), site);
@@ -674,7 +679,7 @@ impl<'s> Matcher<'s> {
                 }
             }
         }
-        self.sites.insert(key(at), Site { source: false, sink, arg: callback });
+        self.sites.insert(key(at), Site { source: false, sink, arg: callback, ..Site::default() });
 
         let callee_text = self.ctx.text(callee.span());
         let mut timer = StaticFact::new(
